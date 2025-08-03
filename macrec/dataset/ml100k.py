@@ -13,18 +13,38 @@ def download_data(dir: str):
     os.makedirs(raw_path, exist_ok=True)
     if not os.path.exists(os.path.join(raw_path, 'ml-100k.zip')):
         logger.info('Downloading ml-100k dataset into ' + raw_path)
-        subprocess.call(
-            f'cd {raw_path} && curl -O http://files.grouplens.org/datasets/movielens/ml-100k.zip', shell=True
-        )
+        if os.name == 'nt':  # Windows
+            subprocess.call(
+                f'cd /d "{raw_path}" && curl -O http://files.grouplens.org/datasets/movielens/ml-100k.zip', 
+                shell=True)
+        else:  # Unix/Linux/Mac
+            subprocess.call(
+                f'cd {raw_path} && curl -O http://files.grouplens.org/datasets/movielens/ml-100k.zip', 
+                shell=True)
     if not os.path.exists(os.path.join(raw_path, 'u.data')):
         logger.info('Unzipping ml-100k dataset into ' + raw_path)
-        subprocess.call(
-            f'cd {raw_path} && unzip ml-100k.zip', shell=True
-        )
-        # move the files to raw_data
-        subprocess.call(
-            f'cd {raw_path} && mv ml-100k/* . && rm -r ml-100k', shell=True
-        )
+        if os.name == 'nt':  # Windows
+            # Use PowerShell's Expand-Archive for Windows
+            subprocess.call(
+                f'powershell -Command "Expand-Archive -Path \\"{os.path.join(raw_path, "ml-100k.zip")}\\" -DestinationPath \\"{raw_path}\\" -Force"', 
+                shell=True)
+            # Move files from ml-100k subfolder to raw_data
+            ml100k_path = os.path.join(raw_path, 'ml-100k')
+            if os.path.exists(ml100k_path):
+                for file in os.listdir(ml100k_path):
+                    src = os.path.join(ml100k_path, file)
+                    dst = os.path.join(raw_path, file)
+                    if os.path.isfile(src):
+                        os.rename(src, dst)
+                os.rmdir(ml100k_path)
+        else:  # Unix/Linux/Mac
+            subprocess.call(
+                f'cd {raw_path} && unzip ml-100k.zip', 
+                shell=True)
+            # move the files to raw_data
+            subprocess.call(
+                f'cd {raw_path} && mv ml-100k/* . && rm -r ml-100k', 
+                shell=True)
 
 def read_data(dir: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     with open(os.path.join(dir, 'u.data'), 'r') as f:
