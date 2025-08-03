@@ -170,12 +170,17 @@ class CollaborationSystem(System):
         self.reflected = True
         self.manager_kwargs['reflections'] = self.reflector.reflections_str
         if self.reflector.json_mode:
-            reflection_json = json.loads(self.reflector.reflections[-1])
-            if 'correctness' in reflection_json and reflection_json['correctness']:
-                # don't forward if the last reflection is correct
-                logger.debug('Last reflection is correct, don\'t forward.')
-                self.log(":red[**Last reflection is correct, don't forward**]", agent=self.reflector, logging=False)
-                return True
+            try:
+                reflection_json = json.loads(self.reflector.reflections[-1])
+                if 'correctness' in reflection_json and reflection_json['correctness']:
+                    # don't forward if the last reflection is correct
+                    logger.debug('Last reflection is correct, don\'t forward.')
+                    self.log(":red[**Last reflection is correct, don't forward**]", agent=self.reflector, logging=False)
+                    return True
+            except Exception as e:
+                logger.error(f'Invalid reflection JSON output: {self.reflector.reflections[-1]}')
+                logger.error(f'JSON parsing error: {e}')
+                # Continue execution even if reflection parsing fails
         return False
 
     def interprete(self) -> None:

@@ -1,10 +1,9 @@
-import tiktoken
 from loguru import logger
 from transformers import AutoTokenizer
 from langchain.prompts import PromptTemplate
 
 from macrec.agents.base import Agent
-from macrec.llms import AnyOpenAILLM
+from macrec.llms import GeminiLLM
 from macrec.utils import format_step, run_once
 
 class Manager(Agent):
@@ -22,18 +21,35 @@ class Manager(Agent):
         self.thought_llm = self.get_LLM(thought_config_path)
         self.action_llm = self.get_LLM(action_config_path)
         self.json_mode = self.action_llm.json_mode
-        if isinstance(self.thought_llm, AnyOpenAILLM):
-            self.thought_enc = tiktoken.encoding_for_model(self.thought_llm.model_name)
+        
+        # Initialize tokenizers based on LLM type
+        if isinstance(self.thought_llm, GeminiLLM):
+            # For Gemini, we'll use a simple word-based estimation
+            self.thought_enc = None
         else:
             self.thought_enc = AutoTokenizer.from_pretrained(self.thought_llm.model_name)
-        if isinstance(self.action_llm, AnyOpenAILLM):
-            self.action_enc = tiktoken.encoding_for_model(self.action_llm.model_name)
+            
+        if isinstance(self.action_llm, GeminiLLM):
+            # For Gemini, we'll use a simple word-based estimation
+            self.action_enc = None
         else:
             self.action_enc = AutoTokenizer.from_pretrained(self.action_llm.model_name)
 
     def over_limit(self, **kwargs) -> bool:
         prompt = self._build_manager_prompt(**kwargs)
-        return len(self.action_enc.encode(prompt)) > self.action_llm.tokens_limit or len(self.thought_enc.encode(prompt)) > self.thought_llm.tokens_limit
+        
+        # For Gemini models, use a simple word-based estimation (4 chars per token approximately)
+        if self.action_enc is None:
+            action_tokens = len(prompt) // 4
+        else:
+            action_tokens = len(self.action_enc.encode(prompt))
+            
+        if self.thought_enc is None:
+            thought_tokens = len(prompt) // 4
+        else:
+            thought_tokens = len(self.thought_enc.encode(prompt))
+            
+        return action_tokens > self.action_llm.tokens_limit or thought_tokens > self.thought_llm.tokens_limit
 
     @property
     def manager_prompt(self) -> PromptTemplate:
@@ -51,10 +67,15 @@ class Manager(Agent):
 
     @property
     def fewshot_examples(self) -> str:
-        if 'fewshot_examples' in self.prompts:
-            return self.prompts['fewshot_examples']
+        if self.json_mode:
+            if 'fewshot_examples_json' in self.prompts:
+                return self.prompts['fewshot_examples_json']
+            elif 'fewshot_examples' in self.prompts:
+                return self.prompts['fewshot_examples']
         else:
-            return ''
+            if 'fewshot_examples' in self.prompts:
+                return self.prompts['fewshot_examples']
+        return ''
 
     @property
     def hint(self) -> str:

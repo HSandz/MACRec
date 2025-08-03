@@ -110,8 +110,8 @@ class Searcher(ToolAgent):
         return self(requirements=argument)
 
 if __name__ == '__main__':
-    from macrec.utils import init_openai_api, read_prompts
-    init_openai_api(read_json('config/api-config.json'))
+    from macrec.utils import init_api, read_prompts
+    init_api(read_json('config/api-config.json'))
     searcher = Searcher(config_path='config/agents/searcher.json', prompts=read_prompts('config/prompts/agent_prompt/react_search.json'))
     while True:
         requirements = input('Requirements: ')

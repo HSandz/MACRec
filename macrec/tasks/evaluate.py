@@ -75,7 +75,7 @@ class EvaluateTask(GenerationTask):
     def after_step(self, answer: Any, gt_answer: int | float | str, step: int, record: dict) -> None:
         record[f'Answer_{step}'] = answer
         if hasattr(self.system, 'reflected') and self.system.reflected and self.system.reflector.keep_reflections:
-            assert isinstance(self.system, ReflectionSystem)
+            # assert isinstance(self.system, ReflectionSystem)
             logger.trace(f"Reflection input: {self.system.reflector.reflection_input}")
             logger.trace(f"Reflection output: {self.system.reflector.reflection_output}")
 

@@ -48,7 +48,7 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
         - `test.py`: The task for evaluating the system on few-shot data samples. The task is inherited from `evaluate.py`.
     - `utils/`: Some useful functions are defined here.
 - `config/`: The config folder.
-    - `api-config.json`: Used for OpenAI-like APIs' configuration. We give an example for the configuration, named `api-config-example.json`.
+    - `api-config.json`: Used for Gemini API configuration. We give an example for the configuration, named `api-config-example.json`.
     - `agents/`: The configuration for each agent.
     - `prompts/`: All the prompts used in the experiments.
         - `agent_prompt/`: The prompts for each agent.
@@ -82,6 +82,21 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
    bash ./scripts/preprocess.sh
    ```
 
+### API Configuration
+
+The project uses the Gemini API:
+
+#### For Gemini API
+Create or update `config/api-config.json`:
+```json
+{
+    "provider": "gemini",
+    "api_key": "your-gemini-api-key-here"
+}
+```
+
+To use the Gemini API, the project is pre-configured with:
+
 ### Run with the command line
 
 Use the following to run specific tasks:
@@ -91,7 +106,7 @@ python main.py -m $task_name --verbose $verbose $extra_args
 
 Then `main.py` will run the `${task_name}Task` defined in `macrec/tasks/*.py`.
 
-E.g., to evaluate the sequence recommendation task in MovieLens-100k dataset for the `CollaborationSystem` with *Reflector*, *Analyst*, and *Searcher*, just run:
+E.g., to evaluate the sequence recommendation task in MovieLens-100k dataset for the `CollaborationSystem` with *Reflector*, *Analyst*, and *Searcher* using Gemini API, just run:
 ```shell
 python main.py --main Evaluate --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/reflect_analyse_search.json --task sr
 ```

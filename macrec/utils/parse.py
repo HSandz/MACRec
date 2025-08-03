@@ -16,6 +16,9 @@ def parse_action(action: str, json_mode: bool = False) -> tuple[str, Any]:
     if json_mode:
         try:
             json_action = json.loads(action)
+            # Handle case where action is wrapped in an array (common LLM mistake)
+            if isinstance(json_action, list) and len(json_action) == 1:
+                json_action = json_action[0]
             return json_action['type'], json_action['content']
         except Exception:
             return 'Invalid', None

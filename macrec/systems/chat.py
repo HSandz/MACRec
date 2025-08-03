@@ -106,8 +106,8 @@ class ChatSystem(System):
             print(f"System: {response}")
 
 if __name__ == "__main__":
-    from macrec.utils import init_openai_api, read_json
-    init_openai_api(read_json('config/api-config.json'))
+    from macrec.utils import init_api, read_json
+    init_api(read_json('config/api-config.json'))
     chat_system = ChatSystem(config_path='config/systems/chat/config.json', task='chat')
     chat_system.chat()
 # 1. Hello! How are you today?

@@ -35,7 +35,7 @@ class Wikipedia(RetrievalTool):
 
     def search(self, query: str) -> str:
         try:
-            results = self.retriever.get_relevant_documents(query=query)
+            results = self.retriever.invoke(query)
             if len(results) == 0:
                 return f'No documents found for query {query}.'
             else:

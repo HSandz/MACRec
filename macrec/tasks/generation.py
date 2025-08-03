@@ -7,7 +7,7 @@ from loguru import logger
 from argparse import ArgumentParser
 
 from macrec.tasks.base import Task
-from macrec.utils import init_openai_api, read_json
+from macrec.utils import init_api, read_json
 from macrec.systems import ReActSystem, ReflectionSystem, AnalyseSystem, CollaborationSystem
 
 class GenerationTask(Task):
@@ -158,7 +158,7 @@ class GenerationTask(Task):
             'leak': False,
             'dataset': self.dataset,
         }
-        init_openai_api(read_json(api_config))
+        init_api(read_json(api_config))
         data_df = self.get_data(data_file, max_his)
         self.get_system(system, system_config)
         data = self.prompt_data(data_df)

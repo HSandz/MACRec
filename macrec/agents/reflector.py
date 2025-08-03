@@ -1,11 +1,10 @@
-import tiktoken
 from enum import Enum
 from loguru import logger
 from transformers import AutoTokenizer
 from langchain.prompts import PromptTemplate
 
 from macrec.agents.base import Agent
-from macrec.llms import AnyOpenAILLM
+from macrec.llms import GeminiLLM
 from macrec.utils import format_step, format_reflections, format_last_attempt, read_json, get_rm
 
 class ReflectionStrategy(Enum):
@@ -32,8 +31,9 @@ class Reflector(Agent):
         keep_reflections = get_rm(config, 'keep_reflections', True)
         reflection_strategy = get_rm(config, 'reflection_strategy', ReflectionStrategy.REFLEXION.value)
         self.llm = self.get_LLM(config=config)
-        if isinstance(self.llm, AnyOpenAILLM):
-            self.enc = tiktoken.encoding_for_model(self.llm.model_name)
+        if isinstance(self.llm, GeminiLLM):
+            # For Gemini, we'll use a simple word-based estimation
+            self.enc = None
         else:
             self.enc = AutoTokenizer.from_pretrained(self.llm.model_name)
         self.json_mode = self.llm.json_mode
@@ -74,9 +74,16 @@ class Reflector(Agent):
         if self.keep_reflections:
             self.reflection_input = reflection_prompt
             self.reflection_output = reflection_response
-            logger.trace(f'Reflection input length: {len(self.enc.encode(self.reflection_input))}')
+            if self.enc is None:
+                # For Gemini, use simple character-based estimation
+                input_length = len(self.reflection_input) // 4
+                output_length = len(self.reflection_output) // 4
+            else:
+                input_length = len(self.enc.encode(self.reflection_input))
+                output_length = len(self.enc.encode(self.reflection_output))
+            logger.trace(f'Reflection input length: {input_length}')
             logger.trace(f"Reflection input: {self.reflection_input}")
-            logger.trace(f'Reflection output length: {len(self.enc.encode(self.reflection_output))}')
+            logger.trace(f'Reflection output length: {output_length}')
             if self.json_mode:
                 self.system.log(f"[:violet[Reflection]]:\n- `{self.reflection_output}`", agent=self, logging=False)
             else:

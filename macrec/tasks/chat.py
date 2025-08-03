@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 
 from macrec.tasks.base import Task
 from macrec.systems import ChatSystem
-from macrec.utils import init_openai_api, read_json
+from macrec.utils import init_api, read_json
 
 class ChatTask(Task):
     @staticmethod
@@ -19,7 +19,7 @@ class ChatTask(Task):
             raise NotImplementedError
 
     def run(self, api_config: str, system: str, system_config: str, *args, **kwargs) -> None:
-        init_openai_api(read_json(api_config))
+        init_api(read_json(api_config))
         self.system = self.get_system(system, system_config)
         self.system.chat()
 
