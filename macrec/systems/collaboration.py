@@ -132,6 +132,11 @@ class CollaborationSystem(System):
                 self.log(f':violet[Calling] :red[Analyst] :violet[with] :blue[{argument}]:violet[...]', agent=self.manager, logging=False)
                 observation = self.analyst.invoke(argument=argument, json_mode=self.manager.json_mode)
                 log_head = f':violet[Response from] :red[Analyst] :violet[with] :blue[{argument}]:violet[:]\n- '
+                
+                # Check if the analyst returned an error and suggest correction
+                if observation and "Invalid id:" in observation and ("user_" in observation or "item_" in observation):
+                    # Add a helpful hint to the scratchpad about the error
+                    observation += " Please retry with the correct format in your next action."
         elif action_type.lower() == 'search':
             if self.searcher is None:
                 observation = 'Searcher is not configured. Cannot execute the action "Search".'

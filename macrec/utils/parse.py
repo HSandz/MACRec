@@ -15,12 +15,42 @@ def parse_action(action: str, json_mode: bool = False) -> tuple[str, Any]:
     """
     if json_mode:
         try:
+            # Clean the action string to handle multi-line responses
+            action = action.strip()
+            
+            # If action contains multiple lines, try to extract just the JSON part
+            if '\n' in action:
+                lines = action.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith('{') and line.endswith('}'):
+                        action = line
+                        break
+                else:
+                    # If no complete JSON line found, take the first line
+                    action = lines[0].strip()
+            
+            # Handle cases where the response contains text before/after the JSON
+            # Look for JSON object in the string
+            import re
+            json_match = re.search(r'\{[^{}]*\}', action)
+            if json_match:
+                action = json_match.group(0)
+            
             json_action = json.loads(action)
             # Handle case where action is wrapped in an array (common LLM mistake)
             if isinstance(json_action, list) and len(json_action) == 1:
                 json_action = json_action[0]
-            return json_action['type'], json_action['content']
-        except Exception:
+            
+            # Ensure required fields exist
+            if 'type' not in json_action:
+                return 'Invalid', None
+            
+            return json_action['type'], json_action.get('content', None)
+        except Exception as e:
+            # Log the parsing error for debugging
+            from loguru import logger
+            logger.debug(f"JSON parsing error for action: '{action}', error: {e}")
             return 'Invalid', None
     else:
         pattern = r'^(\w+)\[(.*)\]$'

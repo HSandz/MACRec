@@ -2,13 +2,46 @@
 
 def format_step(step: str) -> str:
     """Format a step prompt. Remove leading and trailing whitespaces and newlines, and replace newlines with spaces.
+    Also handles cases where LLM generates multiple steps by extracting only the first action/thought.
 
     Args:
         `step` (`str`): A step prompt in string format.
     Returns:
         `str`: The formatted step prompt.
     """
-    return step.strip('\n').strip().replace('\n', '')
+    # First, strip whitespace
+    step = step.strip('\n').strip()
+    
+    # Check if the response contains multiple steps/observations (common LLM mistake)
+    # Look for patterns like "Observation:", "Thought X:", "Action X:" that indicate continuation
+    import re
+    
+    # Split by lines to check for multi-step generation
+    lines = step.split('\n')
+    if len(lines) > 1:
+        # Look for the first line that doesn't contain continuation markers
+        continuation_patterns = [
+            r'^\s*Observation\s*:',
+            r'^\s*Thought\s+\d+\s*:',
+            r'^\s*Action\s+\d+\s*:',
+            r'^\s*Step\s+\d+\s*:'
+        ]
+        
+        result_lines = [lines[0]]  # Always include the first line
+        
+        for line in lines[1:]:
+            # If we find a continuation pattern, stop here
+            if any(re.match(pattern, line, re.IGNORECASE) for pattern in continuation_patterns):
+                break
+            # Also check for JSON patterns that might indicate separate actions
+            if line.strip().startswith('{"type":') and result_lines[0].strip().startswith('{"type":'):
+                break
+            result_lines.append(line)
+        
+        step = '\n'.join(result_lines)
+    
+    # Replace newlines with spaces and return
+    return step.replace('\n', ' ').strip()
 
 def format_last_attempt(input: str, scratchpad: str, header: str) -> str:
     """Format the last attempt reflection prompt of a trial. Remove leading and trailing whitespaces and newlines of `scratchpad`, and replace newlines with spaces. Add `header` to the beginning of the prompt.
