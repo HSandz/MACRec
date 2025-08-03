@@ -67,20 +67,38 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
 
 ### Setup the environment
 
-0. Make sure the python version is greater than or equal to 3.10.13. We do not test the code on other versions.
+0. **Create and activate a conda environment with Python 3.10.13:**
+    ```shell
+    conda create -n macrec python=3.10.13
+    conda activate macrec
+    ```
 
-1. Run the following commands to install PyTorch (Note: change the URL setting if using another version of CUDA):
+1. **Install PyTorch (Note: change the URL setting if using another version of CUDA):**
     ```shell
     pip install torch --extra-index-url https://download.pytorch.org/whl/cu118
     ```
-2. Run the following commands to install dependencies:
+
+2. **Install project dependencies:**
     ```shell
     pip install -r requirements.txt
     ```
-3. Run the following commands to download and preprocess the dataset (including `ml-100k` and `Amazon Beauty`):
+
+3. **Download and preprocess the dataset (including `ml-100k` and `Amazon Beauty`):**
+   
+   **On Windows:**
+   ```shell
+   scripts\preprocess.bat
+   ```
+   
+   **On Unix/Linux/Mac:**
    ```shell
    bash ./scripts/preprocess.sh
    ```
+
+**Note:** We specifically test the code with Python 3.10.13. Other versions may not work as expected. Always activate the conda environment before running any commands:
+```shell
+conda activate macrec
+```
 
 ### API Configuration
 
