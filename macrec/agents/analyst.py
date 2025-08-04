@@ -11,7 +11,7 @@ class Analyst(ToolAgent):
         config = read_json(config_path)
         tool_config: dict[str, dict] = get_rm(config, 'tool_config', {})
         self.get_tools(tool_config)
-        self.max_turns = get_rm(config, 'max_turns', 20)
+        self.max_turns = get_rm(config, 'max_turns', 15)  # Reduced default from 20 to 15
         self.analyst = self.get_LLM(config=config)
         self.json_mode = self.analyst.json_mode
         self.reset()
@@ -59,7 +59,18 @@ class Analyst(ToolAgent):
         return self.prompts['analyst_hint']
 
     def _build_analyst_prompt(self, **kwargs) -> str:
-        return self.analyst_prompt.format(
+        # Add command count and repetition warning to the prompt
+        command_count = len(self._history)
+        remaining_steps = self.max_turns - command_count
+        
+        # Check for recent repetitive patterns
+        repetition_warning = ""
+        if len(self._history) >= 2:
+            recent_commands = [turn['command'] for turn in self._history[-2:]]
+            if len(set(recent_commands)) == 1:  # All commands are the same
+                repetition_warning = f"\nWARNING: You have been repeating the same command '{recent_commands[0]}'. Please try a different action or use Finish to complete the analysis."
+        
+        prompt = self.analyst_prompt.format(
             examples=self.analyst_examples,
             fewshot=self.analyst_fewshot,
             history=self.history,
@@ -67,6 +78,13 @@ class Analyst(ToolAgent):
             hint=self.hint if len(self._history) + 1 >= self.max_turns else '',
             **kwargs
         )
+        
+        # Add step counter and repetition warning
+        step_info = f"\nYou are at step {command_count + 1}/{self.max_turns}. Remaining steps: {remaining_steps}."
+        if remaining_steps <= 3:
+            step_info += " You should consider finishing your analysis soon."
+        
+        return prompt + step_info + repetition_warning
 
     def _prompt_analyst(self, **kwargs) -> str:
         analyst_prompt = self._build_analyst_prompt(**kwargs)
@@ -75,6 +93,16 @@ class Analyst(ToolAgent):
 
     def command(self, command: str) -> None:
         logger.debug(f'Command: {command}')
+        
+        # Check for repetitive commands to prevent infinite loops
+        if len(self._history) >= 3:
+            recent_commands = [turn['command'] for turn in self._history[-3:]]
+            if all(cmd == command for cmd in recent_commands):
+                logger.warning(f'Detected repetitive command: {command}. Forcing finish.')
+                # Force finish with a basic analysis result
+                self.finish(f"Analysis completed for {command}. Detected repetitive pattern, ending analysis.")
+                return
+        
         log_head = ''
         action_type, argument = parse_action(command, json_mode=self.json_mode)
         if action_type.lower() == 'userinfo':
