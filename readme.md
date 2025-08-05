@@ -85,7 +85,7 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
 
 3. **Download and preprocess datasets:**
 
-   **Quick setup (ml-100k and Amazon Beauty):**
+   **Quick setup (ml-100k, Amazon Beauty, and other datasets):**
    
    **On Windows:**
    ```shell
@@ -134,6 +134,18 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
    | Amazon Instant Video | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Amazon_Instant_Video" --n_neg_items 7` |
 
    **Note:** Dataset downloads can take significant time (a few minutes to several hours) depending on the category size and your internet connection. The Books dataset, for example, is approximately 3GB and may take 20-30 minutes to download.
+
+   **Yelp Academic Dataset:**
+   
+   The Yelp dataset requires manual download due to terms and conditions:
+   
+   1. Visit [Yelp Dataset Challenge](https://www.yelp.com/dataset)
+   2. Agree to terms and download the dataset
+   3. Extract JSON files to `data/Yelp/raw_data/`
+   4. Process the dataset:
+   ```shell
+   python main.py --main Preprocess --data_dir data/Yelp --dataset yelp --n_neg_items 9
+   ```
 
 **Note:** We specifically test the code with Python 3.10.13. Other versions may not work as expected. Always activate the conda environment before running any commands:
 ```shell
