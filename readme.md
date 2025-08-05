@@ -83,7 +83,9 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
     pip install -r requirements.txt
     ```
 
-3. **Download and preprocess the dataset (including `ml-100k` and `Amazon Beauty`):**
+3. **Download and preprocess datasets:**
+
+   **Quick setup (ml-100k and Amazon Beauty):**
    
    **On Windows:**
    ```shell
@@ -94,6 +96,44 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
    ```shell
    bash ./scripts/preprocess.sh
    ```
+
+   **Download specific Amazon datasets:**
+   
+   You can download and preprocess any Amazon category dataset using the following command:
+   ```shell
+   python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category {dataset} --n_neg_items 7
+   ```
+
+   **Available Amazon Dataset Categories:**
+
+   | Category | Command |
+   |----------|---------|
+   | Books | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Books --n_neg_items 7` |
+   | Electronics | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Electronics --n_neg_items 7` |
+   | Movies and TV | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Movies_and_TV" --n_neg_items 7` |
+   | CDs and Vinyl | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "CDs_and_Vinyl" --n_neg_items 7` |
+   | Clothing, Shoes and Jewelry | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Clothing_Shoes_and_Jewelry" --n_neg_items 7` |
+   | Home and Kitchen | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Home_and_Kitchen" --n_neg_items 7` |
+   | Kindle Store | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Kindle_Store" --n_neg_items 7` |
+   | Sports and Outdoors | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Sports_and_Outdoors" --n_neg_items 7` |
+   | Cell Phones and Accessories | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Cell_Phones_and_Accessories" --n_neg_items 7` |
+   | Health and Personal Care | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Health_and_Personal_Care" --n_neg_items 7` |
+   | Toys and Games | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Toys_and_Games" --n_neg_items 7` |
+   | Video Games | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Video_Games" --n_neg_items 7` |
+   | Tools and Home Improvement | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Tools_and_Home_Improvement" --n_neg_items 7` |
+   | Beauty | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Beauty --n_neg_items 7` |
+   | Apps for Android | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Apps_for_Android" --n_neg_items 7` |
+   | Office Products | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Office_Products" --n_neg_items 7` |
+   | Pet Supplies | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Pet_Supplies" --n_neg_items 7` |
+   | Automotive | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Automotive --n_neg_items 7` |
+   | Grocery and Gourmet Food | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Grocery_and_Gourmet_Food" --n_neg_items 7` |
+   | Patio, Lawn and Garden | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Patio_Lawn_and_Garden" --n_neg_items 7` |
+   | Baby | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Baby --n_neg_items 7` |
+   | Digital Music | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Digital_Music" --n_neg_items 7` |
+   | Musical Instruments | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Musical_Instruments" --n_neg_items 7` |
+   | Amazon Instant Video | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Amazon_Instant_Video" --n_neg_items 7` |
+
+   **Note:** Dataset downloads can take significant time (30 minutes to several hours) depending on the category size and your internet connection. The Books dataset, for example, is approximately 3GB and may take 20-30 minutes to download.
 
 **Note:** We specifically test the code with Python 3.10.13. Other versions may not work as expected. Always activate the conda environment before running any commands:
 ```shell
