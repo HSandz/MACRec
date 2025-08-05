@@ -7,6 +7,28 @@ from macrec.utils import task2name, read_json
 from macrec.pages.chat import chat_page
 from macrec.pages.generation import gen_page
 
+def get_available_datasets():
+    """Get all available datasets from the data/ folder."""
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
+    if not os.path.exists(data_dir):
+        return ['ml-100k']  # fallback
+    
+    datasets = []
+    for item in os.listdir(data_dir):
+        item_path = os.path.join(data_dir, item)
+        if os.path.isdir(item_path) and not item.startswith('.'):
+            datasets.append(item)
+    
+    # Sort datasets with ml-100k first, then alphabetically
+    if 'ml-100k' in datasets:
+        datasets.remove('ml-100k')
+        datasets.sort()
+        datasets.insert(0, 'ml-100k')
+    else:
+        datasets.sort()
+    
+    return datasets if datasets else ['ml-100k']
+
 def scan_list(config: list) -> bool:
     for i, item in enumerate(config):
         if isinstance(item, dict):
@@ -62,7 +84,10 @@ def task_config(task: str, system_type: type[System], config_path: str) -> None:
     if not checking:
         st.error('This config file requires OpenSource models, which are not supported in this machine (without cuda toolkit).')
         return
-    dataset = st.selectbox('Choose a dataset', ['ml-100k', 'Beauty']) if task != 'chat' else 'chat'
+    
+    # Dynamically get available datasets
+    available_datasets = get_available_datasets()
+    dataset = st.selectbox('Choose a dataset', available_datasets) if task != 'chat' else 'chat'
     renew = False
     if 'system_type' not in st.session_state:
         logger.debug(f'New system type: {system_type.__name__}')
