@@ -133,7 +133,7 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
    | Musical Instruments | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Musical_Instruments" --n_neg_items 7` |
    | Amazon Instant Video | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Amazon_Instant_Video" --n_neg_items 7` |
 
-   **Note:** Dataset downloads can take significant time (30 minutes to several hours) depending on the category size and your internet connection. The Books dataset, for example, is approximately 3GB and may take 20-30 minutes to download.
+   **Note:** Dataset downloads can take significant time (a few minutes to several hours) depending on the category size and your internet connection. The Books dataset, for example, is approximately 3GB and may take 20-30 minutes to download.
 
 **Note:** We specifically test the code with Python 3.10.13. Other versions may not work as expected. Always activate the conda environment before running any commands:
 ```shell
