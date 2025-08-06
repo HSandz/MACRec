@@ -124,7 +124,7 @@ class Analyst(ToolAgent):
             # Check for exact repetition
             recent_commands = [turn['command'] for turn in self._history[-2:]]
             if all(cmd == command for cmd in recent_commands):
-                logger.warning(f'Detected repetitive command: {command}. Forcing finish.')
+                # logger.info(f'Detected repetitive command: {command}. Forcing finish.')
                 self.finish(f"Analysis completed. Detected repetitive pattern, ending analysis to prevent infinite loop.")
                 return
             
@@ -132,7 +132,7 @@ class Analyst(ToolAgent):
             if len(self._history) >= 4:
                 last_4_commands = [turn['command'] for turn in self._history[-4:]]
                 if last_4_commands[0] == last_4_commands[2] and last_4_commands[1] == last_4_commands[3]:
-                    logger.warning(f'Detected alternating repetitive commands: {last_4_commands}. Forcing finish.')
+                    # logger.info(f'Detected alternating repetitive commands: {last_4_commands}. Forcing finish.')
                     self.finish(f"Analysis completed. Detected alternating repetitive pattern, ending analysis.")
                     return
         
@@ -144,8 +144,8 @@ class Analyst(ToolAgent):
                 query_user_id = int(argument)
                 # Check if already queried
                 if query_user_id in self.queried_users:
-                    observation = f"User {query_user_id} information already retrieved. Skipping duplicate query."
-                    logger.warning(f"Duplicate UserInfo query for user {query_user_id}")
+                    observation = f"User {query_user_id} information already retrieved. Use gathered information instead."
+                    log_head = f':orange[Skipped duplicate UserInfo query for user] :red[{query_user_id}]:orange[...]\n- '
                 else:
                     observation = self.info_retriever.user_info(user_id=query_user_id)
                     self.queried_users.add(query_user_id)
@@ -158,8 +158,8 @@ class Analyst(ToolAgent):
                 query_item_id = int(argument)
                 # Check if already queried
                 if query_item_id in self.queried_items:
-                    observation = f"Item {query_item_id} information already retrieved. Skipping duplicate query."
-                    logger.warning(f"Duplicate ItemInfo query for item {query_item_id}")
+                    observation = f"Item {query_item_id} information already retrieved. Use gathered information instead."
+                    log_head = f':orange[Skipped duplicate ItemInfo query for item] :red[{query_item_id}]:orange[...]\n- '
                 else:
                     observation = self.info_retriever.item_info(item_id=query_item_id)
                     self.queried_items.add(query_item_id)
