@@ -1,7 +1,11 @@
+import warnings
 from langchain_core.documents import Document
 from langchain_community.retrievers.wikipedia import WikipediaRetriever
 
 from macrec.tools.base import RetrievalTool
+
+# Suppress the BeautifulSoup parser warning from wikipedia library
+warnings.filterwarnings("ignore", message=".*No parser was explicitly specified.*", category=UserWarning)
 
 class Wikipedia(RetrievalTool):
     def __init__(self, *args, **kwargs) -> None:
