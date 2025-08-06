@@ -158,6 +158,13 @@ class ToolAgent(Agent):
         self._history = []
         self.finished = False
         self.results = None
+        # Reset analyst-specific tracking if it exists
+        if hasattr(self, 'queried_users'):
+            self.queried_users.clear()
+        if hasattr(self, 'queried_items'):
+            self.queried_items.clear()
+        if hasattr(self, 'gathered_info'):
+            self.gathered_info.clear()
         for tool in self.tools.values():
             tool.reset()
 
