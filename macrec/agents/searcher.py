@@ -48,7 +48,29 @@ class Searcher(ToolAgent):
         return self.prompts['searcher_hint']
 
     def _build_searcher_prompt(self, **kwargs) -> str:
-        return self.searcher_prompt.format(
+        # Add command count and repetition warning to the prompt
+        command_count = len(self._history)
+        remaining_steps = self.max_turns - command_count
+        
+        # Check for recent repetitive patterns and provide context
+        repetition_warning = ""
+        if len(self._history) >= 2:
+            recent_commands = [turn['command'] for turn in self._history[-2:]]
+            if len(set(recent_commands)) == 1:  # All commands are the same
+                repetition_warning = f"\nWARNING: You have been repeating the same command '{recent_commands[0]}'. This is wasteful and prohibited. You MUST try a different action or use Finish to complete the search."
+        
+        # Add explicit command history to show what was done
+        command_summary = ""
+        if len(self._history) > 0:
+            unique_commands = []
+            for turn in self._history:
+                if turn['command'] not in unique_commands:
+                    unique_commands.append(turn['command'])
+            command_summary = f"\n\nCOMMANDS ALREADY EXECUTED:\n" + "\n".join([f"- {cmd}" for cmd in unique_commands])
+            command_summary += "\n\nDO NOT REPEAT ANY OF THE ABOVE COMMANDS. Choose a different action or use Finish."
+        
+        # Build the base prompt
+        base_prompt = self.searcher_prompt.format(
             examples=self.searcher_examples,
             k=self.retriever.top_k,
             history=self.history,
@@ -56,6 +78,13 @@ class Searcher(ToolAgent):
             hint=self.hint if len(self._history) + 1 >= self.max_turns else '',
             **kwargs
         )
+        
+        # Add step counter and repetition warning
+        step_info = f"\nYou are at step {command_count + 1}/{self.max_turns}. Remaining steps: {remaining_steps}."
+        if remaining_steps <= 2:
+            step_info += " You should consider finishing your search soon with the Finish command."
+        
+        return base_prompt + step_info + repetition_warning + command_summary
 
     def _prompt_searcher(self, **kwargs) -> str:
         searcher_prompt = self._build_searcher_prompt(**kwargs)
@@ -64,6 +93,24 @@ class Searcher(ToolAgent):
 
     def command(self, command: str) -> None:
         logger.debug(f'Command: {command}')
+        
+        # Enhanced repetition detection similar to analyst
+        if len(self._history) >= 2:
+            # Check for exact repetition
+            recent_commands = [turn['command'] for turn in self._history[-2:]]
+            if all(cmd == command for cmd in recent_commands):
+                logger.info(f'Detected repetitive command: {command}. Forcing finish.')
+                self.finish("Search completed. Detected repetitive pattern, ending search to prevent infinite loop.")
+                return
+            
+            # Check for alternating pattern
+            if len(self._history) >= 4:
+                last_4_commands = [turn['command'] for turn in self._history[-4:]]
+                if last_4_commands[0] == last_4_commands[2] and last_4_commands[1] == last_4_commands[3]:
+                    logger.info(f'Detected alternating repetitive commands: {last_4_commands}. Forcing finish.')
+                    self.finish("Search completed. Detected alternating repetitive pattern, ending search.")
+                    return
+        
         log_head = ''
         action_type, argument = parse_action(command, json_mode=self.json_mode)
         if action_type.lower() == 'search':
@@ -100,8 +147,15 @@ class Searcher(ToolAgent):
         while not self.is_finished():
             command = self._prompt_searcher(requirements=requirements)
             self.command(command)
+            
+            # Break if finished was set during command execution (due to repetition detection)
+            if self.finished:
+                break
+                
         if not self.finished:
-            return 'Searcher did not return any result.'
+            # Force finish if we reached max turns without finishing
+            self.finish("Search completed after reaching maximum number of steps.")
+            
         return f'Search result: {self.results}'
 
     def invoke(self, argument: Any, json_mode: bool) -> str:

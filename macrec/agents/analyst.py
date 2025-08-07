@@ -72,7 +72,17 @@ class Analyst(ToolAgent):
         if len(self._history) >= 2:
             recent_commands = [turn['command'] for turn in self._history[-2:]]
             if len(set(recent_commands)) == 1:  # All commands are the same
-                repetition_warning = f"\nWARNING: You have been repeating the same command '{recent_commands[0]}'. Please try a different action or use Finish to complete the analysis."
+                repetition_warning = f"\nWARNING: You have been repeating the same command '{recent_commands[0]}'. This is wasteful and prohibited. You MUST try a different action or use Finish to complete the analysis."
+        
+        # Add explicit command history to show what was done
+        command_summary = ""
+        if len(self._history) > 0:
+            unique_commands = []
+            for turn in self._history:
+                if turn['command'] not in unique_commands:
+                    unique_commands.append(turn['command'])
+            command_summary = f"\n\nCOMMANDS ALREADY EXECUTED:\n" + "\n".join([f"- {cmd}" for cmd in unique_commands])
+            command_summary += "\n\nDO NOT REPEAT ANY OF THE ABOVE COMMANDS. Choose a different action or use Finish."
         
         # Add information about what has been queried already
         context_info = ""
@@ -109,7 +119,7 @@ class Analyst(ToolAgent):
         if remaining_steps <= 3:
             step_info += " You should consider finishing your analysis soon."
         
-        return prompt + context_info + finish_hint + step_info + repetition_warning
+        return prompt + context_info + finish_hint + step_info + repetition_warning + command_summary
 
     def _prompt_analyst(self, **kwargs) -> str:
         analyst_prompt = self._build_analyst_prompt(**kwargs)
@@ -135,6 +145,11 @@ class Analyst(ToolAgent):
                     # logger.info(f'Detected alternating repetitive commands: {last_4_commands}. Forcing finish.')
                     self.finish(f"Analysis completed. Detected alternating repetitive pattern, ending analysis.")
                     return
+        
+        # Force finish if we have gathered sufficient information
+        if len(self.gathered_info) >= 5 and len(self._history) >= 5:
+            self.finish(f"Analysis completed. Gathered sufficient information about {len(self.gathered_info)} entities.")
+            return
         
         log_head = ''
         action_type, argument = parse_action(command, json_mode=self.json_mode)
@@ -187,9 +202,15 @@ class Analyst(ToolAgent):
                     observation = f"Invalid user id and retrieval number: {argument}"
                     valid = False
             if valid:
-                observation = self.interaction_retriever.user_retrieve(user_id=query_user_id, k=k)
-                self.gathered_info[f"user_history_{query_user_id}"] = observation
-                log_head = f':violet[Look up UserHistory of user] :red[{query_user_id}] :violet[with at most] :red[{k}] :violet[items...]\n- '
+                # Check if already queried
+                history_key = f"user_history_{query_user_id}"
+                if history_key in self.gathered_info:
+                    observation = f"User {query_user_id} history already retrieved. Use gathered information instead."
+                    log_head = f':orange[Skipped duplicate UserHistory query for user] :red[{query_user_id}]:orange[...]\n- '
+                else:
+                    observation = self.interaction_retriever.user_retrieve(user_id=query_user_id, k=k)
+                    self.gathered_info[history_key] = observation
+                    log_head = f':violet[Look up UserHistory of user] :red[{query_user_id}] :violet[with at most] :red[{k}] :violet[items...]\n- '
         elif action_type.lower() == 'itemhistory':
             valid = True
             if self.json_mode:
@@ -210,9 +231,15 @@ class Analyst(ToolAgent):
                     observation = f"Invalid item id and retrieval number: {argument}"
                     valid = False
             if valid:
-                observation = self.interaction_retriever.item_retrieve(item_id=query_item_id, k=k)
-                self.gathered_info[f"item_history_{query_item_id}"] = observation
-                log_head = f':violet[Look up ItemHistory of item] :red[{query_item_id}] :violet[with at most] :red[{k}] :violet[users...]\n- '
+                # Check if already queried
+                history_key = f"item_history_{query_item_id}"
+                if history_key in self.gathered_info:
+                    observation = f"Item {query_item_id} history already retrieved. Use gathered information instead."
+                    log_head = f':orange[Skipped duplicate ItemHistory query for item] :red[{query_item_id}]:orange[...]\n- '
+                else:
+                    observation = self.interaction_retriever.item_retrieve(item_id=query_item_id, k=k)
+                    self.gathered_info[history_key] = observation
+                    log_head = f':violet[Look up ItemHistory of item] :red[{query_item_id}] :violet[with at most] :red[{k}] :violet[users...]\n- '
         elif action_type.lower() == 'finish':
             observation = self.finish(results=argument)
             log_head = ':violet[Finish with results]:\n- '

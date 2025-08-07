@@ -5,11 +5,11 @@
     },
     "analyst_prompt": {
         "type": "template",
-        "content": "{analyst_base_prompt}\n\nIMPORTANT RULES:\n- DO NOT repeat the same command\n- Check if information was already gathered\n- Use Finish when you have sufficient data (3-5 points)\n\nCommand: "
+        "content": "{analyst_base_prompt}\n\nCRITICAL RULES:\n- NEVER repeat a command you already executed\n- ALWAYS check the history above before choosing your next action\n- If you see duplicate commands in the history, that's an ERROR - do something different\n- Use Finish when you have sufficient data (3-5 points)\n\nCommand: "
     },
     "analyst_prompt_json": {
         "type": "template", 
-        "content": "{analyst_base_prompt}\n\nIMPORTANT RULES:\n- DO NOT repeat the same command\n- Check if information was already gathered\n- Use Finish when you have sufficient data (3-5 points)\n\nUse JSON format: {{\"type\":\"CommandName\",\"content\":value}}\nCommand: "
+        "content": "{analyst_base_prompt}\n\nCRITICAL RULES:\n- NEVER repeat a command you already executed\n- ALWAYS check the history above before choosing your next action  \n- If you see duplicate commands in the history, that's an ERROR - do something different\n- Use Finish when you have sufficient data (3-5 points)\n\nUse JSON format: {{\"type\":\"CommandName\",\"content\":value}}\nCommand: "
     },
     "analyst_examples": {
         "type": "raw",
