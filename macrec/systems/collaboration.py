@@ -201,8 +201,6 @@ class CollaborationSystem(System):
             self.manager_kwargs['history'] = self.chat_history
         else:
             self.manager_kwargs['input'] = self.input
-        if self.reflect():
-            return self.answer
         if reset:
             self.reset()
         if self.task == 'chat':
@@ -211,6 +209,9 @@ class CollaborationSystem(System):
         self.interprete()
         while not self.is_finished() and not self.is_halted():
             self.step()
+        # Perform reflection after reasoning is complete
+        if self.reflect():
+            return self.answer
         if self.task == 'chat':
             self.add_chat_history(self.answer, role='system')
         return self.answer
