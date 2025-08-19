@@ -2,6 +2,8 @@
 *.pyc
 
 # Logs
+logs/
+log_tensorboard/
 *.log
 nohup.out
 
@@ -22,8 +24,8 @@ __pycache__/
 
 # Others
 data/
-logs/
 run/
+saved/
 results/
 ckpts/
 config/api-config.json
