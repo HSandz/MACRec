@@ -62,6 +62,15 @@ def gen_page(system: System, task: str, dataset: str):
                 candidate_item_attributes=data_sample['candidate_item_attributes']
             )
             gt_answer = data_sample['item_id']
+        elif task == 'rr':
+            st.markdown('##### Retrieve & Rank:')
+            st.markdown('Candidates will be retrieved by the Retriever agent at runtime.')
+            system_input = data_prompt.format(
+                user_id=data_sample['user_id'],
+                user_profile=data_sample['user_profile'],
+                history=data_sample['history']
+            )
+            gt_answer = data_sample['item_id']
         elif task == 'gen':
             system_input = data_prompt.format(
                 user_id=data_sample['user_id'],

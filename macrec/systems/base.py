@@ -48,12 +48,15 @@ class System(ABC):
             return 'rating prediction'
         elif self.task == 'sr':
             return 'ranking'
+        elif self.task == 'rr':
+            return 'ranking'
         elif self.task == 'chat':
             return 'conversation'
         elif self.task == 'gen':
             return 'explanation generation'
         else:
-            raise NotImplementedError
+            # Fallback: use raw task name to avoid crashing in UI flows for new tasks
+            return self.task
 
     def __init__(self, task: str, config_path: str, leak: bool = False, web_demo: bool = False, dataset: Optional[str] = None, *args, **kwargs) -> None:
         """Initialize the system.

@@ -18,7 +18,7 @@ class GenerationTask(Task):
         parser.add_argument('--data_file', type=str, required=True, help='Dataset file')
         parser.add_argument('--system', type=str, default='react', choices=['react', 'reflection', 'analyse', 'collaboration'], help='System name')
         parser.add_argument('--system_config', type=str, required=True, help='System configuration file')
-        parser.add_argument('--task', type=str, default='rp', choices=['rp', 'sr', 'gen'], help='Task name')
+        parser.add_argument('--task', type=str, default='rp', choices=['rp', 'sr', 'rr', 'gen'], help='Task name')
         parser.add_argument('--max_his', type=int, default=10, help='Max history length')
         return parser
 
@@ -50,6 +50,15 @@ class GenerationTask(Task):
                 user_profile=df['user_profile'][i],
                 history=df['history'][i],
                 candidate_item_attributes=df['candidate_item_attributes'][i]
+            ), df['item_id'][i], df.iloc[i]) for i in tqdm(range(len(df)), desc="Loading data") if df['rating'][i] >= 4]
+        elif self.task == 'rr':
+            # Retrieve & Rank: no candidate list in CSV; retriever agent will fetch candidates
+            # Set a default n_candidate for validation purposes
+            self.system_kwargs['n_candidate'] = 6  # Default to 6 candidates for rr tasks
+            return [(data_prompt.format(
+                user_id=df['user_id'][i],
+                user_profile=df['user_profile'][i],
+                history=df['history'][i]
             ), df['item_id'][i], df.iloc[i]) for i in tqdm(range(len(df)), desc="Loading data") if df['rating'][i] >= 4]
         elif self.task == 'gen':
             return [(data_prompt.format(

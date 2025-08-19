@@ -5,7 +5,7 @@ from macrec.pages.task import task_config
 from macrec.systems import *
 from macrec.utils import task2name, init_api, system2dir, read_json
 
-all_tasks = ['rp', 'sr', 'gen', 'chat']
+all_tasks = ['rp', 'sr', 'rr', 'gen', 'chat']
 
 def demo():
     init_api(read_json('config/api-config.json'))

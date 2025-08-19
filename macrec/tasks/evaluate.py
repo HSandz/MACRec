@@ -27,7 +27,7 @@ class EvaluateTask(GenerationTask):
                 'valid_rmse': RMSE(),
                 'valid_mae': MAE(),
             })
-        elif self.task == 'sr':
+        elif self.task == 'sr' or self.task == 'rr':
             self.metrics = MetricDict({
                 'true_hit_rate': HitRatioAt(topks=topks),
                 'true_ndcg': NDCGAt(topks=topks),
@@ -90,7 +90,7 @@ class EvaluateTask(GenerationTask):
         self.metrics.report()
 
     def run(self, steps: int, topks: list[int], *args, **kwargs):
-        assert kwargs['task'] == 'rp' or kwargs['task'] == 'sr', "Only support ranking and rating tasks."
+        assert kwargs['task'] in ['rp', 'sr', 'rr'], "Only support rating (rp) and ranking (sr/rr) tasks."
         self.steps = steps
         self.topks = topks
         super().run(*args, **kwargs)

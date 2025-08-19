@@ -3,13 +3,20 @@ from typing import Any, Optional
 from loguru import logger
 
 from macrec.systems.base import System
-from macrec.agents import Agent, Manager, Analyst, Interpreter, Reflector, Searcher
+from macrec.agents import Agent, Manager, Analyst, Interpreter, Reflector, Searcher, Retriever
 from macrec.utils import parse_answer, parse_action, format_chat_history
 
 class CollaborationSystem(System):
+    def __init__(self, task: str, config_path: str, leak: bool = False, web_demo: bool = False, dataset: Optional[str] = None, *args, **kwargs) -> None:
+        super().__init__(task, config_path, leak, web_demo, dataset, *args, **kwargs)
+        self.action_history = []  # Track action history to detect loops
+        self.max_repeated_actions = 3  # Maximum number of times the same action can be repeated
+        self._chat_history = []  # Initialize chat history
+        self.step_n = 1  # Initialize step counter
+
     @staticmethod
     def supported_tasks() -> list[str]:
-        return ['rp', 'sr', 'gen', 'chat']
+        return ['rp', 'sr', 'rr', 'gen', 'chat']
 
     def init(self, *args, **kwargs) -> None:
         """
@@ -20,6 +27,7 @@ class CollaborationSystem(System):
         self.init_agents(self.config['agents'])
         self.manager_kwargs = {
             'max_step': self.max_step,
+            'task_type': self.task,  # Add task_type so manager knows what task it's working on
         }
         if self.reflector is not None:
             self.manager_kwargs['reflections'] = ''
@@ -64,18 +72,31 @@ class CollaborationSystem(System):
     @property
     def searcher(self) -> Optional[Searcher]:
         if 'Searcher' not in self.agents:
-            raise None
+            return None
         return self.agents['Searcher']
+
+    @property
+    def retriever(self) -> Optional[Retriever]:
+        if 'Retriever' not in self.agents:
+            return None
+        return self.agents['Retriever']
 
     def reset(self, clear: bool = False, *args, **kwargs) -> None:
         super().reset(*args, **kwargs)
-        self.step_n: int = 1
+        self.action_history = []  # Reset action history
         if clear:
-            if self.reflector is not None:
-                self.reflector.reflections = []
-                self.reflector.reflections_str = ''
-            if self.task == 'chat':
-                self._chat_history = []
+            self._chat_history = []
+        self._reset_action_history()
+        if hasattr(self, 'analyst') and self.analyst is not None:
+            self.analyst.reset()
+        if hasattr(self, 'searcher') and self.searcher is not None:
+            self.searcher.reset()
+        if hasattr(self, 'retriever') and self.retriever is not None:
+            self.retriever.reset()
+        if hasattr(self, 'interpreter') and self.interpreter is not None:
+            self.interpreter.reset()
+        if hasattr(self, 'reflector') and self.reflector is not None:
+            self.reflector.reset()
 
     def add_chat_history(self, chat: str, role: str) -> None:
         assert self.task == 'chat', 'Chat history is only available for chat task.'
@@ -97,6 +118,7 @@ class CollaborationSystem(System):
     def think(self):
         # Think
         logger.debug(f'Step {self.step_n}:')
+        logger.debug(f'Manager kwargs: {self.manager_kwargs}')
         self.scratchpad += f'\nThought {self.step_n}:'
         thought = self.manager(scratchpad=self.scratchpad, stage='thought', **self.manager_kwargs)
         self.scratchpad += ' ' + thought
@@ -108,6 +130,7 @@ class CollaborationSystem(System):
             self.scratchpad += f'\nHint: {self.manager.hint}'
         self.scratchpad += f'\nValid action example: {self.manager.valid_action_example}:'
         self.scratchpad += f'\nAction {self.step_n}:'
+        logger.debug(f'Action step - Manager kwargs: {self.manager_kwargs}')
         action = self.manager(scratchpad=self.scratchpad, stage='action', **self.manager_kwargs)
         self.scratchpad += ' ' + action
         action_type, argument = parse_action(action, json_mode=self.manager.json_mode)
@@ -117,14 +140,49 @@ class CollaborationSystem(System):
     def execute(self, action_type: str, argument: Any):
         # Execute
         log_head = ''
+        
+        # Track action for loop detection
+        current_action = f"{action_type}:{str(argument)}"
+        self.action_history.append(current_action)
+        
+        # Check for repeated actions (loop detection)
+        if len(self.action_history) >= 3:
+            recent_actions = self.action_history[-3:]
+            if len(set(recent_actions)) == 1:  # Same action repeated 3 times
+                # Only warn if it's not a finish action that might be retrying due to validation
+                if action_type.lower() != 'finish':
+                    observation = f'Warning: You have repeated the same action "{action_type}" multiple times. This suggests you may be stuck. Please try a different approach or review your reasoning.'
+                    log_head = ':red[Loop Detection]: '
+                    self.scratchpad += f'\nObservation: {observation}'
+                    logger.debug(f'Observation: {observation}')
+                    self.log(f'{log_head}{observation}', agent=self.manager, logging=False)
+                    return
+        
         if action_type.lower() == 'finish':
-            parse_result = self._parse_answer(argument)
-            if parse_result['valid']:
-                observation = self.finish(parse_result['answer'])
-                log_head = ':violet[Finish with answer]:\n- '
+            # For rr tasks, check if candidates have been retrieved
+            if self.task == 'rr':
+                if 'n_candidate' not in self.kwargs:
+                    logger.debug(f'rr task: n_candidate not found in kwargs. Current kwargs: {self.kwargs}')
+                    observation = 'For retrieve & rank (rr) tasks, you MUST first use Retrieve[user_id, 6] to get candidate items before finishing. Please use Retrieve[user_id, 6] to get candidates first.'
+                    log_head = ':red[Error]: '
+                else:
+                    # Candidates have been retrieved, proceed with normal finish validation
+                    parse_result = self._parse_answer(argument)
+                    if parse_result['valid']:
+                        observation = self.finish(parse_result['answer'])
+                        log_head = ':violet[Finish with answer]:\n- '
+                    else:
+                        assert "message" in parse_result, "Invalid parse result."
+                        observation = f'{parse_result["message"]} Valid Action examples are {self.manager.valid_action_example}.'
             else:
-                assert "message" in parse_result, "Invalid parse result."
-                observation = f'{parse_result["message"]} Valid Action examples are {self.manager.valid_action_example}.'
+                # For non-rr tasks, proceed with normal finish validation
+                parse_result = self._parse_answer(argument)
+                if parse_result['valid']:
+                    observation = self.finish(parse_result['answer'])
+                    log_head = ':violet[Finish with answer]:\n- '
+                else:
+                    assert "message" in parse_result, "Invalid parse result."
+                    observation = f'{parse_result["message"]} Valid Action examples are {self.manager.valid_action_example}.'
         elif action_type.lower() == 'analyse':
             if self.analyst is None:
                 observation = 'Analyst is not configured. Cannot execute the action "Analyse".'
@@ -144,6 +202,13 @@ class CollaborationSystem(System):
                 self.log(f':violet[Calling] :red[Searcher] :violet[with] :blue[{argument}]:violet[...]', agent=self.manager, logging=False)
                 observation = self.searcher.invoke(argument=argument, json_mode=self.manager.json_mode)
                 log_head = f':violet[Response from] :red[Searcher] :violet[with] :blue[{argument}]:violet[:]\n- '
+        elif action_type.lower() == 'retrieve':
+            if self.retriever is None:
+                observation = 'Retriever is not configured. Cannot execute the action "Retrieve".'
+            else:
+                self.log(f':violet[Calling] :red[Retriever] :violet[with] :blue[{argument}]:violet[...]', agent=self.manager, logging=False)
+                observation = self.retriever.invoke(argument=argument, json_mode=self.manager.json_mode)
+                log_head = f':violet[Response from] :red[Retriever] :violet[with] :blue[{argument}]:violet[:]\n- '
         elif action_type.lower() == 'interpret':
             if self.interpreter is None:
                 observation = 'Interpreter is not configured. Cannot execute the action "Interpret".'
@@ -225,3 +290,7 @@ class CollaborationSystem(System):
                 break
             response = self(user_input=user_input, reset=True)
             print(f"System: {response}")
+
+    def _reset_action_history(self):
+        self.step_n: int = 1
+        self.action_history = []

@@ -112,3 +112,8 @@ class Manager(Agent):
             return self._prompt_action(**kwargs)
         else:
             raise ValueError(f"Unsupported stage: {stage}")
+
+    def reset(self) -> None:
+        """Reset the manager agent state."""
+        # Manager doesn't have much state to reset, but this method is needed for consistency
+        pass

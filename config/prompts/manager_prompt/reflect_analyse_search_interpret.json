@@ -1,11 +1,11 @@
 {
     "manager_prompt": {
         "type": "template",
-        "content": "Solve a {task_type} task with interleaving Thought, Action, Observation steps. Thought can reason about the current situation. Action can be 2 types:\n(1) Analyse[user/item, id], which will ask another agent (called Analyst) to help analyse the preferences or features of user id or item id.\n(2) Search[requirements], which will ask another agent (called Searcher) to help search given the requirements.\n(3)Interpret[content], which will ask another agent (called Task Interpreter) to help summarize the content and give a consise and clear task prompt for you.\n(4) Finish[response], which finishes the task and returns the response to the user.\nYou can take at most {max_step} steps.\n{examples}\n{reflections}\n\nInput:\n{input}\n{task_prompt}\n{scratchpad}"
+        "content": "Solve a {task_type} task with interleaving Thought, Action, Observation steps. Thought can reason about the current situation. Actions:\n(1) Retrieve[user_id, k] — ask Retriever to fetch top-k candidate items for a user (k optional, default 6).\n(2) Analyse[user/item, id] — ask Analyst to analyze user/item.\n(3) Search[requirements] — ask Searcher to web/search.\n(4) Interpret[content] — ask Task Interpreter to summarize into a concise task prompt.\n(5) Finish[response] — finish and return the response.\n\nNOTE: The retriever provides item attributes, but Analyse actions are REQUIRED to understand user preferences and item characteristics for proper ranking.\n\nYou can take at most {max_step} steps.\n{examples}\n{reflections}\n\nInput:\n{input}\n{task_prompt}\n{scratchpad}"
     },
     "manager_prompt_json": {
         "type": "template",
-        "content": "Solve a {task_type} task with interleaving Thought, Action, Observation steps. Thought can reason about the current situation. Action can be 2 types in JSON format:\n(1) {{\"type\": \"Analyse\", \"content\": [\"user/item\", id]}}, which will ask another agent (called Analyst) to help analyse the preferences or features of user id or item id.\n(2) {{\"type\": \"Search\", \"content\": requirements}}, which will ask another agent (called Searcher) to help search given the requirements.\n(3) {{\"type\": \"Interpret\", \"content\": content}}, which will ask another agent (called Task Interpreter) to help summarize the content and give a consise and clear task prompt for you.\n(4) {{\"type\": \"Finish\", \"content\": response}}, which finishes the task and returns the response to the user.\nYou can take at most {max_step} steps.\n{examples}\n{reflections}\n\nInput:\n{input}\n{task_prompt}\n{scratchpad}"
+        "content": "Solve a {task_type} task with interleaving Thought, Action, Observation steps. Thought can reason about the current situation. Actions (JSON):\n(1) {{\"type\": \"Analyse\", \"content\": [\"user\"|\"item\", id]}}\n(2) {{\"type\": \"Retrieve\", \"content\": [user_id, k]}} (k optional, default 6)\n(3) {{\"type\": \"Search\", \"content\": requirements}}\n(4) {{\"type\": \"Interpret\", \"content\": content}}\n(5) {{\"type\": \"Finish\", \"content\": response}}\n\nNOTE: The retriever provides item attributes, but Analyse actions are REQUIRED to understand user preferences and item characteristics for proper ranking.\n\nYou can take at most {max_step} steps.\n{examples}\n{reflections}\n\nInput:\n{input}\n{task_prompt}\n{scratchpad}"
     },
     "hint": {
         "type": "raw",
@@ -13,10 +13,10 @@
     },
     "valid_action_example": {
         "type": "raw",
-        "content": "Finish[{finish}]\nAnalyse[user, 524]\nAnalyse[item, 955]\nSearch[Movies similar to Schindler's list]\nInterpret[Why did user_123 give item_456 (with attributes, Title: Movies similar to Schindler's list) a rating of 4 (1 being lowest and 5 being highest)?]"
+        "content": "Finish[{finish}]\nAnalyse[user, 524]\nAnalyse[item, 955]\nRetrieve[524, 6]\nSearch[Movies similar to Schindler's list]\nInterpret[Why did user_123 give item_456 (with attributes, Title: Movies similar to Schindler's list) a rating of 4 (1 being lowest and 5 being highest)?]"
     },
     "valid_action_example_json": {
         "type": "raw",
-        "content": "{\"type\": \"finish\", \"content\": {finish}}\n{\"type\": \"analyse\", \"content\": [\"user\", 524]}\n{\"type\": \"analyse\", \"content\": [\"item\", 955]}\n{\"type\": \"search\", \"content\": \"Movies similar to Schindler's list\"}\n{\"type\": \"interpret\", \"content\": \"Why did user_123 give item_456 (with attributes, Title: Movies similar to Schindler's list) a rating of 4 (1 being lowest and 5 being highest)?\"}"
+        "content": "{\"type\": \"finish\", \"content\": {finish}}\n{\"type\": \"analyse\", \"content\": [\"user\", 524]}\n{\"type\": \"analyse\", \"content\": [\"item\", 955]}\n{\"type\": \"retrieve\", \"content\": [524, 6]}\n{\"type\": \"search\", \"content\": \"Movies similar to Schindler's list\"}\n{\"type\": \"interpret\", \"content\": \"Why did user_123 give item_456 (with attributes, Title: Movies similar to Schindler's list) a rating of 4 (1 being lowest and 5 being highest)?\"}"
     }
 }

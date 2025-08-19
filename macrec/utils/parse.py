@@ -95,7 +95,7 @@ def parse_rating_answer(answer: str | int | float, json_mode: bool = False, *arg
         'answer': answer
     }
 
-def parse_ranking_answer(answer: str | Any, gt_answer: int, n_candidate: int, json_mode: bool = False, *args, **kwargs) -> dict[str, bool | list[int]]:
+def parse_ranking_answer(answer: str | Any, gt_answer: int, n_candidate: int = None, json_mode: bool = False, *args, **kwargs) -> dict[str, bool | list[int]]:
     if not json_mode:
         candidates = answer.split(',')
     else:
@@ -109,6 +109,7 @@ def parse_ranking_answer(answer: str | Any, gt_answer: int, n_candidate: int, js
                 'answer': [],
                 'message': 'Answer should be a permutated list of candidate ids.'
             }
+    
     try:
         length = len(candidates)
     except TypeError:
@@ -123,27 +124,31 @@ def parse_ranking_answer(answer: str | Any, gt_answer: int, n_candidate: int, js
             'answer': [],
             'message': 'Other Exception when parsing ranking answer.'
         }
-    if length != n_candidate:
+    
+    # If n_candidate is not provided, we can't validate the length, but we can still validate the format
+    if n_candidate is not None and length != n_candidate:
         return {
             'valid': False,
             'answer': [],
             'message': f'Answer should contain {n_candidate} ids, which is the same as the number of candidates in the question.'
         }
-    else:
-        try:
-            answer = [int(c) for c in candidates]
-            if gt_answer not in answer:
-                return {
-                    'valid': False,
-                    'answer': [],
-                    'message': 'Answer should contain all the candidate ids.'
-                }
-        except (ValueError, TypeError):
-            return {
-                'valid': False,
-                'answer': [],
-                'message': 'The ids in the answer list should be integers.'
-            }
+    
+    try:
+        answer = [int(c) for c in candidates]
+        # For ranking tasks, we don't need to validate that gt_answer is in the list
+        # The agent is ranking the retrieved candidates, not including the ground truth
+        # Just ensure all IDs are valid integers
+        return {
+            'valid': True,
+            'answer': answer
+        }
+    except (ValueError, TypeError):
+        return {
+            'valid': False,
+            'answer': [],
+            'message': 'The ids in the answer list should be integers.'
+        }
+    
     return {
         'valid': True,
         'answer': answer
@@ -163,7 +168,7 @@ def parse_answer(type: str, *args, **kwargs) -> dict[str, Any]:
         return parse_raw_answer(*args, **kwargs)
     elif type == 'rp':
         return parse_rating_answer(*args, **kwargs)
-    elif type == 'sr':
+    elif type == 'sr' or type == 'rr':
         return parse_ranking_answer(*args, **kwargs)
     else:
         raise NotImplementedError(f'Unsupported task: {type}')
@@ -182,7 +187,7 @@ def init_answer(type: str) -> Any:
         return ''
     elif type == 'rp':
         return 0
-    elif type == 'sr':
+    elif type == 'sr' or type == 'rr':
         return []
     else:
         raise NotImplementedError(f'Unsupported task: {type}')

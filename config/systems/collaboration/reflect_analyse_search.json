@@ -2,6 +2,7 @@
     "supported_tasks": [
         "rp",
         "sr",
+        "rr",
         "gen"
     ],
     "agents": {
@@ -20,9 +21,13 @@
         "Searcher": {
             "config_path": "config/agents/searcher.json",
             "prompt_config": "config/prompts/agent_prompt/searcher.json"
+        },
+        "Retriever": {
+            "config_path": "config/agents/retriever.json",
+            "prompt_config": "config/prompts/agent_prompt/retriever.json"
         }
     },
     "agent_prompt": "config/prompts/manager_prompt/reflect_analyse_search.json",
     "data_prompt": "config/prompts/data_prompt/{task}.json",
-    "max_step": 10
+    "max_step": 15
 }

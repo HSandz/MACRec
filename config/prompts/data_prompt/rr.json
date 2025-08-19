@@ -1,0 +1,16 @@
+{
+    "data_prompt": {
+        "type": "template",
+        "content": "[user_id]: {user_id}\n[user_profile]:\n{user_profile}\n[historical interactions]:\n{history}\n\nTASK: Retrieve and Rank for user {user_id}\n\nExpected output: A ranked list of item IDs (e.g., [3343, 3693, 104, 1947, 10418, 8398])"
+    },
+    "finish": {
+        "type": "raw",
+        "content": "3343, 3693, 104, 1947, 10418, 8398"
+    },
+    "finish_json": {
+        "type": "raw",
+        "content": "[3343, 3693, 104, 1947, 10418, 8398]"
+    }
+}
+
+

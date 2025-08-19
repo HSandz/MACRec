@@ -65,6 +65,10 @@ class Agent(ABC):
         """
         raise NotImplementedError("Agent.forward() not implemented")
 
+    def reset(self) -> None:
+        """Reset the agent state. Override in subclasses if needed."""
+        pass
+
     def get_LLM(self, config_path: Optional[str] = None, config: Optional[dict] = None) -> BaseLLM:
         """Get the base large language model for the agent.
 

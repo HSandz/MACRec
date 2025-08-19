@@ -110,3 +110,12 @@ class Reflector(Agent):
             raise ValueError(f'Unknown reflection strategy: {self.reflection_strategy}')
         logger.trace(self.reflections_str)
         return self.reflections_str
+
+    def reset(self) -> None:
+        """Reset the reflector agent state by clearing reflections."""
+        self.reflections = []
+        self.reflections_str = ''
+        if hasattr(self, 'reflection_input'):
+            self.reflection_input = ''
+        if hasattr(self, 'reflection_output'):
+            self.reflection_output = ''
