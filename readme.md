@@ -20,6 +20,7 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
         - `interpreter.py`: The *Task Interpreter* agent class.
         - `manager.py`: The *Manager* agent class.
         - `reflector.py`: The *Reflector* agent class.
+        - `retriever.py`: The *Retriever* agent class for candidate item retrieval using precomputed embeddings.
         - `searcher.py`: The *Searcher* agent class.
     - `dataset/`: All dataset preprocessing methods.
     - `evaluation/`: The basic evaluation method, including the ranking metrics and the rating metrics.
@@ -46,6 +47,13 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
         - `rlhf.py`: The task for training the *Reflector* with the PPO algorithm.
         - `sample.py`: The task for sampling from the dataset.
         - `test.py`: The task for evaluating the system on few-shot data samples. The task is inherited from `evaluate.py`.
+    - `tools/`: Tool implementations for various functionalities.
+        - `base.py`: The base tool class.
+        - `embedding_retriever.py`: Tool for retrieving top-K items using precomputed embeddings from trained models (e.g., LightGCN).
+        - `info_database.py`: Tool for retrieving item attribute information.
+        - `interaction.py`: Tool for retrieving user-item interaction history.
+        - `summarize.py`: Tool for text summarization.
+        - `wikipedia.py`: Tool for Wikipedia information retrieval.
     - `utils/`: Some useful functions are defined here.
 - `config/`: The config folder.
     - `api-config.json`: Used for Gemini API configuration. We give an example for the configuration, named `api-config-example.json`.
@@ -140,6 +148,20 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
 conda activate macrec
 ```
 
+### Training LightGCN Models
+
+To train LightGCN models and generate embeddings for use with the retriever agent:
+
+```shell
+python scripts/train_lightgcn.py --dataset ml-100k --epochs 100 --lr 0.001
+```
+
+The script will:
+- Train a LightGCN model on the specified dataset
+- Save model checkpoints in the `saved/` directory
+- Generate and save user/item embeddings in the `run/LightGCN/` directory
+- Create ID mapping files for the embedding retriever tool
+
 ### API Configuration
 
 The project uses the Gemini API:
@@ -164,7 +186,7 @@ python main.py -m $task_name --verbose $verbose $extra_args
 
 Then `main.py` will run the `${task_name}Task` defined in `macrec/tasks/*.py`.
 
-E.g., to evaluate the sequence recommendation task in MovieLens-100k dataset for the `CollaborationSystem` with *Reflector*, *Analyst*, and *Searcher* using Gemini API, just run:
+E.g., to evaluate the sequence recommendation task in MovieLens-100k dataset for the `CollaborationSystem` with *Reflector*, *Analyst*, *Searcher*, and *Retriever* using Gemini API, just run:
 ```shell
 python main.py --main Evaluate --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/reflect_analyse_search.json --task sr
 ```
