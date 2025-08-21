@@ -14,7 +14,20 @@ class ReflectionSystem(ReActSystem):
         Initialize the reflection system.
         """
         super().init(*args, **kwargs)
-        self.reflector = Reflector(config_path=self.config['reflector'], **self.agent_kwargs)
+        
+        # Apply model override to reflector config
+        if self.model_override:
+            import json
+            from macrec.utils import read_json
+            
+            with open(self.config['reflector'], 'r') as f:
+                reflector_config = json.load(f)
+            reflector_config = self._apply_model_override(reflector_config)
+            
+            self.reflector = Reflector(config=reflector_config, **self.agent_kwargs)
+        else:
+            self.reflector = Reflector(config_path=self.config['reflector'], **self.agent_kwargs)
+        
         self.manager_kwargs['reflections'] = ''
 
     def reset(self, clear: bool = False, *args, **kwargs) -> None:

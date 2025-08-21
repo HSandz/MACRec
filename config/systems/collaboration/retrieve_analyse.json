@@ -1,9 +1,6 @@
 {
     "supported_tasks": [
-        "rp",
-        "sr",
-        "rr",
-        "gen"
+        "rr"
     ],
     "agents": {
         "Manager": {
@@ -19,7 +16,7 @@
             "prompt_config": "config/prompts/agent_prompt/retriever.json"
         }
     },
-    "agent_prompt": "config/prompts/manager_prompt/retrieve_analyst.json",
+    "agent_prompt": "config/prompts/manager_prompt/retrieve_analyse.json",
     "data_prompt": "config/prompts/data_prompt/{task}.json",
     "max_step": 15
 }

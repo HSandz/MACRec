@@ -11,9 +11,40 @@ class ChatSystem(System):
         return ['chat']
 
     def init(self, *args, **kwargs) -> None:
-        self.manager = Manager(thought_config_path=self.config['manager_thought'], action_config_path=self.config['manager_action'], **self.agent_kwargs)
-        self.searcher = Searcher(config_path=self.config['searcher'], **self.agent_kwargs)
-        self.interpreter = Interpreter(config_path=self.config['interpreter'], **self.agent_kwargs)
+        # Apply model override to all agent configs
+        if self.model_override:
+            import json
+            from macrec.utils import read_json
+            
+            # Read and override manager configs
+            with open(self.config['manager_thought'], 'r') as f:
+                thought_config = json.load(f)
+            thought_config = self._apply_model_override(thought_config)
+            
+            with open(self.config['manager_action'], 'r') as f:
+                action_config = json.load(f)
+            action_config = self._apply_model_override(action_config)
+            
+            self.manager = Manager(thought_config=thought_config, action_config=action_config, **self.agent_kwargs)
+            
+            # Read and override searcher config
+            with open(self.config['searcher'], 'r') as f:
+                searcher_config = json.load(f)
+            searcher_config = self._apply_model_override(searcher_config)
+            
+            self.searcher = Searcher(config=searcher_config, **self.agent_kwargs)
+            
+            # Read and override interpreter config
+            with open(self.config['interpreter'], 'r') as f:
+                interpreter_config = json.load(f)
+            interpreter_config = self._apply_model_override(interpreter_config)
+            
+            self.interpreter = Interpreter(config=interpreter_config, **self.agent_kwargs)
+        else:
+            self.manager = Manager(thought_config_path=self.config['manager_thought'], action_config_path=self.config['manager_action'], **self.agent_kwargs)
+            self.searcher = Searcher(config_path=self.config['searcher'], **self.agent_kwargs)
+            self.interpreter = Interpreter(config_path=self.config['interpreter'], **self.agent_kwargs)
+        
         self.max_step: int = self.config.get('max_step', 6)
         self.manager_kwargs = {
             "max_step": self.max_step,

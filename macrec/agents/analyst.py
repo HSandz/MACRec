@@ -6,13 +6,20 @@ from macrec.tools import InfoDatabase, InteractionRetriever
 from macrec.utils import read_json, get_rm, parse_action
 
 class Analyst(ToolAgent):
-    def __init__(self, config_path: str, *args, **kwargs) -> None:
+    def __init__(self, config_path: str = None, config: dict = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        config = read_json(config_path)
-        tool_config: dict[str, dict] = get_rm(config, 'tool_config', {})
+        if config is not None:
+            # Use provided config directly
+            agent_config = config
+        else:
+            # Read config from file
+            assert config_path is not None, "Either config_path or config must be provided"
+            agent_config = read_json(config_path)
+        
+        tool_config: dict[str, dict] = get_rm(agent_config, 'tool_config', {})
         self.get_tools(tool_config)
-        self.max_turns = get_rm(config, 'max_turns', 15)  # Reduced default from 20 to 15
-        self.analyst = self.get_LLM(config=config)
+        self.max_turns = get_rm(agent_config, 'max_turns', 15)  # Reduced default from 20 to 15
+        self.analyst = self.get_LLM(config=agent_config)
         self.json_mode = self.analyst.json_mode
         # Track queried entities to prevent repetition
         self.queried_users = set()

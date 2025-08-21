@@ -13,16 +13,23 @@ class Retriever(ToolAgent):
     an info database.
     """
 
-    def __init__(self, config_path: str, *args, **kwargs) -> None:
+    def __init__(self, config_path: str = None, config: dict = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        config = read_json(config_path)
-        tool_config: dict[str, dict] = get_rm(config, 'tool_config', {})
+        if config is not None:
+            # Use provided config directly
+            agent_config = config
+        else:
+            # Read config from file
+            assert config_path is not None, "Either config_path or config must be provided"
+            agent_config = read_json(config_path)
+        
+        tool_config: dict[str, dict] = get_rm(agent_config, 'tool_config', {})
         self.get_tools(tool_config)
         # align with other agents: instantiate an LLM and adopt its json_mode
-        self.retriever_llm = self.get_LLM(config=config)
+        self.retriever_llm = self.get_LLM(config=agent_config)
         self.json_mode = self.retriever_llm.json_mode
         # default K, but allow tool to override
-        self.default_k: int = get_rm(config, 'top_k', 6)
+        self.default_k: int = get_rm(agent_config, 'top_k', 6)
         self.reset()
 
     @staticmethod

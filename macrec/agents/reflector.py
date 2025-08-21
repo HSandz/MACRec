@@ -4,7 +4,7 @@ from transformers import AutoTokenizer
 from langchain.prompts import PromptTemplate
 
 from macrec.agents.base import Agent
-from macrec.llms import GeminiLLM
+from macrec.llms import GeminiLLM, OpenRouterLLM
 from macrec.utils import format_step, format_reflections, format_last_attempt, read_json, get_rm
 
 class ReflectionStrategy(Enum):
@@ -20,19 +20,27 @@ class Reflector(Agent):
     """
     The reflector agent. The reflector agent prompts the LLM to reflect on the input and the scratchpad as default. Other reflection strategies are also supported. See `ReflectionStrategy` for more details.
     """
-    def __init__(self, config_path: str, *args, **kwargs) -> None:
+    def __init__(self, config_path: str = None, config: dict = None, *args, **kwargs) -> None:
         """Initialize the reflector agent. The reflector agent prompts the LLM to reflect on the input and the scratchpad as default.
 
         Args:
             `config_path` (`str`): The path to the config file of the reflector LLM.
+            `config` (`dict`, optional): Direct config for reflector LLM. Defaults to None.
         """
         super().__init__(*args, **kwargs)
-        config = read_json(config_path)
-        keep_reflections = get_rm(config, 'keep_reflections', True)
-        reflection_strategy = get_rm(config, 'reflection_strategy', ReflectionStrategy.REFLEXION.value)
-        self.llm = self.get_LLM(config=config)
-        if isinstance(self.llm, GeminiLLM):
-            # For Gemini, we'll use a simple word-based estimation
+        if config is not None:
+            # Use provided config directly
+            agent_config = config
+        else:
+            # Read config from file
+            assert config_path is not None, "Either config_path or config must be provided"
+            agent_config = read_json(config_path)
+        
+        keep_reflections = get_rm(agent_config, 'keep_reflections', True)
+        reflection_strategy = get_rm(agent_config, 'reflection_strategy', ReflectionStrategy.REFLEXION.value)
+        self.llm = self.get_LLM(config=agent_config)
+        if isinstance(self.llm, (GeminiLLM, OpenRouterLLM)):
+            # For Gemini and OpenRouter, we'll use a simple word-based estimation
             self.enc = None
         else:
             self.enc = AutoTokenizer.from_pretrained(self.llm.model_name)

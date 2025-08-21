@@ -12,7 +12,20 @@ class AnalyseSystem(ReActSystem):
 
     def init(self, *args, **kwargs) -> None:
         super().init(*args, **kwargs)
-        self.analyst = Analyst(config_path=self.config['analyst'], **self.agent_kwargs)
+        
+        # Apply model override to analyst config
+        if self.model_override:
+            import json
+            from macrec.utils import read_json
+            
+            with open(self.config['analyst'], 'r') as f:
+                analyst_config = json.load(f)
+            analyst_config = self._apply_model_override(analyst_config)
+            
+            self.analyst = Analyst(config=analyst_config, **self.agent_kwargs)
+        else:
+            self.analyst = Analyst(config_path=self.config['analyst'], **self.agent_kwargs)
+        
         self.manager_kwargs['max_step'] = self.max_step
 
     def act(self) -> tuple[str, Any]:

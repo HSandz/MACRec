@@ -75,11 +75,43 @@ def check_config(config_path: str) -> bool:
     else:
         return check_json(config_path)
 
-def get_system(system_type: type[System], config_path: str, task: str, dataset: str) -> System:
-    return system_type(config_path=config_path, task=task, leak=False, web_demo=True, dataset=dataset)
+def get_system(system_type: type[System], config_path: str, task: str, dataset: str, model_override: str = None) -> System:
+    logger.debug(f'get_system called with model_override: {model_override}')
+    system_kwargs = {
+        'config_path': config_path, 
+        'task': task, 
+        'leak': False, 
+        'web_demo': True, 
+        'dataset': dataset
+    }
+    
+    # Add model override if specified
+    if model_override:
+        system_kwargs['model_override'] = model_override
+        logger.debug(f'Added model_override to system_kwargs: {model_override}')
+    else:
+        logger.debug('No model_override in system_kwargs')
+    
+    logger.debug(f'Creating system with kwargs: {system_kwargs}')
+    return system_type(**system_kwargs)
 
-def task_config(task: str, system_type: type[System], config_path: str) -> None:
+def task_config(task: str, system_type: type[System], config_path: str, model_override: str = None) -> None:
+    logger.debug(f'task_config called with model_override: {model_override}')
     st.markdown(f'## `{system_type.__name__}` for {task2name(task)}')
+    
+    # Display model override info if specified
+    if model_override:
+        if model_override.startswith('gemini'):
+            provider_info = "🟢 **Gemini API**"
+        elif '/' in model_override or any(x in model_override.lower() for x in ['gpt', 'claude', 'llama', 'mistral', 'openai', 'anthropic']):
+            provider_info = "🔴 **OpenRouter API**"
+        else:
+            provider_info = "⚪ **Auto-detect**"
+        st.info(f"Using model override: **{model_override}** via {provider_info}")
+        logger.debug(f'Model override set: {model_override} -> {provider_info}')
+    else:
+        logger.debug('No model override specified')
+    
     checking = check_config(config_path)
     if not checking:
         st.error('This config file requires OpenSource models, which are not supported in this machine (without cuda toolkit).')
@@ -121,6 +153,14 @@ def task_config(task: str, system_type: type[System], config_path: str) -> None:
         logger.debug(f'Change dataset: {dataset}')
         st.session_state.dataset = dataset
         renew = True
+    elif 'model_override' not in st.session_state:
+        logger.debug(f'New model override: {model_override}')
+        st.session_state.model_override = model_override
+        renew = True
+    elif st.session_state.model_override != model_override:
+        logger.debug(f'Change model override: {model_override}')
+        st.session_state.model_override = model_override
+        renew = True
     elif 'system' not in st.session_state:
         logger.debug('New system')
         renew = True
@@ -129,11 +169,12 @@ def task_config(task: str, system_type: type[System], config_path: str) -> None:
         st.session_state.dataset = dataset
         renew = True
     if renew:
-        system = get_system(system_type, config_path, task, dataset)
+        system = get_system(system_type, config_path, task, dataset, model_override)
         st.session_state.system_type = system_type.__name__
         st.session_state.task = task
         st.session_state.config_path = config_path
         st.session_state.dataset = dataset
+        st.session_state.model_override = model_override
         st.session_state.system = system
         st.session_state.chat_history = []
         if 'data_sample' in st.session_state:

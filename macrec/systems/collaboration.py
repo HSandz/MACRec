@@ -49,10 +49,104 @@ class CollaborationSystem(System):
             try:
                 agent_class = globals()[agent]
                 assert issubclass(agent_class, Agent), f'Agent {agent} is not a subclass of Agent.'
-                self.agents[agent] = agent_class(**agent_config, **self.agent_kwargs)
+                
+                # Apply model override if specified
+                final_agent_config = agent_config.copy()
+                if self.model_override:
+                    # Handle different agent types
+                    if agent == 'Manager':
+                        # Manager has thought and action configs
+                        thought_config = None
+                        action_config = None
+                        
+                        if 'thought_config_path' in agent_config:
+                            with open(agent_config['thought_config_path'], 'r') as f:
+                                thought_config = json.load(f)
+                        
+                        if 'action_config_path' in agent_config:
+                            with open(agent_config['action_config_path'], 'r') as f:
+                                action_config = json.load(f)
+                        
+                        # Apply model override to both configs
+                        if thought_config:
+                            thought_config = self._apply_model_override(thought_config)
+                            final_agent_config['thought_config'] = thought_config
+                        
+                        if action_config:
+                            action_config = self._apply_model_override(action_config)
+                            final_agent_config['action_config'] = action_config
+                    
+                    else:
+                        # Other agents have a single config_path
+                        if 'config_path' in agent_config:
+                            with open(agent_config['config_path'], 'r') as f:
+                                agent_llm_config = json.load(f)
+                            
+                            agent_llm_config = self._apply_model_override(agent_llm_config)
+                            final_agent_config['config'] = agent_llm_config
+                
+                self.agents[agent] = agent_class(**final_agent_config, **self.agent_kwargs)
             except KeyError:
                 raise ValueError(f'Agent {agent} is not supported.')
         assert 'Manager' in self.agents, 'Manager is required.'
+    
+    def _apply_model_override(self, config: dict) -> dict:
+        """Apply model override to a configuration dict."""
+        config = config.copy()
+        
+        # Determine the provider based on model name pattern
+        if self.model_override.lower() == 'gemini' or self.model_override.startswith('gemini-'):
+            # Use Gemini API
+            config['model_type'] = 'gemini'
+            if self.model_override.lower() == 'gemini':
+                config['model_name'] = 'gemini-2.0-flash'  # Default Gemini model
+            else:
+                config['model_name'] = self.model_override
+            # Remove any existing api_key since Gemini uses global initialization
+            config.pop('api_key', None)
+            logger.info(f"Using Gemini API for model: {config['model_name']}")
+            
+        elif ('/' in self.model_override or 
+              'gpt' in self.model_override.lower() or 
+              'claude' in self.model_override.lower() or 
+              'llama' in self.model_override.lower() or 
+              'mistral' in self.model_override.lower() or
+              'openai' in self.model_override.lower() or
+              'anthropic' in self.model_override.lower() or
+              'meta-' in self.model_override.lower()):
+            # Use OpenRouter API for models with provider prefix or common model names
+            config['model_type'] = 'openrouter'
+            config['model_name'] = self.model_override
+            
+            # Try to get OpenRouter API key from the API config
+            try:
+                from macrec.utils import read_json
+                api_config = read_json('config/api-config.json')
+                
+                # Check different API config formats
+                openrouter_key = None
+                if api_config.get('provider') == 'openrouter' and 'api_key' in api_config:
+                    openrouter_key = api_config['api_key']
+                elif api_config.get('provider') == 'mixed' and 'openrouter_api_key' in api_config:
+                    openrouter_key = api_config['openrouter_api_key']
+                
+                if openrouter_key:
+                    config['api_key'] = openrouter_key
+                    logger.info(f"Using OpenRouter API for model: {config['model_name']}")
+                else:
+                    logger.warning(f"OpenRouter API key not found in config/api-config.json for model '{self.model_override}'. The OpenRouter LLM will try to find the key from other sources.")
+                    # Don't set api_key, let OpenRouterLLM handle it
+                    
+            except Exception as e:
+                logger.warning(f"Could not read API config for model override: {e}. The OpenRouter LLM will try to find the key from other sources.")
+                # Don't set api_key, let OpenRouterLLM handle it
+                
+        else:
+            # For other models, just update the model name but keep the same provider
+            config['model_name'] = self.model_override
+            logger.info(f"Using original provider for model override: {self.model_override}")
+        
+        return config
 
     @property
     def manager(self) -> Optional[Manager]:

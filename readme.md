@@ -164,9 +164,9 @@ The script will:
 
 ### API Configuration
 
-The project uses the Gemini API:
+The project supports multiple LLM providers:
 
-#### For Gemini API
+#### For Gemini API only
 Create or update `config/api-config.json`:
 ```json
 {
@@ -175,7 +175,26 @@ Create or update `config/api-config.json`:
 }
 ```
 
-To use the Gemini API, the project is pre-configured with:
+#### For OpenRouter API only
+Create or update `config/api-config.json`:
+```json
+{
+    "provider": "openrouter",
+    "api_key": "your-openrouter-api-key-here"
+}
+```
+
+#### For Both APIs (Recommended)
+Create or update `config/api-config.json`:
+```json
+{
+    "provider": "mixed",
+    "gemini_api_key": "your-gemini-api-key-here",
+    "openrouter_api_key": "your-openrouter-api-key-here"
+}
+```
+
+OpenRouter provides access to many models including GPT, Claude, Llama, and others. You can override the model for any task using the `--model` parameter.
 
 ### Run with the command line
 
@@ -190,6 +209,27 @@ E.g., to evaluate the sequence recommendation task in MovieLens-100k dataset for
 ```shell
 python main.py --main Evaluate --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/reflect_analyse_search.json --task sr
 ```
+
+To use OpenRouter models, add the `--model` parameter:
+```shell
+python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/retrieve_analyse.json --task rr --samples 3 --model openai/gpt-oss-20b:free
+```
+
+To use Gemini models explicitly:
+```shell
+python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/retrieve_analyse.json --task rr --samples 3 --model gemini
+```
+
+Available model options include:
+- `gemini` - Uses default Gemini model (gemini-2.0-flash)
+- `gemini-2.0-flash-lite` - Specific Gemini model
+- `openai/gpt-oss-20b:free` - OpenRouter free GPT model
+- `meta-llama/llama-3.1-8b-instruct` - Llama model via OpenRouter
+- `meta-llama/llama-3.1-70b-instruct` - Larger Llama model
+- `openai/gpt-4o` - GPT-4o via OpenRouter
+- `anthropic/claude-3-5-sonnet` - Claude model
+- `mistralai/mistral-7b-instruct` - Mistral model
+- And many others available on [OpenRouter](https://openrouter.ai/models)
 
 You can refer to the `scripts/` folder for some useful scripts.
 

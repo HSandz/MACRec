@@ -13,6 +13,9 @@ class GeminiLLM(BaseLLM):
             `model_name` (`str`, optional): The name of the Gemini model. Defaults to `gemini-2.0-flash`.
             `json_mode` (`bool`, optional): Whether to use JSON mode. Defaults to `False`.
         """
+        # Call parent constructor to initialize token tracking attributes
+        super().__init__()
+        
         self.model_name = model_name
         self.json_mode = json_mode
         self.max_tokens: int = kwargs.get('max_tokens', 256)
@@ -61,12 +64,26 @@ class GeminiLLM(BaseLLM):
                 # For JSON mode, add instruction to the prompt
                 json_prompt = f"{prompt}\n\nPlease respond with valid JSON only."
                 response = self.model.generate_content(json_prompt)
+                actual_prompt = json_prompt
             else:
                 response = self.model.generate_content(prompt)
+                actual_prompt = prompt
             
             # Extract text from response
             if response.text:
-                return response.text.replace('\n', ' ').strip()
+                content = response.text.replace('\n', ' ').strip()
+                
+                # Track token usage (Gemini doesn't provide exact counts, so we estimate)
+                input_tokens = None
+                output_tokens = None
+                if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                    input_tokens = getattr(response.usage_metadata, 'prompt_token_count', None)
+                    output_tokens = getattr(response.usage_metadata, 'candidates_token_count', None)
+                
+                # Track the usage
+                self.track_usage(actual_prompt, content, input_tokens, output_tokens)
+                
+                return content
             else:
                 logger.warning("Empty response from Gemini API")
                 return ""

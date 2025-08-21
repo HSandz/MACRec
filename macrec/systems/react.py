@@ -17,7 +17,28 @@ class ReActSystem(System):
         """
         Initialize the ReAct system.
         """
-        self.manager = Manager(thought_config_path=self.config['manager_thought'], action_config_path=self.config['manager_action'], **self.agent_kwargs)
+        # Apply model override to manager configs
+        thought_config = None
+        action_config = None
+        
+        if self.model_override:
+            import json
+            from macrec.utils import read_json
+            
+            # Read and override thought config
+            with open(self.config['manager_thought'], 'r') as f:
+                thought_config = json.load(f)
+            thought_config = self._apply_model_override(thought_config)
+            
+            # Read and override action config
+            with open(self.config['manager_action'], 'r') as f:
+                action_config = json.load(f)
+            action_config = self._apply_model_override(action_config)
+            
+            self.manager = Manager(thought_config=thought_config, action_config=action_config, **self.agent_kwargs)
+        else:
+            self.manager = Manager(thought_config_path=self.config['manager_thought'], action_config_path=self.config['manager_action'], **self.agent_kwargs)
+        
         self.max_step: int = self.config.get('max_step', 6)
         self.manager_kwargs = dict()
 

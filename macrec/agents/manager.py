@@ -3,34 +3,49 @@ from transformers import AutoTokenizer
 from langchain.prompts import PromptTemplate
 
 from macrec.agents.base import Agent
-from macrec.llms import GeminiLLM
+from macrec.llms import GeminiLLM, OpenRouterLLM
 from macrec.utils import format_step, run_once
 
 class Manager(Agent):
     """
     The manager agent. The manager agent is a two-stage agent, which first prompts the thought LLM and then prompts the action LLM.
     """
-    def __init__(self, thought_config_path: str, action_config_path: str, *args, **kwargs) -> None:
+    def __init__(self, thought_config_path: str = None, action_config_path: str = None, thought_config: dict = None, action_config: dict = None, *args, **kwargs) -> None:
         """Initialize the manager agent. The manager agent is a two-stage agent, which first prompts the thought LLM and then prompts the action LLM.
 
         Args:
             `thought_config_path` (`str`): The path to the config file of the thought LLM.
             `action_config_path` (`str`): The path to the config file of the action LLM.
+            `thought_config` (`dict`, optional): Direct config for thought LLM. Defaults to None.
+            `action_config` (`dict`, optional): Direct config for action LLM. Defaults to None.
         """
         super().__init__(*args, **kwargs)
-        self.thought_llm = self.get_LLM(thought_config_path)
-        self.action_llm = self.get_LLM(action_config_path)
+        
+        # Handle thought LLM config
+        if thought_config is not None:
+            self.thought_llm = self.get_LLM(config=thought_config)
+        else:
+            assert thought_config_path is not None, "Either thought_config_path or thought_config must be provided"
+            self.thought_llm = self.get_LLM(thought_config_path)
+        
+        # Handle action LLM config
+        if action_config is not None:
+            self.action_llm = self.get_LLM(config=action_config)
+        else:
+            assert action_config_path is not None, "Either action_config_path or action_config must be provided"
+            self.action_llm = self.get_LLM(action_config_path)
+            
         self.json_mode = self.action_llm.json_mode
         
         # Initialize tokenizers based on LLM type
-        if isinstance(self.thought_llm, GeminiLLM):
-            # For Gemini, we'll use a simple word-based estimation
+        if isinstance(self.thought_llm, (GeminiLLM, OpenRouterLLM)):
+            # For Gemini and OpenRouter, we'll use a simple word-based estimation
             self.thought_enc = None
         else:
             self.thought_enc = AutoTokenizer.from_pretrained(self.thought_llm.model_name)
             
-        if isinstance(self.action_llm, GeminiLLM):
-            # For Gemini, we'll use a simple word-based estimation
+        if isinstance(self.action_llm, (GeminiLLM, OpenRouterLLM)):
+            # For Gemini and OpenRouter, we'll use a simple word-based estimation
             self.action_enc = None
         else:
             self.action_enc = AutoTokenizer.from_pretrained(self.action_llm.model_name)

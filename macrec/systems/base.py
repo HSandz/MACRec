@@ -73,6 +73,10 @@ class System(ABC):
         self.config = read_json(config_path)
         if 'supported_tasks' in self.config:
             assert isinstance(self.config['supported_tasks'], list) and self.task in self.config['supported_tasks'], f'Task {self.task} is not supported by the system.'
+        
+        # Handle model override
+        self.model_override = kwargs.get('model_override', None)
+        
         self.agent_kwargs = {
             'system': self,
         }
@@ -92,6 +96,65 @@ class System(ABC):
         self.kwargs = kwargs
         self.init(*args, **kwargs)
         self.reset(clear=True)
+
+    def _apply_model_override(self, config: dict) -> dict:
+        """Apply model override to a configuration dict."""
+        if not self.model_override:
+            return config
+            
+        config = config.copy()
+        
+        if self.model_override.lower() == 'gemini' or self.model_override.startswith('gemini-'):
+            # Use Gemini API
+            config['model_type'] = 'gemini'
+            if self.model_override.lower() == 'gemini':
+                config['model_name'] = 'gemini-2.0-flash'  # Default Gemini model
+            else:
+                config['model_name'] = self.model_override
+            # Remove any existing api_key since Gemini uses global initialization
+            config.pop('api_key', None)
+            logger.info(f"Using Gemini API for model: {config['model_name']}")
+            
+        elif ('/' in self.model_override or 
+              'gpt' in self.model_override.lower() or 
+              'claude' in self.model_override.lower() or 
+              'llama' in self.model_override.lower() or 
+              'mistral' in self.model_override.lower() or
+              'openai' in self.model_override.lower() or
+              'anthropic' in self.model_override.lower() or
+              'meta-' in self.model_override.lower() or
+              'deepseek' in self.model_override.lower() or
+              'z-ai' in self.model_override.lower()):
+            # Use OpenRouter API for models with provider prefix or common model names
+            config['model_type'] = 'openrouter'
+            config['model_name'] = self.model_override
+            
+            # Try to get OpenRouter API key from the API config
+            try:
+                api_config = read_json('config/api-config.json')
+                
+                # Check different API config formats
+                openrouter_key = None
+                if api_config.get('provider') == 'openrouter' and 'api_key' in api_config:
+                    openrouter_key = api_config['api_key']
+                elif api_config.get('provider') == 'mixed' and 'openrouter_api_key' in api_config:
+                    openrouter_key = api_config['openrouter_api_key']
+                
+                if openrouter_key:
+                    config['api_key'] = openrouter_key
+                    logger.info(f"Using OpenRouter API for model: {self.model_override}")
+                else:
+                    logger.warning(f"OpenRouter API key not found in config/api-config.json for model override '{self.model_override}'")
+                    
+            except Exception as e:
+                logger.warning(f"Could not read API config for model override: {e}")
+                
+        else:
+            # For other models, just update the model name but keep the same provider
+            config['model_name'] = self.model_override
+            logger.info(f"Using original provider for model override: {self.model_override}")
+        
+        return config
 
     def log(self, message: str, agent: Optional[Agent] = None, logging: bool = True) -> None:
         """Log the message.
