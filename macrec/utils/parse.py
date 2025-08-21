@@ -102,7 +102,19 @@ def parse_ranking_answer(answer: str | Any, gt_answer: int, n_candidate: int = N
         if isinstance(answer, list):
             candidates = answer
         elif isinstance(answer, str):
-            candidates = answer.split(',')
+            # Try to parse as a literal list first (e.g., "[1, 2, 3]")
+            if answer.strip().startswith('[') and answer.strip().endswith(']'):
+                try:
+                    import ast
+                    parsed_list = ast.literal_eval(answer.strip())
+                    if isinstance(parsed_list, list):
+                        candidates = parsed_list
+                    else:
+                        candidates = answer.split(',')
+                except (ValueError, SyntaxError):
+                    candidates = answer.split(',')
+            else:
+                candidates = answer.split(',')
         else:
             return {
                 'valid': False,
@@ -146,7 +158,7 @@ def parse_ranking_answer(answer: str | Any, gt_answer: int, n_candidate: int = N
         return {
             'valid': False,
             'answer': [],
-            'message': 'The ids in the answer list should be integers.'
+            'message': f'The ids in the answer list should be integers. Received: {answer}. Valid format: [1063, 151, 274, 225, 609, 25] (array of integers, NOT string)'
         }
     
     return {

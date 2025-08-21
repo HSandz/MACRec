@@ -20,6 +20,7 @@ class MetricDict:
         Returns:
             `str`: The first metric with the given prefix. If no metric with the given prefix is found, return `''`.
         """
+        updated_metrics = []
         for metric_name, metric in self.metrics.items():
             if not metric_name.startswith(prefix):
                 continue

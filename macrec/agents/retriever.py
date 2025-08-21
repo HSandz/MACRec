@@ -73,14 +73,14 @@ class Retriever(ToolAgent):
         # Expose n_candidate for answer parsing in ranking stage
         if hasattr(self.system, 'kwargs'):
             self.system.kwargs['n_candidate'] = len(ids)
-            # logger.debug(f'Set n_candidate={len(ids)} in system kwargs')
+            logger.debug(f'Set n_candidate={len(ids)} in system kwargs for rr task')
         else:
-            # logger.warning('System has no kwargs attribute, cannot set n_candidate')
+            logger.warning('System has no kwargs attribute, cannot set n_candidate')
             pass
 
         # Provide attributes if available for compatibility with prompts
         candidate_block = self._format_candidates_with_attributes([int(i) for i in ids])
-        return f"Top {len(ids)} candidates for user {user_id} (format: id: attributes):\n{candidate_block}"
+        return f"Top {len(ids)} candidates for user {user_id} (format: id: attributes):\n{candidate_block}\n\nIMPORTANT: You must analyze ALL {len(ids)} items before using Finish. Items to analyze: {ids}"
 
     def invoke(self, argument: Any, json_mode: bool) -> str:
         if json_mode:

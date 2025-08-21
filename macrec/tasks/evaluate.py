@@ -14,7 +14,7 @@ class EvaluateTask(GenerationTask):
     @staticmethod
     def parse_task_args(parser: ArgumentParser) -> ArgumentParser:
         parser = GenerationTask.parse_task_args(parser)
-        parser.add_argument('--steps', type=int, default=2, help='Number of steps')
+        parser.add_argument('--steps', type=int, default=1, help='Number of steps')
         parser.add_argument('--topks', type=str2list, default=[1, 3, 5], help='Top-Ks for ranking task')
         return parser
 
