@@ -6,11 +6,11 @@ from typing import Any, Dict
 from macrec.llms.basellm import BaseLLM
 
 class GeminiLLM(BaseLLM):
-    def __init__(self, model_name: str = 'gemini-2.0-flash', json_mode: bool = False, *args, **kwargs):
+    def __init__(self, model_name: str = 'gemini-2.0-flash-001', json_mode: bool = False, *args, **kwargs):
         """Initialize the Gemini LLM.
 
         Args:
-            `model_name` (`str`, optional): The name of the Gemini model. Defaults to `gemini-2.0-flash`.
+            `model_name` (`str`, optional): The name of the Gemini model. Defaults to `gemini-2.0-flash-001`.
             `json_mode` (`bool`, optional): Whether to use JSON mode. Defaults to `False`.
         """
         # Call parent constructor to initialize token tracking attributes
@@ -23,7 +23,7 @@ class GeminiLLM(BaseLLM):
         # Set context length based on model
         if 'gemini-1.5-pro' in model_name:
             self.max_context_length = 2097152  # 2M tokens for Gemini 1.5 Pro
-        elif 'gemini-2.0-flash' in model_name:
+        elif 'gemini-2.0-flash-001' in model_name:
             self.max_context_length = 1048576  # 1M tokens for Gemini 1.5 Flash
         else:
             self.max_context_length = 32768  # Default fallback

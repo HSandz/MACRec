@@ -104,55 +104,20 @@ class System(ABC):
             
         config = config.copy()
         
-        if self.model_override.lower() == 'gemini' or self.model_override.startswith('gemini-'):
-            # Use Gemini API
-            config['model_type'] = 'gemini'
-            if self.model_override.lower() == 'gemini':
-                config['model_name'] = 'gemini-2.0-flash'  # Default Gemini model
+        # Use OpenRouter for all model overrides
+        config['model_type'] = 'openrouter'
+        config['model_name'] = self.model_override
+        
+        # Get OpenRouter API key from config
+        try:
+            api_config = read_json('config/api-config.json')
+            if api_config.get('provider') == 'openrouter' and 'api_key' in api_config:
+                config['api_key'] = api_config['api_key']
+                logger.info(f"Using OpenRouter API for model: {self.model_override}")
             else:
-                config['model_name'] = self.model_override
-            # Remove any existing api_key since Gemini uses global initialization
-            config.pop('api_key', None)
-            logger.info(f"Using Gemini API for model: {config['model_name']}")
-            
-        elif ('/' in self.model_override or 
-              'gpt' in self.model_override.lower() or 
-              'claude' in self.model_override.lower() or 
-              'llama' in self.model_override.lower() or 
-              'mistral' in self.model_override.lower() or
-              'openai' in self.model_override.lower() or
-              'anthropic' in self.model_override.lower() or
-              'meta-' in self.model_override.lower() or
-              'deepseek' in self.model_override.lower() or
-              'z-ai' in self.model_override.lower()):
-            # Use OpenRouter API for models with provider prefix or common model names
-            config['model_type'] = 'openrouter'
-            config['model_name'] = self.model_override
-            
-            # Try to get OpenRouter API key from the API config
-            try:
-                api_config = read_json('config/api-config.json')
-                
-                # Check different API config formats
-                openrouter_key = None
-                if api_config.get('provider') == 'openrouter' and 'api_key' in api_config:
-                    openrouter_key = api_config['api_key']
-                elif api_config.get('provider') == 'mixed' and 'openrouter_api_key' in api_config:
-                    openrouter_key = api_config['openrouter_api_key']
-                
-                if openrouter_key:
-                    config['api_key'] = openrouter_key
-                    logger.info(f"Using OpenRouter API for model: {self.model_override}")
-                else:
-                    logger.warning(f"OpenRouter API key not found in config/api-config.json for model override '{self.model_override}'")
-                    
-            except Exception as e:
-                logger.warning(f"Could not read API config for model override: {e}")
-                
-        else:
-            # For other models, just update the model name but keep the same provider
-            config['model_name'] = self.model_override
-            logger.info(f"Using original provider for model override: {self.model_override}")
+                logger.warning("OpenRouter API key not found in config")
+        except Exception as e:
+            logger.warning(f"Could not read API config for model override: {e}")
         
         return config
 

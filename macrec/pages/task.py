@@ -75,7 +75,7 @@ def check_config(config_path: str) -> bool:
     else:
         return check_json(config_path)
 
-def get_system(system_type: type[System], config_path: str, task: str, dataset: str, model_override: str = None) -> System:
+def get_system(system_type: type[System], config_path: str, task: str, dataset: str, model_override: str = 'google/gemini-2.0-flash-001') -> System:
     logger.debug(f'get_system called with model_override: {model_override}')
     system_kwargs = {
         'config_path': config_path, 
@@ -85,32 +85,20 @@ def get_system(system_type: type[System], config_path: str, task: str, dataset: 
         'dataset': dataset
     }
     
-    # Add model override if specified
-    if model_override:
-        system_kwargs['model_override'] = model_override
-        logger.debug(f'Added model_override to system_kwargs: {model_override}')
-    else:
-        logger.debug('No model_override in system_kwargs')
+    # Always add model override
+    system_kwargs['model_override'] = model_override
+    logger.debug(f'Added model_override to system_kwargs: {model_override}')
     
     logger.debug(f'Creating system with kwargs: {system_kwargs}')
     return system_type(**system_kwargs)
 
-def task_config(task: str, system_type: type[System], config_path: str, model_override: str = None) -> None:
+def task_config(task: str, system_type: type[System], config_path: str, model_override: str = 'google/gemini-2.0-flash-001') -> None:
     logger.debug(f'task_config called with model_override: {model_override}')
     st.markdown(f'## `{system_type.__name__}` for {task2name(task)}')
     
-    # Display model override info if specified
-    if model_override:
-        if model_override.startswith('gemini'):
-            provider_info = "🟢 **Gemini API**"
-        elif '/' in model_override or any(x in model_override.lower() for x in ['gpt', 'claude', 'llama', 'mistral', 'openai', 'anthropic']):
-            provider_info = "🔴 **OpenRouter API**"
-        else:
-            provider_info = "⚪ **Auto-detect**"
-        st.info(f"Using model override: **{model_override}** via {provider_info}")
-        logger.debug(f'Model override set: {model_override} -> {provider_info}')
-    else:
-        logger.debug('No model override specified')
+    # Display model info - all models use OpenRouter now
+    st.info(f"Using model: **{model_override}** via 🔴 **OpenRouter API**")
+    logger.debug(f'Model set: {model_override}')
     
     checking = check_config(config_path)
     if not checking:

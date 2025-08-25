@@ -55,6 +55,10 @@ class OpenRouterLLM(BaseLLM):
             'openai/gpt-4-turbo': 128000,
             'openai/gpt-oss-20b:free': 8192,
             'google/gemini-pro': 32768,
+            'google/gemini-2.0-flash-001': 1048576,
+            'google/gemini-2.0-flash-lite-001': 1048576,
+            'google/gemini-1.5-pro': 2097152,
+            'google/gemini-1.5-flash': 1048576,
             'cohere/command-r': 128000,
             'microsoft/wizardlm-2-8x22b': 65536,
         }

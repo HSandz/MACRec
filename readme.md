@@ -164,18 +164,14 @@ The script will:
 
 ### API Configuration
 
-The project supports multiple LLM providers:
+This project now uses **OpenRouter.ai with BYOK (Bring Your Own Key)** for all LLM access, including Gemini models.
 
-#### For Gemini API only
-Create or update `config/api-config.json`:
-```json
-{
-    "provider": "gemini",
-    "api_key": "your-gemini-api-key-here"
-}
-```
+#### Setup OpenRouter with Your Gemini API Key
+1. Go to [OpenRouter.ai](https://openrouter.ai) and create an account
+2. Add your Gemini API key to OpenRouter's BYOK settings
+3. Get your OpenRouter API key
 
-#### For OpenRouter API only
+#### Configure the Project
 Create or update `config/api-config.json`:
 ```json
 {
@@ -184,17 +180,13 @@ Create or update `config/api-config.json`:
 }
 ```
 
-#### For Both APIs (Recommended)
-Create or update `config/api-config.json`:
-```json
-{
-    "provider": "mixed",
-    "gemini_api_key": "your-gemini-api-key-here",
-    "openrouter_api_key": "your-openrouter-api-key-here"
-}
-```
+**Benefits of using OpenRouter with BYOK:**
+- Access Gemini models through OpenRouter's unified API
+- Use your own Gemini API quota and billing
+- Standardized API interface for all models
+- Easy switching between different LLM providers
 
-OpenRouter provides access to many models including GPT, Claude, Llama, and others. You can override the model for any task using the `--model` parameter.
+**Note:** Direct Gemini API support has been removed. All Gemini models are now accessed through OpenRouter.ai with your own API keys.
 
 ### Run with the command line
 
@@ -205,24 +197,25 @@ python main.py -m $task_name --verbose $verbose $extra_args
 
 Then `main.py` will run the `${task_name}Task` defined in `macrec/tasks/*.py`.
 
-E.g., to evaluate the sequence recommendation task in MovieLens-100k dataset for the `CollaborationSystem` with *Reflector*, *Analyst*, *Searcher*, and *Retriever* using Gemini API, just run:
+E.g., to evaluate the sequence recommendation task in MovieLens-100k dataset for the `CollaborationSystem` with *Reflector*, *Analyst*, *Searcher*, and *Retriever* using Gemini (default):
 ```shell
 python main.py --main Evaluate --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/reflect_analyse_search.json --task sr
 ```
 
-To use OpenRouter models, add the `--model` parameter:
+To use different models, specify the `--model` parameter:
 ```shell
+# Use OpenRouter GPT model
 python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/retrieve_analyse.json --task rr --samples 3 --model openai/gpt-oss-20b:free
-```
 
-To use Gemini models explicitly:
-```shell
-python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/retrieve_analyse.json --task rr --samples 3 --model gemini
+# Use Gemini Pro model
+python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/retrieve_analyse.json --task rr --samples 3 --model gemini-1.5-pro
 ```
 
 Available model options include:
-- `gemini` - Uses default Gemini model (gemini-2.0-flash)
-- `gemini-2.0-flash-lite` - Specific Gemini model
+- **Default**: `gemini` - Gemini 2.0 Flash via OpenRouter (google/gemini-2.0-flash-001)
+- `gemini-2.0-flash-001` - Specific Gemini model via OpenRouter
+- `gemini-1.5-pro` - Gemini Pro model via OpenRouter
+- `google/gemini-2.0-flash-001` - Direct OpenRouter Gemini model name
 - `openai/gpt-oss-20b:free` - OpenRouter free GPT model
 - `meta-llama/llama-3.1-8b-instruct` - Llama model via OpenRouter
 - `meta-llama/llama-3.1-70b-instruct` - Larger Llama model

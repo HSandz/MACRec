@@ -19,7 +19,7 @@ class GenerationTask(Task):
         parser.add_argument('--data_file', type=str, required=True, help='Dataset file')
         parser.add_argument('--system', type=str, default='react', choices=['react', 'reflection', 'analyse', 'collaboration'], help='System name')
         parser.add_argument('--system_config', type=str, required=True, help='System configuration file')
-        parser.add_argument('--model', type=str, default=None, help='Override model name for all agents (e.g., gpt-oss-120b for OpenRouter)')
+        parser.add_argument('--model', type=str, default='google/gemini-2.0-flash-001', help='Model name for all agents')
         parser.add_argument('--task', type=str, default='rp', choices=['rp', 'sr', 'rr', 'gen'], help='Task name')
         parser.add_argument('--max_his', type=int, default=10, help='Max history length')
         return parser
@@ -206,7 +206,7 @@ class GenerationTask(Task):
         
         self.after_generate()
 
-    def run(self, api_config: str, dataset: str, data_file: str, system: str, system_config: str, task: str, max_his: int, model: str = None):
+    def run(self, api_config: str, dataset: str, data_file: str, system: str, system_config: str, task: str, max_his: int, model: str = 'gemini'):
         if dataset == 'None':
             dataset = os.path.basename(os.path.dirname(data_file))
         self.dataset = dataset
@@ -217,15 +217,8 @@ class GenerationTask(Task):
             'task': self.task,
             'leak': False,
             'dataset': self.dataset,
+            'model_override': model,  # Always pass the model override
         }
-        
-        # Handle model override for OpenRouter
-        if model:
-            self.system_kwargs['model_override'] = model
-            # Check if we need to update API config for OpenRouter
-            api_config_data = read_json(api_config)
-            if model and not api_config_data.get('provider') == 'openrouter':
-                logger.warning(f"Model override '{model}' specified, but API provider is '{api_config_data.get('provider')}'. Consider using OpenRouter for non-Gemini models.")
         
         init_api(read_json(api_config))
         data_df = self.get_data(data_file, max_his)

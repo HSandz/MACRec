@@ -4,6 +4,7 @@ import os
 import random
 import numpy as np
 import torch
+from loguru import logger
 
 def init_gemini_api(api_key: str):
     """Initialize Gemini API.
@@ -34,28 +35,28 @@ def init_api(api_config: dict):
     Args:
         `api_config` (`dict`): API configuration, should contain `provider` and appropriate keys.
     """
-    provider = api_config.get('provider', 'gemini').lower()
+    provider = api_config.get('provider', 'openrouter').lower()
     
-    if provider == 'gemini':
-        if 'api_key' in api_config:
-            init_gemini_api(api_config['api_key'])
-        else:
-            raise ValueError("Gemini API configuration requires 'api_key'")
-    elif provider == 'openrouter':
+    if provider == 'openrouter':
         if 'api_key' in api_config:
             init_openrouter_api(api_config['api_key'])
         else:
             raise ValueError("OpenRouter API configuration requires 'api_key'")
+    elif provider == 'gemini':
+        # Legacy support - redirect to OpenRouter
+        logger.warning("Direct Gemini API is deprecated. Please use OpenRouter with BYOK for Gemini models.")
+        raise ValueError("Direct Gemini API is no longer supported. Use OpenRouter with BYOK instead.")
     elif provider == 'mixed':
-        # Support for mixed providers - initialize both if both API keys are present
-        if 'gemini_api_key' in api_config:
-            init_gemini_api(api_config['gemini_api_key'])
+        # Legacy support - redirect to OpenRouter only
+        logger.warning("Mixed API provider is deprecated. Please use OpenRouter only.")
         if 'openrouter_api_key' in api_config:
             init_openrouter_api(api_config['openrouter_api_key'])
-        if 'gemini_api_key' not in api_config and 'openrouter_api_key' not in api_config:
-            raise ValueError("Mixed API configuration requires at least one of 'gemini_api_key' or 'openrouter_api_key'")
+        elif 'api_key' in api_config:
+            init_openrouter_api(api_config['api_key'])
+        else:
+            raise ValueError("OpenRouter API configuration requires 'api_key' or 'openrouter_api_key'")
     else:
-        raise ValueError(f"Unsupported API provider: {provider}. Supported providers are 'gemini', 'openrouter', and 'mixed'.")
+        raise ValueError(f"Unsupported API provider: {provider}. Supported providers are 'openrouter'.")
 
 def init_all_seeds(seed: int = 0) -> None:
     """Initialize all seeds.

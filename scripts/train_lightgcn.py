@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import argparse
 from typing import Tuple, Optional
 
 import numpy as np
@@ -158,6 +159,12 @@ def save_id_mappings(out_dir: str, dataset) -> None:
 
 
 def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Train LightGCN with different test data splitting approaches')
+    parser.add_argument('--test', type=str, choices=['LOO', 'ratio'], default='LOO',
+                       help='Test data splitting approach: LOO (leave-one-out) or ratio (8:1:1)')
+    args = parser.parse_args()
+    
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Minimal but solid config for LightGCN on ml-100k
@@ -194,6 +201,18 @@ def main():
         # make results reproducible (seed is respected by RecBole)
         "seed": 42,
     }
+    
+    # Configure data splitting based on user choice
+    if args.test == 'ratio':
+        # Use ratio split (8:1:1 for train:valid:test)
+        config_dict["split_ratio"] = [0.8, 0.1, 0.1]
+        # Remove the LS split configuration for ratio approach
+        if "eval_args" in config_dict and "split" in config_dict["eval_args"]:
+            del config_dict["eval_args"]["split"]
+        print("Using ratio split approach (8:1:1 for train:valid:test)")
+    else:
+        # Use LOO approach (default RecBole behavior)
+        print("Using leave-one-out (LOO) approach for test data")
 
     # Build RecBole objects with preflight checks
     try:
@@ -242,6 +261,8 @@ def main():
     except Exception as e:
         raise RuntimeError(f"Failed to initialize Trainer: {e}")
 
+    print(f"Starting training with {args.test} test data approach...")
+
     # Train (and save best checkpoint)
     best_valid_score, best_valid_result = trainer.fit(
         train_data,
@@ -275,7 +296,7 @@ def main():
 
     out_dir = get_output_dir(base_dir=os.path.join("run", "LightGCN"),
                              model_name="LightGCN",
-                             dataset_name=config["dataset"])
+                             dataset_name=f"{config['dataset']}-{args.test}")
 
     save_embeddings(out_dir, initial_user, initial_item, final_user, final_item)
     save_id_mappings(out_dir, dataset)
@@ -306,6 +327,7 @@ def main():
     meta = {
         "model": "LightGCN",
         "dataset": str(config["dataset"]),
+        "test_approach": args.test,
         "config": cfg_dict,
         "best_valid_score": float(best_valid_score) if best_valid_score is not None else None,
         "best_valid_result": _sanitize(best_valid_result),
@@ -324,5 +346,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+    # Usage examples:
+    # python train_lightgcn.py --test LOO      # Use leave-one-out approach (default)
+    # python train_lightgcn.py --test ratio    # Use ratio split (8:1:1)
 
 

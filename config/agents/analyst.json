@@ -1,6 +1,6 @@
 {
-    "model_type": "gemini",
-    "model_name": "gemini-2.0-flash-lite",
+    "model_type": "openrouter",
+    "model_name": "google/gemini-2.0-flash-lite-001",
     "temperature": 0.1,
     "max_tokens": 300,
     "json_mode": true,

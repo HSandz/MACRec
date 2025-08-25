@@ -10,8 +10,8 @@ all_tasks = ['rp', 'sr', 'rr', 'gen', 'chat']
 
 # Available model options
 AVAILABLE_MODELS = [
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite', 
+    'gemini-2.0-flash-001',
+    'gemini-2.0-flash-lite-001', 
     'openai/gpt-oss-20b:free',
     'z-ai/glm-4.5-air:free',
     'deepseek/deepseek-r1-0528:free',
@@ -29,43 +29,65 @@ def demo():
         page_icon="🧠",
         layout="wide",
     )
-    st.sidebar.title('MACRec Demo')
+    
+    # Add CSS to improve sidebar visibility
+    st.markdown("""
+    <style>
+    /* Improve sidebar visibility when collapsed */
+    .css-1d391kg {
+        width: auto !important;
+        min-width: 250px !important;
+    }
+    
+    /* Better checkbox styling */
+    .stCheckbox > label {
+        font-size: 14px !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Improve sidebar spacing */
+    .css-1lcbmhc {
+        padding-top: 1rem !important;
+    }
+    
+    /* Better button and widget spacing */
+    .stSelectbox > label, .stTextInput > label {
+        font-size: 13px !important;
+        font-weight: 500 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.sidebar.title('🧠 MACRec Demo')
     
     # Model selection
     st.sidebar.markdown("### 🤖 Model Configuration")
     
-    # Create two columns for model selection UI
-    col1, col2 = st.sidebar.columns([3, 1])
+    use_custom = st.sidebar.checkbox('🎯 Use custom model name', help='Enable to type a custom model name instead of selecting from the list')
     
-    with col1:
-        # Text input for custom model (with selectbox options)
-        selected_model = st.selectbox(
-            'Choose a model',
-            options=[''] + AVAILABLE_MODELS,
-            format_func=lambda x: 'Select or type custom model...' if x == '' else x,
-            help='Select from available models or type a custom model name below'
-        )
-    
-    with col2:
-        # Option to use custom model
-        use_custom = st.checkbox('Custom', help='Enable to type a custom model name')
-    
-    # Custom model input
     if use_custom:
+        # Custom model input (full width when enabled)
         custom_model = st.sidebar.text_input(
-            'Custom model name',
+            'Model name',
             placeholder='e.g., openai/gpt-4o-mini',
             help='Enter any model name supported by your API providers'
         )
-        model_override = custom_model if custom_model.strip() else None
+        model_override = custom_model if custom_model.strip() else 'google/gemini-2.0-flash-001'
         logger.debug(f'Using custom model: {model_override}')
     else:
-        model_override = selected_model if selected_model != '' else None
+        # Selectbox for predefined models (full width when enabled)
+        selected_model = st.sidebar.selectbox(
+            'Choose a model',
+            options=[''] + AVAILABLE_MODELS,
+            format_func=lambda x: 'Select a model...' if x == '' else x,
+            help='Select from available models'
+        )
+        model_override = selected_model if selected_model != '' else 'google/gemini-2.0-flash-001'
         logger.debug(f'Using selected model: {model_override}')
     
     logger.debug(f'Final model_override: {model_override}')
     
-    # Display current model selection
+    # Display current model selection with better formatting for sidebar
     if model_override:
         if model_override.startswith('gemini'):
             provider_emoji = '🟢'
@@ -77,9 +99,11 @@ def demo():
             provider_emoji = '⚪'
             provider_name = 'Auto-detect'
         
-        st.sidebar.info(f"{provider_emoji} Using **{model_override}** via {provider_name}")
+        # More compact display for narrow sidebar
+        st.sidebar.success(f"{provider_emoji} **{provider_name}**")
+        st.sidebar.caption(f"Model: `{model_override}`")
     else:
-        st.sidebar.info("💡 Using default models from agent configurations")
+        st.sidebar.info("💡 Using default models")
     
     st.sidebar.markdown("---")
     
