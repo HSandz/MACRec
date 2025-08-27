@@ -1,11 +1,11 @@
 {
     "interpreter_prompt": {
         "type": "template",
-        "content": "I want you to act as an prompt interpreter. I will give you the basic requirements, and you should give a consise and clear prompt for the system to generate the appropriate answer. You can use 2 type of commands to do this:\n(1) Summarize[], which will give you a summary of requirements by some text summarization tools.\n(2) Finish[prompt], which returns the prompt you generated and finishes the task.\nValid command examples:\n{examples}\n(END OF EXAMPLES)\n\nThe last 100 words of the task requirements are:\n{input}\n\n{history}\n\nCommand: "
+        "content": "Act as a prompt interpreter. Generate a concise prompt for the system based on requirements.\n\nCommands:\n(1) Summarize[] — get summary of requirements\n(2) Finish[prompt] — return generated prompt\n\nLast 100 words of requirements:\n{input}\n\n{history}\n\nCommand: "
     },
     "interpreter_prompt_json": {
         "type": "template",
-        "content": "I want you to act as an prompt interpreter. I will give you the basic requirements, and you should give a consise and clear prompt for the system to generate the appropriate answer. You can use 2 type of commands in JSON format to do this:\n(1) {{\"type\": \"Summarize\", \"content\": \"\"}}, which will give you a summary of requirements by some text summarization tools.\n(2) {{\"type\": \"Finish\", \"content\": \"prompt\"}}, which returns the prompt you generated and finishes the task.\nValid command examples:\n{examples}\n(END OF EXAMPLES)\n\nThe last 100 words of the task requirements are:\n{input}\n\n{history}\n\nCommand: "
+        "content": "Act as a prompt interpreter. Generate a concise prompt for the system based on requirements.\n\nCommands (JSON):\n(1) {{\"type\": \"Summarize\", \"content\": \"\"}} — get summary of requirements\n(2) {{\"type\": \"Finish\", \"content\": \"prompt\"}} — return generated prompt\n\nLast 100 words of requirements:\n{input}\n\n{history}\n\nCommand: "
     },
     "interpreter_examples": {
         "type": "raw",

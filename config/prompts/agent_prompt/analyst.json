@@ -1,15 +1,15 @@
 {
     "analyst_base_prompt": {
         "type": "template",
-        "content": "Analyze {analyse_type} {id} for {task_type}. Use these commands (max {max_step} steps):\n(1) UserInfo[id] - get user information\n(2) ItemInfo[id] - get item information  \n(3) UserHistory[id,k] - get user's k interactions\n(4) ItemHistory[id,k] - get item's k interactions\n(5) Finish[result] - complete analysis\n\nRULES: NO duplicates, gather 3-5 data points, then Finish.\n\nExamples: {examples}\n{fewshot}\n\nTarget: {analyse_type} {id}\n{history}{hint}"
+        "content": "Analyze {analyse_type} {id} for {task_type}. Commands:\n(1) UserInfo[id] (2) ItemInfo[id] (3) UserHistory[id,k] (4) ItemHistory[id,k] (5) Finish[result]\nRules: No duplicates, gather 3-5 data points, then Finish.\n\nTarget: {analyse_type} {id}\n{history}"
     },
     "analyst_prompt": {
         "type": "template",
-        "content": "{analyst_base_prompt}\n\nCRITICAL RULES:\n- NEVER repeat a command you already executed\n- ALWAYS check the history above before choosing your next action\n- If you see duplicate commands in the history, that's an ERROR - do something different\n- Use Finish when you have sufficient data (3-5 points)\n\nCommand: "
+        "content": "{analyst_base_prompt}\n\nRules: No duplicate commands, check history, use Finish when ready (3-5 data points).\n\nCommand Examples:\n- UserInfo[123] - get user profile\n- UserHistory[123,3] - get 3 user interactions\n- ItemInfo[456] - get item details\n- ItemHistory[456,2] - get 2 item interactions\n- Finish[analysis summary] - complete when you have 3-5 data points\n\nCommand: "
     },
     "analyst_prompt_json": {
         "type": "template", 
-        "content": "{analyst_base_prompt}\n\nCRITICAL RULES:\n- NEVER repeat a command you already executed\n- ALWAYS check the history above before choosing your next action  \n- If you see duplicate commands in the history, that's an ERROR - do something different\n- Use Finish when you have sufficient data (3-5 points)\n\nUse JSON format: {{\"type\":\"CommandName\",\"content\":value}}\nCommand: "
+        "content": "{analyst_base_prompt}\n\nRules: No duplicate commands, check history, use Finish when ready (3-5 data points).\n\nCommand Examples:\n- {{\"type\":\"UserInfo\",\"content\":123}} - get user profile\n- {{\"type\":\"UserHistory\",\"content\":[123,3]}} - get 3 user interactions\n- {{\"type\":\"ItemInfo\",\"content\":456}} - get item details\n- {{\"type\":\"Finish\",\"content\":\"analysis summary\"}} - complete when you have 3-5 data points\n\nUse JSON format: {{\"type\":\"CommandName\",\"content\":value}}\nCommand: "
     },
     "analyst_examples": {
         "type": "raw",
@@ -29,6 +29,6 @@
     },
     "analyst_hint": {
         "type": "raw",
-        "content": "This is the final step. You should use Finish command to finish the task."
+        "content": "Use Finish command to complete the task."
     }
 }

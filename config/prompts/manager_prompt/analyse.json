@@ -1,15 +1,15 @@
 {
     "manager_prompt": {
         "type": "template",
-        "content": "Solve a {task_type} task with interleaving Thought, Action, Observation steps. Thought can reason about the current situation. Action can be 2 types:\n(1) Analyse[user/item, id], which will ask another agent (called Analyst) to help analyse the preferences or features of user id or item id.\n(2) Finish[response], which finishes the task and returns the response to the user.\nYou can take at most {max_step} steps.\n\nIMPORTANT: Only generate the next single step (either Thought or Action) as requested. Do not predict or generate future Observations, Thoughts, or Actions.\n{examples}\n\nInput:\n{input}\n{scratchpad}"
+        "content": "Solve {task_type} task with Thought, Action, Observation steps. Actions:\n(1) Analyse[user/item, id] — analyze preferences/features\n(2) Finish[response] — complete task\n\nMax steps: {max_step}\n\nGenerate ONLY the next single step. {examples}\n\nInput: {input}\n{scratchpad}"
     },
     "manager_prompt_json": {
         "type": "template",
-        "content": "Solve a {task_type} task with interleaving Thought, Action, Observation steps. Thought can reason about the current situation. Action can be 2 types in JSON format:\n(1) {{\"type\": \"Analyse\", \"content\": [\"user/item\", id]}}, which will ask another agent (called Analyst) to help analyse the preferences or features of user id or item id.\n(2) {{\"type\": \"Finish\", \"content\": response}}, which finishes the task and returns the response to the user.\nYou can take at most {max_step} steps.\n\nIMPORTANT: Only generate the next single JSON action. Do not predict or generate future Observations, Thoughts, or Actions.\n{examples}\n\nInput:\n{input}\n{scratchpad}"
+        "content": "Solve {task_type} task with Thought, Action, Observation steps. Actions (JSON):\n(1) {{\"type\": \"Analyse\", \"content\": [\"user/item\", id]}} — analyze preferences/features\n(2) {{\"type\": \"Finish\", \"content\": response}} — complete task\n\nMax steps: {max_step}\n\nGenerate ONLY the next JSON action. {examples}\n\nInput: {input}\n{scratchpad}"
     },
     "hint": {
         "type": "raw",
-        "content": "This is the final step. You should use Finish Action to finish the task."
+        "content": "Use Finish Action to complete the task."
     },
     "valid_action_example": {
         "type": "raw",

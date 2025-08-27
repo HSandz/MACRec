@@ -262,11 +262,15 @@ class CollaborationSystem(System):
         
         # Add progress reminder for rr tasks
         if self.task == 'rr' and hasattr(self, 'analyzed_items'):
-            progress_reminder = f'\nPROGRESS REMINDER: You have analyzed {len(self.analyzed_items)} items so far: {sorted(self.analyzed_items)}'
+            analyzed_count = len(self.analyzed_items)
             if 'retrieved_items' in self.manager_kwargs:
                 remaining = [item for item in self.manager_kwargs['retrieved_items'] if item not in self.analyzed_items]
                 if remaining:
-                    progress_reminder += f'. Still need to analyze: {sorted(remaining)}'
+                    progress_reminder = f'\nProgress: {analyzed_count}/6 items analyzed. Remaining: {sorted(remaining)}'
+                else:
+                    progress_reminder = f'\nProgress: {analyzed_count}/6 items analyzed.'
+            else:
+                progress_reminder = f'\nProgress: {analyzed_count}/6 items analyzed.'
             self.scratchpad += progress_reminder
         
         # Removed confusing action examples that were causing hallucinations
@@ -317,9 +321,9 @@ class CollaborationSystem(System):
             if len(set(recent_actions)) == 1:  # Same action repeated 3 times
                 # Only warn if it's not a finish action that might be retrying due to validation
                 if action_type.lower() != 'finish':
-                    observation = f'Warning: You have repeated the same action "{action_type}" multiple times. This suggests you may be stuck. Please try a different approach or review your reasoning.'
+                    observation = f'Warning: Repeated action "{action_type}" detected. Try a different approach.'
                     if self.task == 'rr':
-                        observation += f' For rr tasks, ensure you analyze each item only once. Items analyzed so far: {sorted(self.analyzed_items)}. Users analyzed so far: {sorted(self.analyzed_users)}.'
+                        observation += f' For rr tasks, analyze each item only once. Analyzed: {sorted(self.analyzed_items)}, Users: {sorted(self.analyzed_users)}.'
                     log_head = ':red[Loop Detection]: '
                     self.scratchpad += f'\nObservation: {observation}'
                     logger.debug(f'Observation: {observation}')
@@ -331,7 +335,7 @@ class CollaborationSystem(System):
             if self.task == 'rr':
                 if 'n_candidate' not in self.kwargs:
                     logger.debug(f'rr task: n_candidate not found in kwargs. Current kwargs: {self.kwargs}')
-                    observation = 'For retrieve & rank (rr) tasks, you MUST first use Retrieve[user_id, 6] to get candidate items before finishing. Please use Retrieve[user_id, 6] to get candidates first.'
+                    observation = 'For rr tasks, use Retrieve[user_id, 6] to get candidates before finishing.'
                     log_head = ':red[Error]: '
                 else:
                     # Check if all retrieved items have been analyzed
@@ -344,7 +348,7 @@ class CollaborationSystem(System):
                             retrieved_items = self.manager_kwargs['retrieved_items']
                             remaining_items = [item for item in retrieved_items if item not in self.analyzed_items]
                             debug_info += f'. Remaining items to analyze: {sorted(remaining_items)}'
-                        observation = f'For rr tasks, you must analyze ALL {expected_items} retrieved items before finishing. You have analyzed {len(self.analyzed_items)} items. Please analyze {missing_items} more items before using Finish.{debug_info}'
+                        observation = f'For rr tasks, analyze ALL {expected_items} items before finishing. You have {len(self.analyzed_items)}/{expected_items}. Missing: {missing_items} items.{debug_info}'
                         log_head = ':red[Error]: '
                     else:
                         # All items analyzed, proceed with normal finish validation
