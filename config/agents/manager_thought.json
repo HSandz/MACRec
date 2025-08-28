@@ -5,5 +5,7 @@
     "max_tokens": 300,
     "model_kwargs": {
         "stop": "\n"
-    }
+    },
+    "enable_compression": true,
+    "compression_ratio": 0.8
 }

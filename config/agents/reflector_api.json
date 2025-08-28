@@ -5,5 +5,7 @@
     "max_tokens": 300,
     "json_mode": true,
     "keep_reflections": true,
-    "reflection_strategy": "reflection"
+    "reflection_strategy": "reflection",
+    "enable_compression": true,
+    "compression_ratio": 0.7
 }

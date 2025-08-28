@@ -8,6 +8,8 @@
     "device": "auto",
     "json_mode": true,
     "prefix": "reflect",
+    "enable_compression": true,
+    "compression_ratio": 0.6,
     "reflect_json_schema": {
         "title": "Reflecion Schema",
         "type": "object",

@@ -323,7 +323,10 @@ class CollaborationSystem(System):
                 if action_type.lower() != 'finish':
                     observation = f'Warning: Repeated action "{action_type}" detected. Try a different approach.'
                     if self.task == 'rr':
-                        observation += f' For rr tasks, analyze each item only once. Analyzed: {sorted(self.analyzed_items)}, Users: {sorted(self.analyzed_users)}.'
+                        # Convert all to strings to ensure consistent sorting
+                        analyzed_items_str = sorted([str(x) for x in self.analyzed_items])
+                        analyzed_users_str = sorted([str(x) for x in self.analyzed_users])
+                        observation += f' For rr tasks, analyze each item only once. Analyzed: {analyzed_items_str}, Users: {analyzed_users_str}.'
                     log_head = ':red[Loop Detection]: '
                     self.scratchpad += f'\nObservation: {observation}'
                     logger.debug(f'Observation: {observation}')
@@ -376,11 +379,8 @@ class CollaborationSystem(System):
                 if self.task == 'rr':
                     if len(argument) >= 2:
                         entity_type, entity_id = argument[0], argument[1]
-                        # Ensure consistent data types - convert to int for tracking
-                        try:
-                            entity_id = int(entity_id)
-                        except (ValueError, TypeError):
-                            logger.warning(f'Could not convert entity_id {entity_id} to int')
+                        # Ensure consistent data types - always use string for tracking to avoid mixed types
+                        entity_id = str(entity_id)
                         
                         if entity_type.lower() == 'item':
                             if entity_id in self.analyzed_items:

@@ -60,14 +60,17 @@ class GeminiLLM(BaseLLM):
             `str`: The Gemini LLM output.
         """
         try:
+            # Apply prompt compression if enabled
+            final_prompt, compression_info = self.compress_prompt_if_needed(prompt)
+            
             if self.json_mode:
                 # For JSON mode, add instruction to the prompt
-                json_prompt = f"{prompt}\n\nPlease respond with valid JSON only."
+                json_prompt = f"{final_prompt}\n\nPlease respond with valid JSON only."
                 response = self.model.generate_content(json_prompt)
                 actual_prompt = json_prompt
             else:
-                response = self.model.generate_content(prompt)
-                actual_prompt = prompt
+                response = self.model.generate_content(final_prompt)
+                actual_prompt = final_prompt
             
             # Extract text from response
             if response.text:
@@ -80,8 +83,14 @@ class GeminiLLM(BaseLLM):
                     input_tokens = getattr(response.usage_metadata, 'prompt_token_count', None)
                     output_tokens = getattr(response.usage_metadata, 'candidates_token_count', None)
                 
-                # Track the usage
-                self.track_usage(actual_prompt, content, input_tokens, output_tokens)
+                # Track the usage including compression info
+                self.track_usage(
+                    actual_prompt, 
+                    content, 
+                    input_tokens, 
+                    output_tokens,
+                    compression_info=compression_info
+                )
                 
                 return content
             else:

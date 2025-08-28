@@ -88,7 +88,19 @@ class OpenSourceLLM(BaseLLM):
         Returns:
             `str`: The OpenSource LLM output.
         """
+        # Apply prompt compression if enabled
+        final_prompt, compression_info = self.compress_prompt_if_needed(prompt)
+        
         if self.json_mode:
-            return self.pipe.invoke(prompt)
+            result = self.pipe.invoke(final_prompt)
         else:
-            return self.pipe.invoke(prompt, return_full_text=False)[0]['generated_text']
+            result = self.pipe.invoke(final_prompt, return_full_text=False)[0]['generated_text']
+        
+        # Track usage including compression info
+        self.track_usage(
+            final_prompt, 
+            result, 
+            compression_info=compression_info
+        )
+        
+        return result

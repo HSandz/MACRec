@@ -5,6 +5,8 @@
     "max_tokens": 300,
     "json_mode": true,
     "top_k": 6,
+    "enable_compression": false,
+    "compression_ratio": 0.9,
     "tool_config": {
         "candidate_retriever": {
             "type": "embedding_retriever",

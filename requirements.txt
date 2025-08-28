@@ -21,3 +21,4 @@ streamlit>=1.31.0
 recbole
 scipy
 requests>=2.25.0
+llmlingua>=0.2.0

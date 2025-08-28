@@ -5,7 +5,7 @@ from langchain.prompts import PromptTemplate
 
 from macrec.agents.base import Agent
 from macrec.llms import GeminiLLM, OpenRouterLLM
-from macrec.utils import format_step, format_reflections, format_last_attempt, read_json, get_rm
+from macrec.utils import format_step, format_reflections, format_last_attempt, read_json, get_rm, configure_prompt_compression, apply_compression_to_llm
 
 class ReflectionStrategy(Enum):
     """
@@ -53,6 +53,10 @@ class Reflector(Agent):
         assert self.reflection_strategy is not None, f'Unknown reflection strategy: {reflection_strategy}'
         self.reflections: list[str] = []
         self.reflections_str: str = ''
+        
+        # Apply compression configuration if specified
+        compression_config = configure_prompt_compression(agent_config)
+        apply_compression_to_llm(self.llm, compression_config)
 
     @property
     def reflector_prompt(self) -> PromptTemplate:

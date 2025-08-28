@@ -90,8 +90,11 @@ class OpenRouterLLM(BaseLLM):
             `str`: The OpenRouter LLM output.
         """
         try:
+            # Apply prompt compression if enabled
+            final_prompt, compression_info = self.compress_prompt_if_needed(prompt)
+            
             # Prepare the request payload
-            messages = [{"role": "user", "content": prompt}]
+            messages = [{"role": "user", "content": final_prompt}]
             
             payload = {
                 "model": self.model_name,
@@ -105,7 +108,7 @@ class OpenRouterLLM(BaseLLM):
             if self.json_mode:
                 payload["response_format"] = {"type": "json_object"}
                 # Add instruction to the prompt for JSON mode
-                messages[0]["content"] = f"{prompt}\n\nPlease respond with valid JSON only."
+                messages[0]["content"] = f"{final_prompt}\n\nPlease respond with valid JSON only."
             
             # Make the API request
             response = requests.post(
@@ -130,8 +133,14 @@ class OpenRouterLLM(BaseLLM):
                         input_tokens = result['usage'].get('prompt_tokens')
                         output_tokens = result['usage'].get('completion_tokens')
                     
-                    # Track the usage
-                    self.track_usage(prompt, content, input_tokens, output_tokens)
+                    # Track the usage including compression info
+                    self.track_usage(
+                        final_prompt, 
+                        content, 
+                        input_tokens, 
+                        output_tokens,
+                        compression_info=compression_info
+                    )
                     
                     return content.strip()
                 else:
