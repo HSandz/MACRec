@@ -6,7 +6,7 @@ from typing import Any, Dict
 from macrec.llms.basellm import BaseLLM
 
 class OpenRouterLLM(BaseLLM):
-    def __init__(self, model_name: str = 'mistralai/mistral-7b-instruct', api_key: str = '', json_mode: bool = False, *args, **kwargs):
+    def __init__(self, model_name: str = 'google/gemini-2.0-flash-001', api_key: str = '', json_mode: bool = False, *args, **kwargs):
         """Initialize the OpenRouter LLM.
 
         Args:
@@ -126,12 +126,27 @@ class OpenRouterLLM(BaseLLM):
                 if 'choices' in result and len(result['choices']) > 0:
                     content = result['choices'][0]['message']['content']
                     
-                    # Track token usage if available in response
+                    # Extract comprehensive token usage from OpenRouter API response
                     input_tokens = None
                     output_tokens = None
+                    total_tokens = None
+                    
                     if 'usage' in result:
-                        input_tokens = result['usage'].get('prompt_tokens')
-                        output_tokens = result['usage'].get('completion_tokens')
+                        usage = result['usage']
+                        input_tokens = usage.get('prompt_tokens')
+                        output_tokens = usage.get('completion_tokens')
+                        total_tokens = usage.get('total_tokens')
+                        
+                        # Log detailed usage information for debugging
+                        logger.debug(f"OpenRouter API usage: prompt_tokens={input_tokens}, completion_tokens={output_tokens}, total_tokens={total_tokens}")
+                        
+                        # Validate token counts are consistent
+                        if input_tokens and output_tokens and total_tokens:
+                            expected_total = input_tokens + output_tokens
+                            if total_tokens != expected_total:
+                                logger.warning(f"Token count mismatch: API reported total={total_tokens}, calculated={expected_total}")
+                    else:
+                        logger.warning("No usage information in OpenRouter API response - falling back to estimation")
                     
                     # Track the usage including compression info
                     self.track_usage(
@@ -139,7 +154,8 @@ class OpenRouterLLM(BaseLLM):
                         content, 
                         input_tokens, 
                         output_tokens,
-                        compression_info=compression_info
+                        compression_info=compression_info,
+                        api_usage=result.get('usage', {})  # Store full usage info
                     )
                     
                     return content.strip()

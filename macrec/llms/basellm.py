@@ -45,18 +45,27 @@ class BaseLLM(ABC):
             `response` (`str`): LLM response.
             `input_tokens` (`int`, optional): Actual input token count if available.
             `output_tokens` (`int`, optional): Actual output token count if available.
-            `**kwargs`: Additional tracking info like compression_info.
+            `**kwargs`: Additional tracking info like compression_info, api_usage.
         """
+        # Use actual API token counts when available, otherwise estimate
+        api_usage = kwargs.get('api_usage', {})
+        estimated_input = False
+        estimated_output = False
+        
         if input_tokens is None:
             input_tokens = self.estimate_tokens(prompt)
+            estimated_input = True
+            
         if output_tokens is None:
             output_tokens = self.estimate_tokens(response)
+            estimated_output = True
             
         self.total_input_tokens += input_tokens
         self.total_output_tokens += output_tokens
         self.api_calls += 1
         
-        self.call_history.append({
+        # Store detailed call information
+        call_info = {
             'call_id': self.api_calls,
             'input_tokens': input_tokens,
             'output_tokens': output_tokens,
@@ -64,8 +73,19 @@ class BaseLLM(ABC):
             'model': self.model_name,
             'prompt_length': len(prompt),
             'response_length': len(response),
-            'compression_info': kwargs.get('compression_info', {})
-        })
+            'compression_info': kwargs.get('compression_info', {}),
+            'estimated_input': estimated_input,
+            'estimated_output': estimated_output,
+            'api_usage': api_usage  # Store full API usage info
+        }
+        
+        self.call_history.append(call_info)
+        
+        # Log if we're using estimates vs actual API counts
+        if estimated_input or estimated_output:
+            logger.debug(f"Token tracking for call {self.api_calls}: estimated_input={estimated_input}, estimated_output={estimated_output}")
+        else:
+            logger.debug(f"Token tracking for call {self.api_calls}: using actual API token counts")
 
     def get_usage_stats(self) -> Dict[str, Any]:
         """Get usage statistics for this LLM.
@@ -81,6 +101,29 @@ class BaseLLM(ABC):
             'api_calls': self.api_calls,
             'avg_input_tokens': self.total_input_tokens / max(self.api_calls, 1),
             'avg_output_tokens': self.total_output_tokens / max(self.api_calls, 1),
+        }
+    
+    def get_detailed_usage_stats(self) -> Dict[str, Any]:
+        """Get detailed usage statistics including API vs estimated token breakdown.
+        
+        Returns:
+            `Dict[str, Any]`: Detailed usage statistics.
+        """
+        api_calls_with_actual = sum(1 for call in self.call_history 
+                                  if not call.get('estimated_input', True) and not call.get('estimated_output', True))
+        api_calls_with_estimates = self.api_calls - api_calls_with_actual
+        
+        return {
+            'model_name': self.model_name,
+            'total_input_tokens': self.total_input_tokens,
+            'total_output_tokens': self.total_output_tokens,
+            'total_tokens': self.total_input_tokens + self.total_output_tokens,
+            'api_calls': self.api_calls,
+            'api_calls_with_actual_counts': api_calls_with_actual,
+            'api_calls_with_estimated_counts': api_calls_with_estimates,
+            'avg_input_tokens': self.total_input_tokens / max(self.api_calls, 1),
+            'avg_output_tokens': self.total_output_tokens / max(self.api_calls, 1),
+            'accuracy_rate': api_calls_with_actual / max(self.api_calls, 1),
         }
 
     def reset_usage_stats(self) -> None:
