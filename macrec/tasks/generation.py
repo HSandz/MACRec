@@ -159,6 +159,9 @@ class GenerationTask(Task):
         
         token_tracker.start_task(task_id, task_info)
         
+        # Reset all agent LLM usage stats to start fresh
+        token_tracker.reset_agent_stats(self.system)
+        
         self.before_generate()
         with tqdm(total=len(data)) as pbar:
             for sample_idx, (test_data, gt_answer, data_sample) in enumerate(data):
@@ -169,10 +172,8 @@ class GenerationTask(Task):
                 self.system.set_data(input=test_data, context="", gt_answer=gt_answer, data_sample=data_sample)
                 self.system.reset(clear=True)
                 
-                # Reset agent LLM usage for this sample
-                for agent_name, agent in getattr(self.system, 'agents', {}).items():
-                    if hasattr(agent, 'llm') and hasattr(agent.llm, 'reset_usage_stats'):
-                        agent.llm.reset_usage_stats()
+                # NO LONGER reset agent LLM usage - let it accumulate for proper tracking
+                # The token tracker will handle delta calculations
                 
                 for i in range(steps):
                     logger.debug(f'===================================Running step {i}...===================================')

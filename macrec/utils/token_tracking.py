@@ -12,6 +12,7 @@ class TokenTracker:
         self.task_stats: Dict[str, Dict] = {}
         self.current_task_id: str = None
         self.start_time: float = None
+        self.agent_last_counts: Dict[str, Dict[str, int]] = {}  # Track last seen counts per agent
         
     def start_task(self, task_id: str, task_info: Dict[str, Any] = None) -> None:
         """Start tracking a new task.
@@ -22,6 +23,9 @@ class TokenTracker:
         """
         self.current_task_id = task_id
         self.start_time = time.time()
+        
+        # Reset agent tracking for new task
+        self.agent_last_counts = {}
         
         self.task_stats[task_id] = {
             'task_info': task_info or {},
@@ -37,6 +41,54 @@ class TokenTracker:
         }
         
         logger.info(f"Started token tracking for task: {task_id}")
+        
+    def reset_agent_stats(self, system) -> None:
+        """Reset LLM usage stats for all agents in the system.
+        
+        Args:
+            system: System instance containing agents
+        """
+        # Reset all agent LLM usage stats to start fresh tracking
+        if hasattr(system, 'manager') and system.manager:
+            if hasattr(system.manager, 'thought_llm') and hasattr(system.manager.thought_llm, 'reset_usage_stats'):
+                system.manager.thought_llm.reset_usage_stats()
+            if hasattr(system.manager, 'action_llm') and hasattr(system.manager.action_llm, 'reset_usage_stats'):
+                system.manager.action_llm.reset_usage_stats()
+                
+        if hasattr(system, 'analyst') and system.analyst:
+            if hasattr(system.analyst, 'analyst') and hasattr(system.analyst.analyst, 'reset_usage_stats'):
+                system.analyst.analyst.reset_usage_stats()
+                
+        if hasattr(system, 'reflector') and system.reflector:
+            if hasattr(system.reflector, 'llm') and hasattr(system.reflector.llm, 'reset_usage_stats'):
+                system.reflector.llm.reset_usage_stats()
+                
+        if hasattr(system, 'searcher') and system.searcher:
+            if hasattr(system.searcher, 'searcher') and hasattr(system.searcher.searcher, 'reset_usage_stats'):
+                system.searcher.searcher.reset_usage_stats()
+                
+        if hasattr(system, 'interpreter') and system.interpreter:
+            if hasattr(system.interpreter, 'interpreter') and hasattr(system.interpreter.interpreter, 'reset_usage_stats'):
+                system.interpreter.interpreter.reset_usage_stats()
+                
+        if hasattr(system, 'retriever') and system.retriever:
+            if hasattr(system.retriever, 'retriever_llm') and hasattr(system.retriever.retriever_llm, 'reset_usage_stats'):
+                system.retriever.retriever_llm.reset_usage_stats()
+                
+        # Handle collaboration system with agents dict
+        if hasattr(system, 'agents') and isinstance(system.agents, dict):
+            for agent_name, agent in system.agents.items():
+                if hasattr(agent, 'llm') and hasattr(agent.llm, 'reset_usage_stats'):
+                    agent.llm.reset_usage_stats()
+                elif hasattr(agent, 'thought_llm') and hasattr(agent, 'action_llm'):
+                    if hasattr(agent.thought_llm, 'reset_usage_stats'):
+                        agent.thought_llm.reset_usage_stats()
+                    if hasattr(agent.action_llm, 'reset_usage_stats'):
+                        agent.action_llm.reset_usage_stats()
+        
+        # Clear tracking since we reset the agents
+        self.agent_last_counts = {}
+        logger.debug("Reset all agent LLM usage stats")
         
     def collect_agent_stats(self, agent_name: str, llm) -> None:
         """Collect token usage stats from an agent's LLM.
@@ -60,17 +112,52 @@ class TokenTracker:
             
         task_data = self.task_stats[self.current_task_id]
         
-        # Store agent-specific stats
-        task_data['agents'][agent_name] = stats.copy()
+        # Get the last known counts for this agent
+        agent_key = f"{self.current_task_id}:{agent_name}"
+        last_counts = self.agent_last_counts.get(agent_key, {
+            'total_input_tokens': 0,
+            'total_output_tokens': 0,
+            'total_tokens': 0,
+            'api_calls': 0
+        })
         
-        # Update totals
-        task_data['total_input_tokens'] += stats['total_input_tokens']
-        task_data['total_output_tokens'] += stats['total_output_tokens']
-        task_data['total_tokens'] += stats['total_tokens']
-        task_data['total_api_calls'] += stats['api_calls']
-        task_data['models_used'].add(stats['model_name'])
+        # Calculate deltas (only new usage since last collection)
+        delta_input = stats['total_input_tokens'] - last_counts['total_input_tokens']
+        delta_output = stats['total_output_tokens'] - last_counts['total_output_tokens']
+        delta_total = stats['total_tokens'] - last_counts['total_tokens']
+        delta_calls = stats['api_calls'] - last_counts['api_calls']
         
-        logger.debug(f"Collected stats for {agent_name}: {stats['api_calls']} calls, {stats['total_tokens']} tokens")
+        # Only add deltas if there's new usage
+        if delta_calls > 0:
+            # Store current agent-specific stats (full cumulative)
+            task_data['agents'][agent_name] = stats.copy()
+            
+            # Try to get detailed stats to track API vs estimated usage
+            if hasattr(llm, 'get_detailed_usage_stats'):
+                detailed_stats = llm.get_detailed_usage_stats()
+                task_data['agents'][agent_name].update({
+                    'api_calls_with_actual_counts': detailed_stats.get('api_calls_with_actual_counts', 0),
+                    'api_calls_with_estimated_counts': detailed_stats.get('api_calls_with_estimated_counts', 0),
+                    'accuracy_rate': detailed_stats.get('accuracy_rate', 0.0)
+                })
+            
+            # Update totals with only the delta
+            task_data['total_input_tokens'] += delta_input
+            task_data['total_output_tokens'] += delta_output
+            task_data['total_tokens'] += delta_total
+            task_data['total_api_calls'] += delta_calls
+            task_data['models_used'].add(stats['model_name'])
+            
+            # Update last known counts
+            self.agent_last_counts[agent_key] = {
+                'total_input_tokens': stats['total_input_tokens'],
+                'total_output_tokens': stats['total_output_tokens'],
+                'total_tokens': stats['total_tokens'],
+                'api_calls': stats['api_calls']
+            }
+            
+            logger.debug(f"Collected stats for {agent_name}: +{delta_calls} calls, +{delta_total} tokens (cumulative: {stats['api_calls']} calls, {stats['total_tokens']} tokens)")
+        
         
     def collect_system_stats(self, system) -> None:
         """Collect token usage stats from all agents in a system.
@@ -135,11 +222,33 @@ class TokenTracker:
         # Convert set to list for JSON serialization
         task_data['models_used'] = list(task_data['models_used'])
         
+        # Calculate token accuracy stats across all agents
+        total_api_calls_with_actual = 0
+        total_api_calls_with_estimates = 0
+        
+        for agent_name, agent_stats in task_data['agents'].items():
+            actual_calls = agent_stats.get('api_calls_with_actual_counts', 0)
+            estimated_calls = agent_stats.get('api_calls_with_estimated_counts', 0)
+            total_api_calls_with_actual += actual_calls
+            total_api_calls_with_estimates += estimated_calls
+        
+        overall_accuracy = total_api_calls_with_actual / max(task_data['total_api_calls'], 1)
+        
         logger.info(f"Task {self.current_task_id} completed:")
         logger.info(f"  Duration: {task_data['duration']:.2f}s")
         logger.info(f"  Total tokens: {task_data['total_tokens']}")
         logger.info(f"  API calls: {task_data['total_api_calls']}")
+        logger.info(f"  API calls with actual token counts: {total_api_calls_with_actual}")
+        logger.info(f"  API calls with estimated token counts: {total_api_calls_with_estimates}")
+        logger.info(f"  Token count accuracy: {overall_accuracy:.1%}")
         logger.info(f"  Models used: {task_data['models_used']}")
+        
+        # Add accuracy info to task data
+        task_data['token_accuracy'] = {
+            'api_calls_with_actual': total_api_calls_with_actual,
+            'api_calls_with_estimates': total_api_calls_with_estimates,
+            'accuracy_rate': overall_accuracy
+        }
         
         current_stats = task_data.copy()
         self.current_task_id = None
@@ -194,6 +303,7 @@ class TokenTracker:
         self.task_stats = {}
         self.current_task_id = None
         self.start_time = None
+        self.agent_last_counts = {}
         logger.info("Token tracker reset")
 
 # Global token tracker instance
