@@ -1,7 +1,6 @@
 jsonformer>=0.12.0
 langchain>=0.1.1
 langchain-community
-numpy==1.24.1
 python-dotenv==1.0.0
 tenacity==8.2.2
 peft==0.7.1
@@ -18,7 +17,9 @@ torchmetrics>=1.2.1
 sentencepiece==0.1.99
 protobuf==4.25.1
 streamlit>=1.31.0
-recbole
-scipy
+scipy==1.10.1
 requests>=2.25.0
 llmlingua>=0.2.0
+recommenders
+tensorflow>=2.8.4,!=2.9.0.*,!=2.9.1,!=2.9.2,!=2.10.0.*,<2.16
+numpy==1.26.4
