@@ -68,6 +68,11 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
     - `tools/`: The configuration for each tool.
     - `training/`: Some configuration for the PPO or other RL algorithms training.
 - `ckpts/`: The checkpoint folder for PPO training.
+- `lightgcn/`: The LightGCN implementation for generating user/item embeddings.
+    - `config.yaml`: The configuration file for LightGCN training and evaluation.
+    - `run.py`: The main file to run LightGCN training and evaluation.
+    - `saved/`: The model checkpoint folder for LightGCN.
+    - `output/`: The output folder for LightGCN, including the user/item embeddings and ID mapping files.
 - `data/`: The dataset folder which contains both the raw and preprocessed data.
 - `log/`: The log folder.
 - `run/`: The evaluation result folder.
@@ -75,9 +80,9 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
 
 ### Setup the environment
 
-0. **Create and activate a conda environment with Python 3.10.13:**
+0. **Create and activate a conda environment with Python 3.10.18:**
     ```shell
-    conda create -n macrec python=3.10.13
+    conda create -n macrec python=3.10.18
     conda activate macrec
     ```
 
@@ -143,24 +148,25 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
 
    **Note:** Dataset downloads can take significant time (a few minutes to several hours) depending on the category size and your internet connection. The Books dataset, for example, is approximately 3GB and may take 20-30 minutes to download.
 
-**Note:** We specifically test the code with Python 3.10.13. Other versions may not work as expected. Always activate the conda environment before running any commands:
+**Note:** We specifically test the code with Python 3.10.18. Other versions may not work as expected. Always activate the conda environment before running any commands:
 ```shell
 conda activate macrec
 ```
 
-### Training LightGCN Models
+### Training LightGCN Models (just for MovieLens 100k dataset)
 
 To train LightGCN models and generate embeddings for use with the retriever agent:
 
 ```shell
-python scripts/train_lightgcn.py --dataset ml-100k --epochs 100 --lr 0.001
+python lightgcn/run.py
 ```
 
-The script will:
+This will:
 - Train a LightGCN model on the specified dataset
-- Save model checkpoints in the `saved/` directory
-- Generate and save user/item embeddings in the `run/LightGCN/` directory
-- Create ID mapping files for the embedding retriever tool
+- You can modify hyperparameters in `lightgcn/config.yaml`
+- Save model checkpoints in the `lightgcn/saved/` directory
+- Generate and save user/item embeddings in the `lightgcn/output` directory
+- Create ID mapping files for the embedding retriever tool in the `lightgcn/output` directory
 
 ### API Configuration
 
@@ -230,7 +236,7 @@ You can refer to the `scripts/` folder for some useful scripts.
 
 Use the following to run the web demo:
 ```shell
-streamlit run web_demo.py
+streamlit run demo.py
 ```
 
 Then open the browser and visit `http://localhost:8501/` to use the web demo.
