@@ -13,10 +13,11 @@
     },
     "valid_action_example": {
         "type": "raw",
-        "content": "Finish[{finish}]\nAnalyse[user, USER_ID]\nAnalyse[item, ITEM_ID]\nRetrieve[USER_ID, 6]"
+        "content": "Finish[{finish}]\nAnalyse[user, USER_ID]\nAnalyse[item, ITEM_ID]\nRetrieve[USER_ID, 10]"
     },
     "valid_action_example_json": {
         "type": "raw",
         "content": "{{\"type\": \"Finish\", \"content\": {finish}}}\n{{\"type\": \"Analyse\", \"content\": [\"user\", USER_ID]}}\n{{\"type\": \"Analyse\", \"content\": [\"item\", ITEM_ID]}}\n{{\"type\": \"Retrieve\", \"content\": [USER_ID, 6]}}"
     }
 }
+    

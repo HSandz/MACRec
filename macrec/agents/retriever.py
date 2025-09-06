@@ -29,7 +29,7 @@ class Retriever(ToolAgent):
         self.retriever_llm = self.get_LLM(config=agent_config)
         self.json_mode = self.retriever_llm.json_mode
         # default K, but allow tool to override
-        self.default_k: int = get_rm(agent_config, 'top_k', 6)
+        self.default_k: int = get_rm(agent_config, 'top_k', 10)
         self.reset()
 
     @staticmethod
