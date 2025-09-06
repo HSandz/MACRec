@@ -99,7 +99,7 @@ class OpenRouterLLM(BaseLLM):
             payload = {
                 "model": self.model_name,
                 "messages": messages,
-                "max_tokens": self.max_tokens,
+                "max_tokens": min(self.max_tokens, 4096),  # Cap at 4096 to prevent very long responses
                 "temperature": self.temperature,
                 "top_p": self.top_p,
             }
@@ -110,17 +110,63 @@ class OpenRouterLLM(BaseLLM):
                 # Add instruction to the prompt for JSON mode
                 messages[0]["content"] = f"{final_prompt}\n\nPlease respond with valid JSON only."
             
-            # Make the API request
+            # Make the API request with enhanced error handling
             response = requests.post(
                 self.base_url,
                 headers=self.headers,
                 json=payload,
-                timeout=120  # 2 minute timeout
+                timeout=120,  # 2 minute timeout
+                stream=False  # Ensure we get the full response, not streaming
             )
+            
+            # Log response details for debugging
+            logger.debug(f"OpenRouter API response status: {response.status_code}")
+            logger.debug(f"OpenRouter API response headers: {dict(response.headers)}")
+            logger.debug(f"OpenRouter API response length: {len(response.text)} chars")
+            
+            # Check response size - if too large, it might be malformed
+            if len(response.text) > 500000:  # 500KB limit
+                logger.warning(f"Very large response from OpenRouter: {len(response.text)} chars")
             
             # Check if request was successful
             if response.status_code == 200:
-                result = response.json()
+                # Check content type before parsing JSON
+                content_type = response.headers.get('content-type', '')
+                if 'application/json' not in content_type:
+                    logger.warning(f"Unexpected content-type from OpenRouter: {content_type}")
+                
+                # Enhanced JSON parsing with better error handling
+                try:
+                    result = response.json()
+                except json.JSONDecodeError as json_err:
+                    # Log the response details for debugging
+                    response_text = response.text
+                    logger.error(f"JSON decode error in OpenRouter response:")
+                    logger.error(f"  Error: {json_err}")
+                    logger.error(f"  Response length: {len(response_text)} chars")
+                    logger.error(f"  Response preview (first 500 chars): {response_text[:500]}")
+                    logger.error(f"  Response preview (last 500 chars): {response_text[-500:]}")
+                    
+                    # Try to extract content manually if possible
+                    import re
+                    content_match = re.search(r'"content":\s*"([^"]*)"', response_text)
+                    if content_match:
+                        logger.warning("Attempting to extract content manually from malformed JSON")
+                        content = content_match.group(1)
+                        
+                        # Track usage with estimates since we can't parse the JSON
+                        self.track_usage(
+                            final_prompt, 
+                            content, 
+                            None,  # Will use estimation
+                            None,  # Will use estimation
+                            compression_info=compression_info,
+                            api_usage={'error': 'json_parse_failed'}
+                        )
+                        
+                        return content.strip()
+                    else:
+                        return f"Error: Invalid JSON response (could not extract content)"
                 
                 # Extract the response text and usage information
                 if 'choices' in result and len(result['choices']) > 0:
