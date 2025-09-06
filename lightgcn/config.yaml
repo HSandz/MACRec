@@ -8,8 +8,8 @@ model:
 train:
     batch_size : 2048
     decay : 0.0001 # l2 regularization for embedding parameters
-    epochs : 100 # number of epochs for training
-    learning_rate : 0.001
+    epochs : 50 # number of epochs for training
+    learning_rate : 0.015
     eval_epoch : 5 # if it is not -1, evaluate the model every eval_epoch; -1 means that evaluation will not be performed during training
     top_k : 10 # number of items to recommend when calculating evaluation metrics
 
@@ -19,4 +19,4 @@ info:
     save_model : True # whether to save model
     save_epoch : 100 # if save_model is set to True, save the model every save_epoch
     metrics : ["recall", "ndcg", "precision", "map"] # metrics for evaluation
-    MODEL_DIR : logs/ # directory of saved models
+    MODEL_DIR : lightgcn/saved # directory of saved models

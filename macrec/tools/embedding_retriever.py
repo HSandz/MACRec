@@ -1,11 +1,9 @@
 import os
 import json
+import numpy as np
 from typing import Optional, List, Tuple
 
-import numpy as np
-
 from macrec.tools.base import Tool
-
 
 class EmbeddingRetriever(Tool):
     """
@@ -13,10 +11,10 @@ class EmbeddingRetriever(Tool):
     saved by training (e.g., LightGCN) under run/ directory.
 
     Config schema (JSON at config_path):
-    - base_dir: str, directory containing run outputs (e.g., "run/LightGCN")
+    - base_dir: str, directory containing run outputs (e.g., "lightgcn")
     - run_dir: Optional[str], specific run subdirectory; if not provided, will pick the latest
-    - user_embeddings_file: str, default "user_embeddings_final.npy"
-    - item_embeddings_file: str, default "item_embeddings_final.npy"
+    - user_embeddings_file: str, default "user_embeddings.csv"
+    - item_embeddings_file: str, default "item_embeddings.csv"
     - user_id_map_file: str, default "user_id_mapping.json"
     - item_id_map_file: str, default "item_id_mapping.json"
     - top_k: int, default 10
@@ -73,38 +71,54 @@ class EmbeddingRetriever(Tool):
     def _ensure_loaded(self) -> None:
         if self._loaded:
             return
-        base_dir: str = self.config.get('base_dir', 'run/LightGCN')
+        base_dir: str = self.config.get('base_dir', 'lightgcn')
         run_dir: Optional[str] = self.config.get('run_dir')
         if run_dir is None:
             run_dir = self._find_latest_run_dir(base_dir)
             if run_dir is None:
                 raise FileNotFoundError(f"No run directory found under {base_dir}")
+        else:
+            # Join run_dir with base_dir if run_dir is specified
+            run_dir = os.path.join(base_dir, run_dir)
 
-        user_emb_file = os.path.join(run_dir, self.config.get('user_embeddings_file', 'user_embeddings_final.npy'))
-        item_emb_file = os.path.join(run_dir, self.config.get('item_embeddings_file', 'item_embeddings_final.npy'))
+        user_emb_file = os.path.join(run_dir, self.config.get('user_embeddings_file', 'user_embeddings.csv'))
+        item_emb_file = os.path.join(run_dir, self.config.get('item_embeddings_file', 'item_embeddings.csv'))
         user_map_file = os.path.join(run_dir, self.config.get('user_id_map_file', 'user_id_mapping.json'))
         item_map_file = os.path.join(run_dir, self.config.get('item_id_map_file', 'item_id_mapping.json'))
 
-        # Support .pt fallback
-        if not os.path.isfile(user_emb_file) and user_emb_file.endswith('.npy'):
-            alt = user_emb_file[:-4] + '.pt'
-            if os.path.isfile(alt):
-                import torch
-                self._user_embeddings = torch.load(alt, map_location='cpu').numpy()
+        # Load user embeddings
+        if os.path.isfile(user_emb_file):
+            if user_emb_file.endswith('.csv'):
+                import pandas as pd
+                df = pd.read_csv(user_emb_file, sep='\t', header=None)
+                # The second column contains space-separated embedding values
+                embeddings_list = []
+                for _, row in df.iterrows():
+                    embedding_str = row.iloc[1]  # Second column contains space-separated values
+                    embedding_values = list(map(float, embedding_str.split()))
+                    embeddings_list.append(embedding_values)
+                self._user_embeddings = np.array(embeddings_list, dtype=np.float32)
             else:
-                raise FileNotFoundError(f"User embeddings not found: {user_emb_file}")
+                self._user_embeddings = np.load(user_emb_file)
         else:
-            self._user_embeddings = np.load(user_emb_file)
+            raise FileNotFoundError(f"User embeddings not found: {user_emb_file}")
 
-        if not os.path.isfile(item_emb_file) and item_emb_file.endswith('.npy'):
-            alt = item_emb_file[:-4] + '.pt'
-            if os.path.isfile(alt):
-                import torch
-                self._item_embeddings = torch.load(alt, map_location='cpu').numpy()
+        # Load item embeddings  
+        if os.path.isfile(item_emb_file):
+            if item_emb_file.endswith('.csv'):
+                import pandas as pd
+                df = pd.read_csv(item_emb_file, sep='\t', header=None)
+                # The second column contains space-separated embedding values
+                embeddings_list = []
+                for _, row in df.iterrows():
+                    embedding_str = row.iloc[1]  # Second column contains space-separated values
+                    embedding_values = list(map(float, embedding_str.split()))
+                    embeddings_list.append(embedding_values)
+                self._item_embeddings = np.array(embeddings_list, dtype=np.float32)
             else:
-                raise FileNotFoundError(f"Item embeddings not found: {item_emb_file}")
+                self._item_embeddings = np.load(item_emb_file)
         else:
-            self._item_embeddings = np.load(item_emb_file)
+            raise FileNotFoundError(f"Item embeddings not found: {item_emb_file}")
 
         with open(user_map_file, 'r', encoding='utf-8') as f:
             user_map = json.load(f)
@@ -200,5 +214,3 @@ class EmbeddingRetriever(Tool):
     def retrieve_str(self, user_id: int, k: Optional[int] = None) -> str:
         ids, _ = self.retrieve(user_id=user_id, k=k)
         return f"Retrieved {len(ids)} items for user {user_id}: {', '.join(map(str, ids))}"
-
-

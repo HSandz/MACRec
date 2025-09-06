@@ -1,4 +1,7 @@
 import tensorflow as tf
+import numpy as np
+import json
+import os
 tf.get_logger().setLevel('ERROR') # only show error messages
 
 from recommenders.utils.timer import Timer
@@ -11,9 +14,12 @@ from recommenders.models.deeprec.deeprec_utils import prepare_hparams
 from recommenders.utils.notebook_utils import store_metadata
 
 # File paths
-config_file = "./config.yaml"
-user_file = "output/user_embeddings.csv"
-item_file = "output/item_embeddings.csv"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+config_file = os.path.join(BASE_DIR, "config.yaml")
+user_embedding_file = os.path.join(BASE_DIR, "output/user_embeddings.csv")
+item_embedding_file = os.path.join(BASE_DIR, "output/item_embeddings.csv")
+user_mapping_file = os.path.join(BASE_DIR, "output/user_id_mapping.json")
+item_mapping_file = os.path.join(BASE_DIR, "output/item_id_mapping.json")
 
 # Data Preparation
 df = movielens.load_pandas_df(size='100k')
@@ -43,4 +49,23 @@ store_metadata("precision", eval_precision)
 store_metadata("recall", eval_recall)
 
 # Save embeddings
-model.infer_embedding(user_file, item_file)
+model.infer_embedding(user_embedding_file, item_embedding_file)
+
+# Save mapping files
+unique_users = sorted(df['userID'].unique())
+unique_items = sorted(df['itemID'].unique())
+
+num_users = len(unique_users)
+num_items = len(unique_items)
+
+user_inner_ids = np.arange(num_users)
+item_inner_ids = np.arange(num_items)
+
+user_tokens = [str(unique_users[i]) for i in user_inner_ids]
+item_tokens = [str(unique_items[i]) for i in item_inner_ids]
+
+with open(user_mapping_file, 'w', encoding='utf-8') as f:
+    json.dump({"inner_id": user_inner_ids.tolist(), "token": user_tokens}, f, indent=2)
+
+with open("lightgcn/output/item_id_mapping.json", 'w', encoding='utf-8') as f:
+    json.dump({"inner_id": item_inner_ids.tolist(), "token": item_tokens}, f, indent=2)

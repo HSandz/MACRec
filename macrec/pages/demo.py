@@ -29,41 +29,12 @@ def demo():
         page_icon="🧠",
         layout="wide",
     )
-    
-    # Add CSS to improve sidebar visibility
-    st.markdown("""
-    <style>
-    /* Improve sidebar visibility when collapsed */
-    .css-1d391kg {
-        width: auto !important;
-        min-width: 250px !important;
-    }
-    
-    /* Better checkbox styling */
-    .stCheckbox > label {
-        font-size: 14px !important;
-        font-weight: 500 !important;
-    }
-    
-    /* Improve sidebar spacing */
-    .css-1lcbmhc {
-        padding-top: 1rem !important;
-    }
-    
-    /* Better button and widget spacing */
-    .stSelectbox > label, .stTextInput > label {
-        font-size: 13px !important;
-        font-weight: 500 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    st.sidebar.title('🧠 MACRec Demo')
-    
+
+    st.sidebar.title('MACRec Demo')
     # Model selection
-    st.sidebar.markdown("### 🤖 Model Configuration")
+    st.sidebar.markdown("Model Configuration")
     
-    use_custom = st.sidebar.checkbox('🎯 Use custom model name', help='Enable to type a custom model name instead of selecting from the list')
+    use_custom = st.sidebar.checkbox('Use custom model name', help='Enable to type a custom model name instead of selecting from the list')
     
     if use_custom:
         # Custom model input (full width when enabled)
@@ -86,24 +57,7 @@ def demo():
         logger.debug(f'Using selected model: {model_override}')
     
     logger.debug(f'Final model_override: {model_override}')
-    
-    # Display current model selection with better formatting for sidebar
-    if model_override:
-        if model_override.startswith('gemini'):
-            provider_emoji = '🟢'
-            provider_name = 'Gemini'
-        elif '/' in model_override or any(x in model_override.lower() for x in ['gpt', 'claude', 'llama', 'mistral', 'openai', 'anthropic']):
-            provider_emoji = '🔴'
-            provider_name = 'OpenRouter'
-        else:
-            provider_emoji = '⚪'
-            provider_name = 'Auto-detect'
-        
-        # More compact display for narrow sidebar
-        st.sidebar.success(f"{provider_emoji} **{provider_name}**")
-        st.sidebar.caption(f"Model: `{model_override}`")
-    else:
-        st.sidebar.info("💡 Using default models")
+
     
     st.sidebar.markdown("---")
     
