@@ -16,6 +16,10 @@ class BaseLLM(ABC):
         # Prompt compression settings
         self.enable_compression: bool = False
         self.compression_ratio: float = 0.5
+        self.prompt_compressor: Optional[Any] = None
+        # Error tracking for compression
+        self.compression_errors: int = 0
+        self.max_compression_errors: int = 3
 
     @property
     def tokens_limit(self) -> int:
@@ -148,75 +152,86 @@ class BaseLLM(ABC):
         self.compression_ratio = compression_ratio
         
         if enable:
-            logger.info(f"Enabled prompt compression for {self.model_name}")
+            # Initialize API-based prompt compressor
+            try:
+                from macrec.utils.prompt_compression import APIPromptCompressor
+                
+                # Create a separate LLM instance for compression to avoid recursion
+                compression_llm = self._create_compression_llm()
+                
+                if compression_llm is None:
+                    logger.warning("Could not create compression LLM, disabling compression")
+                    self.enable_compression = False
+                    return
+                
+                self.prompt_compressor = APIPromptCompressor(
+                    compression_ratio=compression_ratio,
+                    cache_dir="cache/prompts",
+                    enable_cache=True,
+                    min_compression_length=200,
+                    preserve_structure=True,
+                    llm_instance=compression_llm
+                )
+                
+                logger.info(f"Enabled API-based prompt compression for {self.model_name}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize API-based compression: {e}")
+                self.enable_compression = False
         else:
+            self.prompt_compressor = None
             logger.info(f"Disabled prompt compression for {self.model_name}")
-
-    def _simple_compress(self, text: str, ratio: float) -> str:
-        """Simple rule-based text compression to avoid API calls during compression.
+    
+    def _create_compression_llm(self):
+        """Create a lightweight LLM instance for compression tasks.
         
-        Args:
-            text: Text to compress
-            ratio: Target compression ratio (0.1-0.9)
-            
-        Returns:
-            Compressed text
+        This should be implemented by subclasses to avoid recursion.
         """
-        import re
-        
-        # Target length
-        target_length = int(len(text) * ratio)
-        
-        if len(text) <= target_length:
-            return text
-        
-        # Apply compression rules in order of importance
-        compressed = text
-        
-        # 1. Remove extra whitespace
-        compressed = re.sub(r'\s+', ' ', compressed)
-        compressed = compressed.strip()
-        
-        # 2. Remove redundant phrases if still too long
-        if len(compressed) > target_length:
-            # Remove common filler words while preserving structure
-            fillers = [
-                r'\b(very|really|quite|rather|extremely|incredibly|absolutely)\s+',
-                r'\b(please|kindly)\s+',
-                r'\b(I think that|I believe that|It seems that)\s+',
-                r'\b(in order to|so as to)\b',
-                r'\b(due to the fact that|because of the fact that)\b'
+        try:
+            # Import here to avoid circular imports
+            from macrec.llms.openrouter import OpenRouterLLM
+            
+            # Use a simple, reliable model for compression
+            # Avoid the same model that might be having issues
+            compression_models = [
+                'google/gemini-2.0-flash-lite-001',  # Free and fast
+                'openai/gpt-3.5-turbo',  # Reliable fallback
+                'anthropic/claude-3-haiku'  # Another reliable option
             ]
             
-            for filler in fillers:
-                compressed = re.sub(filler, '', compressed, flags=re.IGNORECASE)
-                if len(compressed) <= target_length:
-                    break
-        
-        # 3. If still too long, truncate sentences intelligently
-        if len(compressed) > target_length:
-            sentences = re.split(r'[.!?]+', compressed)
-            result = ""
+            for model in compression_models:
+                try:
+                    compression_llm = OpenRouterLLM(
+                        model_name=model,
+                        max_tokens=512,  # Keep compression responses short
+                        temperature=0.3  # Lower temperature for consistent compression
+                    )
+                    
+                    # IMPORTANT: Disable compression for the compression LLM to prevent recursion
+                    compression_llm.enable_compression = False
+                    compression_llm.compression_ratio = 1.0
+                    
+                    # Test the compression LLM with a simple prompt
+                    test_response = compression_llm("Test compression. Respond with 'OK'.")
+                    if test_response and "error" not in test_response.lower():
+                        logger.debug(f"Successfully created compression LLM with model: {model}")
+                        return compression_llm
+                    else:
+                        logger.warning(f"Compression LLM test failed for {model}: {test_response}")
+                        
+                except Exception as e:
+                    logger.debug(f"Failed to create compression LLM with {model}: {e}")
+                    continue
             
-            for sentence in sentences:
-                if len(result + sentence) <= target_length:
-                    result += sentence + ". "
-                else:
-                    break
+            # If all models fail, return None
+            logger.warning("Could not create any compression LLM")
+            return None
             
-            compressed = result.strip()
-        
-        # 4. Final truncate if necessary (preserve end of text for context)
-        if len(compressed) > target_length:
-            # Keep the first part and last part
-            first_part = compressed[:target_length//2]
-            last_part = compressed[-(target_length//2):]
-            compressed = first_part + "..." + last_part
-        
-        return compressed
+        except Exception as e:
+            logger.error(f"Error creating compression LLM: {e}")
+            return None
 
     def compress_prompt_if_needed(self, prompt: str) -> tuple[str, Dict[str, Any]]:
-        """Compress prompt if compression is enabled and prompt is long enough.
+        """Compress prompt using API-based compression if enabled.
         
         Args:
             `prompt` (`str`): Original prompt.
@@ -228,66 +243,51 @@ class BaseLLM(ABC):
             'compressed': False,
             'original_length': len(prompt),
             'compressed_length': len(prompt),
-            'token_savings': 0
+            'token_savings': 0,
+            'compression_ratio': 1.0,
+            'from_cache': False
         }
         
-        if not self.enable_compression:
+        if not self.enable_compression or not self.prompt_compressor:
             return prompt, compression_info
         
         try:
-            # Use simple rule-based compression instead of LLM-based compression
-            # to avoid recursion and API calls during compression
-            try:
-                # Simple compression: remove extra whitespace, redundant words, etc.
-                compressed_prompt = self._simple_compress(prompt, self.compression_ratio)
-                
-                original_length = len(prompt)
-                compressed_length = len(compressed_prompt)
-                actual_ratio = compressed_length / original_length if original_length > 0 else 1.0
-                
-                # Estimate token savings (rough approximation: 1 token ≈ 4 characters)
-                original_tokens = original_length // 4
-                compressed_tokens = compressed_length // 4
-                token_savings = original_tokens - compressed_tokens
-                
-                compression_info.update({
-                    'compressed': True,
-                    'compressed_length': compressed_length,
-                    'token_savings': token_savings,
-                    'compression_ratio': actual_ratio,
-                    'from_cache': False
-                })
-                
-                logger.debug(f"Simple compressed prompt for {self.model_name}: "
-                            f"{original_length} -> {compressed_length} chars "
-                            f"(~{token_savings} tokens saved)")
-                
-                return compressed_prompt, compression_info
-                original_length = len(prompt)
-                compressed_length = len(compressed_prompt)
-                actual_ratio = compressed_length / original_length if original_length > 0 else 1.0
-                token_savings = (original_length - compressed_length) // 4  # Rough estimation
-                
-                compression_info.update({
-                    'compressed': True,
-                    'compressed_length': compressed_length,
-                    'token_savings': token_savings,
-                    'compression_ratio': actual_ratio,
-                    'from_cache': False
-                })
-                
-                logger.debug(f"Compressed prompt for {self.model_name}: "
-                            f"{original_length} -> {compressed_length} chars "
-                            f"(~{token_savings} tokens saved)")
-                
-                return compressed_prompt, compression_info
-                
-            except ImportError:
-                logger.debug("LLMLingua not available, skipping compression")
-                return prompt, compression_info
+            # Use API-based compression
+            result = self.prompt_compressor.compress_prompt(
+                prompt=prompt,
+                compression_ratio=self.compression_ratio
+            )
+            
+            # Update compression info with results
+            compression_info.update({
+                'compressed': result.get('compression_enabled', False),
+                'compressed_length': result.get('compressed_length', len(prompt)),
+                'token_savings': result.get('token_savings', 0),
+                'compression_ratio': result.get('compression_ratio_actual', 1.0),
+                'from_cache': result.get('from_cache', False)
+            })
+            
+            compressed_prompt = result.get('compressed_prompt', prompt)
+            
+            if result.get('compression_enabled', False):
+                logger.debug(f"API compressed prompt for {self.model_name}: "
+                            f"{result['original_length']} -> {result['compressed_length']} chars "
+                            f"(ratio: {result['compression_ratio_actual']:.2f}, "
+                            f"~{result['token_savings']} tokens saved, "
+                            f"cached: {result['from_cache']})")
+            
+            return compressed_prompt, compression_info
                 
         except Exception as e:
-            logger.warning(f"Failed to compress prompt for {self.model_name}: {e}")
+            # Track compression errors and disable if too many occur
+            self.compression_errors += 1
+            logger.warning(f"Failed to compress prompt for {self.model_name}: {e} (error #{self.compression_errors})")
+            
+            if self.compression_errors >= self.max_compression_errors:
+                logger.error(f"Too many compression errors ({self.compression_errors}), disabling compression for {self.model_name}")
+                self.enable_compression = False
+                self.prompt_compressor = None
+            
             return prompt, compression_info
 
     @abstractmethod

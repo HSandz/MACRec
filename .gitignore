@@ -34,3 +34,5 @@ test*
 
 wandb/
 trlx/
+
+cache/

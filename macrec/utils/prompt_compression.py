@@ -47,15 +47,7 @@ class APIPromptCompressor:
         """Generate the compression instruction prompt."""
         target_length = int(len(text) * ratio)
         
-        return f"""You are an expert text compressor. Your task is to compress the following text while preserving all essential information, key details, and logical structure.
-
-COMPRESSION GUIDELINES:
-1. Target length: approximately {target_length} characters (compression ratio: {ratio:.1%})
-2. Preserve all important facts, numbers, names, and key concepts
-3. Maintain logical flow and structure
-4. Remove redundant words and phrases
-5. Use concise language while keeping clarity
-6. Keep technical terms and domain-specific vocabulary
+        return f"""Compress the following text to approximately {target_length} characters. Keep complete action examples in JSON format intact, preserve important information, and maintain logical flow and structure. Remove only redundant words.
 
 ORIGINAL TEXT:
 {text}
