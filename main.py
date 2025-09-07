@@ -15,7 +15,7 @@ def main():
     logger.add(sys.stderr, level=init_args.verbose)
     os.makedirs('logs', exist_ok=True)
     # log name use the time when the program starts, level is INFO
-    logger.add('logs/{time:YYYY-MM-DD_HH-mm-ss}.log', level='DEBUG')
+    logger.add('logs/{time:YYYY-MM-DD_HH-mm-ss}.log', level='INFO')
 
     try:
         task = eval(init_args.main + 'Task')()

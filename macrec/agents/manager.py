@@ -1,4 +1,5 @@
 from loguru import logger
+import json
 from transformers import AutoTokenizer
 from langchain.prompts import PromptTemplate
 
@@ -23,17 +24,29 @@ class Manager(Agent):
         
         # Handle thought LLM config
         if thought_config is not None:
+            thought_config = thought_config.copy()  # Don't modify original
+            thought_config['agent_context'] = 'Manager-Thought'
             self.thought_llm = self.get_LLM(config=thought_config)
         else:
             assert thought_config_path is not None, "Either thought_config_path or thought_config must be provided"
-            self.thought_llm = self.get_LLM(thought_config_path)
+            # Create a temporary config to add agent context
+            with open(thought_config_path, 'r') as f:
+                temp_config = json.load(f)
+            temp_config['agent_context'] = 'Manager-Thought'
+            self.thought_llm = self.get_LLM(config=temp_config)
         
         # Handle action LLM config
         if action_config is not None:
+            action_config = action_config.copy()  # Don't modify original
+            action_config['agent_context'] = 'Manager-Action'
             self.action_llm = self.get_LLM(config=action_config)
         else:
             assert action_config_path is not None, "Either action_config_path or action_config must be provided"
-            self.action_llm = self.get_LLM(action_config_path)
+            # Create a temporary config to add agent context
+            with open(action_config_path, 'r') as f:
+                temp_config = json.load(f)
+            temp_config['agent_context'] = 'Manager-Action'
+            self.action_llm = self.get_LLM(config=temp_config)
             
         self.json_mode = self.action_llm.json_mode
         

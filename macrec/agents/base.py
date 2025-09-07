@@ -82,8 +82,17 @@ class Agent(ABC):
             assert config_path is not None
             with open(config_path, 'r') as f:
                 config = json.load(f)
+        
+        # Make a copy to avoid modifying the original config
+        config = config.copy()
         model_type = config['model_type']
         del config['model_type']
+        
+        # Add agent context to the LLM configuration if not already set
+        if 'agent_context' not in config:
+            agent_name = self.__class__.__name__
+            config['agent_context'] = agent_name
+        
         if model_type == 'opensource':
             return OpenSourceLLM(**config)
         elif model_type == 'gemini':

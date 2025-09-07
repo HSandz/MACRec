@@ -49,7 +49,7 @@ class MyJsonFormer:
         return json.dumps(text, ensure_ascii=False)
 
 class OpenSourceLLM(BaseLLM):
-    def __init__(self, model_path: str = 'lmsys/vicuna-7b-v1.5-16k', device: int = 0, json_mode: bool = False, prefix: str = 'react', max_new_tokens: int = 300, do_sample: bool = True, temperature: float = 0.9, top_p: float = 1.0, *args, **kwargs):
+    def __init__(self, model_path: str = 'lmsys/vicuna-7b-v1.5-16k', device: int = 0, json_mode: bool = False, prefix: str = 'react', max_new_tokens: int = 300, do_sample: bool = True, temperature: float = 0.9, top_p: float = 1.0, agent_context: str = None, *args, **kwargs):
         """Initialize the OpenSource LLM. The OpenSource LLM is a wrapper of the HuggingFace pipeline.
 
         Args:
@@ -61,8 +61,14 @@ class OpenSourceLLM(BaseLLM):
             `do_sample` (`bool`, optional): Whether to use sampling. Defaults to `True`.
             `temperature` (`float`, optional): The temperature of the generation. Defaults to `0.9`.
             `top_p` (`float`, optional): The top-p of the generation. Defaults to `1.0`.
+            `agent_context` (`str`, optional): The context of the agent using this LLM (e.g., 'Manager', 'Analyst'). Defaults to None.
         """
+        # Call parent constructor to initialize token tracking attributes
+        super().__init__()
+        
+        self.model_name = model_path
         self.json_mode = json_mode
+        self.agent_context = agent_context or "Unknown"
         if device == 'auto':
             self.pipe = pipeline("text-generation", model=model_path, device_map='auto')
         else:
@@ -76,7 +82,6 @@ class OpenSourceLLM(BaseLLM):
             json_schema = kwargs.get(f'{prefix}_json_schema', None)
             assert json_schema is not None, "json_schema must be provided if json_mode is True"
             self.pipe = MyJsonFormer(json_schema=json_schema, pipeline=self.pipe, max_new_tokens=max_new_tokens, temperature=temperature, debug=kwargs.get('debug', False))
-        self.model_name = model_path
         self.max_tokens = max_new_tokens
         self.max_context_length: int = 16384 if '16k' in model_path else 32768 if '32k' in model_path else 4096
 
@@ -91,6 +96,13 @@ class OpenSourceLLM(BaseLLM):
         # Apply prompt compression if enabled
         final_prompt, compression_info = self.compress_prompt_if_needed(prompt)
         
+        # Log the prompt being sent to the LLM
+        logger.info(f"LLM Prompt ({self.agent_context} → {self.model_name}):\n{final_prompt}")
+        
+        # Log estimated token usage for the prompt
+        estimated_prompt_tokens = self.estimate_tokens(final_prompt)
+        logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_prompt_tokens} prompt tokens estimated")
+        
         if self.json_mode:
             result = self.pipe.invoke(final_prompt)
         else:
@@ -102,5 +114,17 @@ class OpenSourceLLM(BaseLLM):
             result, 
             compression_info=compression_info
         )
+        
+        # Log the response from the LLM
+        logger.info(f"LLM Response ({self.agent_context} → {self.model_name}):\n{result}")
+        
+        # Log token usage after LLM response (estimated for opensource models)
+        estimated_input = self.estimate_tokens(final_prompt)
+        estimated_output = self.estimate_tokens(result)
+        estimated_total = estimated_input + estimated_output
+        logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_input} prompt + ~{estimated_output} completion = ~{estimated_total} total tokens (estimated)")
+        
+        # Log cumulative usage
+        logger.info(f"📈 Cumulative Usage ({self.agent_context}): {self.total_input_tokens + estimated_input} total tokens across {self.api_calls + 1} calls")
         
         return result

@@ -6,18 +6,20 @@ from typing import Any, Dict
 from macrec.llms.basellm import BaseLLM
 
 class GeminiLLM(BaseLLM):
-    def __init__(self, model_name: str = 'gemini-2.0-flash-001', json_mode: bool = False, *args, **kwargs):
+    def __init__(self, model_name: str = 'gemini-2.0-flash-001', json_mode: bool = False, agent_context: str = None, *args, **kwargs):
         """Initialize the Gemini LLM.
 
         Args:
             `model_name` (`str`, optional): The name of the Gemini model. Defaults to `gemini-2.0-flash-001`.
             `json_mode` (`bool`, optional): Whether to use JSON mode. Defaults to `False`.
+            `agent_context` (`str`, optional): The context of the agent using this LLM (e.g., 'Manager', 'Analyst'). Defaults to None.
         """
         # Call parent constructor to initialize token tracking attributes
         super().__init__()
         
         self.model_name = model_name
         self.json_mode = json_mode
+        self.agent_context = agent_context or "Unknown"
         self.max_tokens: int = kwargs.get('max_tokens', 256)
         
         # Set context length based on model
@@ -63,6 +65,13 @@ class GeminiLLM(BaseLLM):
             # Apply prompt compression if enabled
             final_prompt, compression_info = self.compress_prompt_if_needed(prompt)
             
+            # Log the prompt being sent to the API
+            logger.info(f"LLM Prompt ({self.agent_context} → {self.model_name}):\n{final_prompt}")
+            
+            # Log estimated token usage for the prompt
+            estimated_prompt_tokens = self.estimate_tokens(final_prompt)
+            logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_prompt_tokens} prompt tokens estimated")
+            
             if self.json_mode:
                 # For JSON mode, add instruction to the prompt
                 json_prompt = f"{final_prompt}\n\nPlease respond with valid JSON only."
@@ -91,6 +100,23 @@ class GeminiLLM(BaseLLM):
                     output_tokens,
                     compression_info=compression_info
                 )
+                
+                # Log the response from the API
+                logger.info(f"LLM Response ({self.agent_context} → {self.model_name}):\n{content}")
+                
+                # Log token usage after API response
+                if input_tokens and output_tokens:
+                    total_tokens = input_tokens + output_tokens
+                    logger.info(f"📊 Token Usage ({self.agent_context}): {input_tokens} prompt + {output_tokens} completion = {total_tokens} total tokens")
+                else:
+                    # Fallback to estimation if no API usage info
+                    estimated_input = self.estimate_tokens(actual_prompt)
+                    estimated_output = self.estimate_tokens(content)
+                    estimated_total = estimated_input + estimated_output
+                    logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_input} prompt + ~{estimated_output} completion = ~{estimated_total} total tokens (estimated)")
+                
+                # Log cumulative usage
+                logger.info(f"📈 Cumulative Usage ({self.agent_context}): {self.total_input_tokens + (input_tokens or 0)} total tokens across {self.api_calls + 1} calls")
                 
                 return content
             else:
