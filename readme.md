@@ -1,9 +1,13 @@
-# MACRec: Multi-Agent Collaboration Framework for Recommendation
-
-A flexible multi-agent system framework for recommendation tasks that supports both **cloud LLMs** (via OpenRouter) and **local LLMs** (via Ollama).
+## MACRec: a Multi-Agent Collaboration Framework for Recommendation
 
 This repository contains the official implementation of our SIGIR 2024 demo paper:
 - [Wang, Zhefan, Yuanqing Yu, et al. "MACRec: A Multi-Agent Collaboration Framework for Recommendation". SIGIR 2024.](https://dl.acm.org/doi/abs/10.1145/3626772.3657669)
+
+The video demo is available at [Video Demo](https://cloud.tsinghua.edu.cn/f/bb41245e81f744fcbd4c/?dl=1).
+
+**A demo of using MACRec**:
+
+https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36a7bb1b
 
 ![framework](./assets/MAC-workflow.png)
 
@@ -70,26 +74,87 @@ python main.py --main Test --data_file data/ml-100k/test.csv --system collaborat
 python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 3 --ollama llama3.2:1b
 ```
 
+### Training LightGCN Models (just for MovieLens 100k dataset)
+
+To train LightGCN models and generate embeddings for use with the retriever agent:
+
+```shell
+python lightgcn/run.py
+```
+
+This will:
+- Train a LightGCN model on the specified dataset
+- You can modify hyperparameters in `lightgcn/config.yaml`
+- Save model checkpoints in the `lightgcn/saved/` directory
+- Generate and save user/item embeddings in the `lightgcn/output` directory
+- Create ID mapping files for the embedding retriever tool in the `lightgcn/output` directory
+
 ## Project Structure
 
-```
-macrec/
-├── agents/           # Agent implementations (Manager, Analyst, etc.)
-├── llms/            # LLM providers (OpenRouter, Ollama, Gemini, etc.)
-├── systems/         # Multi-agent system coordination
-├── tasks/           # Task definitions (RP, SR, RR, GEN)
-├── tools/           # Agent tools (retrieval, summarization, etc.)
-└── utils/           # Utility functions
-
-config/
-├── agents/          # Individual agent configurations
-├── systems/         # System-level configurations
-├── tools/           # Tool configurations
-└── api-config.json  # LLM provider settings
-
-data/               # Datasets (MovieLens, Amazon, etc.)
-scripts/            # Preprocessing and utility scripts
-```
+- `macrec/`: The source folder.
+    - `agents/`: All agent classes are defined here.
+        - `analyst.py`: The *Analyst* agent class.
+        - `base.py`: The base agent class and base tool agent class.
+        - `interpreter.py`: The *Task Interpreter* agent class.
+        - `manager.py`: The *Manager* agent class.
+        - `reflector.py`: The *Reflector* agent class.
+        - `retriever.py`: The *Retriever* agent class for candidate item retrieval using precomputed embeddings.
+        - `searcher.py`: The *Searcher* agent class.
+    - `dataset/`: All dataset preprocessing methods.
+    - `evaluation/`: The basic evaluation method, including the ranking metrics and the rating metrics.
+    - `llms/`: The wrapper for LLMs (both API and open source LLMs).
+    - `pages/`: The web demo pages are defined here.
+    - `rl/`: The datasets and reward function for the RLHF are defined here.
+    - `systems/`: The multi-agent system classes are defined here.
+        - `base.py`: The base system class.
+        - `collaboration.py`: The collaboration system class. **We recommend using this class for most of the tasks.**
+        - `analyse.py`: ***(Deprecated)*** The system with a *Manager* and an *Analyst*. Do not support the `chat` task.
+        - `chat.py`: ***(Deprecated)*** The system with a *Manager*, a *Searcher*, and a *Task Interpreter*. Only support the `chat` task.
+        - `react.py`: ***(Deprecated)*** The system with a single *Manager*. Do not support the `chat` task.
+        - `reflection.py`: ***(Deprecated)*** The system with a *Manager* and a *Reflector*. Do not support the `chat` task.
+    - `tasks/`: For external function calls (e.g. main.py). **Note needs to be distinguished from recommended tasks.**
+        - `base.py`: The base task class.
+        - `calculate.py`: The task for calculating the metrics.
+        - `chat.py`: The task for chatting with the `ChatSystem`.
+        - **`evaluate.py`**: The task for evaluating the system on the rating prediction or sequence recommendation tasks. The task is inherited from `generation.py`.
+        - `feedback.py`: The task for selecting the feedback for the *Reflector*. The task is inherited from `generation.py`.
+        - `generation.py`: The basic task for generating the answers from a dataset.
+        - `preprocess.py`: The task for preprocessing the dataset.
+        - **`pure_generation.py`**: The task for generating the answers from a dataset without any evaluation. The task is inherited from `generation.py`.
+        - `reward_update.py`: The task for calculating the reward function for the RLHF.
+        - `rlhf.py`: The task for training the *Reflector* with the PPO algorithm.
+        - `sample.py`: The task for sampling from the dataset.
+        - `test.py`: The task for evaluating the system on few-shot data samples. The task is inherited from `evaluate.py`.
+    - `tools/`: Tool implementations for various functionalities.
+        - `base.py`: The base tool class.
+        - `embedding_retriever.py`: Tool for retrieving top-K items using precomputed embeddings from trained models (e.g., LightGCN).
+        - `info_database.py`: Tool for retrieving item attribute information.
+        - `interaction.py`: Tool for retrieving user-item interaction history.
+        - `summarize.py`: Tool for text summarization.
+        - `wikipedia.py`: Tool for Wikipedia information retrieval.
+    - `utils/`: Some useful functions are defined here.
+- `config/`: The config folder.
+    - `api-config.json`: Used for Gemini API configuration. We give an example for the configuration, named `api-config-example.json`.
+    - `agents/`: The configuration for each agent.
+    - `prompts/`: All the prompts used in the experiments.
+        - `agent_prompt/`: The prompts for each agent.
+        - `data_prompt/`: The prompts used to prepare the input data for each task.
+        - `manager_prompt/`: The prompts for the *Manager* in the `CollaborationSystem` with different configurations.
+        - `old_system_prompt/`: ***(Deprecated)*** The prompts for other systems' agents.
+        - `task_agent_prompt/`: ***(Deprecated)*** The task-specific prompts for agents in other systems.
+    - `systems/`: The configuration for each system. Every system has a configuration folder.
+    - `tools/`: The configuration for each tool.
+    - `training/`: Some configuration for the PPO or other RL algorithms training.
+- `ckpts/`: The checkpoint folder for PPO training.
+- `lightgcn/`: The LightGCN implementation for generating user/item embeddings.
+    - `config.yaml`: The configuration file for LightGCN training and evaluation.
+    - `run.py`: The main file to run LightGCN training and evaluation.
+    - `saved/`: The model checkpoint folder for LightGCN.
+    - `output/`: The output folder for LightGCN, including the user/item embeddings and ID mapping files.
+- `data/`: The dataset folder which contains both the raw and preprocessed data.
+- `log/`: The log folder.
+- `run/`: The evaluation result folder.
+- `scripts/`: Some useful scripts.
 
 ## Usage
 
