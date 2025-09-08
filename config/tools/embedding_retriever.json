@@ -5,8 +5,8 @@
     "item_embeddings_file": "item_embeddings.csv",
     "user_id_map_file": "user_id_mapping.json",
     "item_id_map_file": "item_id_mapping.json",
-    "top_k": 10,
+    "top_k": 1682,
     "normalize": true,
-    "exclude_seen": false,
+    "exclude_seen": true,
     "user_history_path": null
 }

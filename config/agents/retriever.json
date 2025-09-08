@@ -4,7 +4,7 @@
     "temperature": 0,
     "max_tokens": 300,
     "json_mode": true,
-    "top_k": 10,
+    "top_k": 1682,
     "enable_compression": false,
     "compression_ratio": 0.9,
     "tool_config": {
@@ -18,5 +18,3 @@
         }
     }
 }
-
-

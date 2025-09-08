@@ -266,11 +266,11 @@ class CollaborationSystem(System):
             if 'retrieved_items' in self.manager_kwargs:
                 remaining = [item for item in self.manager_kwargs['retrieved_items'] if item not in self.analyzed_items]
                 if remaining:
-                    progress_reminder = f'\nProgress: {analyzed_count}/6 items analyzed. Remaining: {sorted(remaining)}'
+                    progress_reminder = f'\nProgress: {analyzed_count}/10 items analyzed. Remaining: {sorted(remaining)}'
                 else:
-                    progress_reminder = f'\nProgress: {analyzed_count}/6 items analyzed.'
+                    progress_reminder = f'\nProgress: {analyzed_count}/10 items analyzed.'
             else:
-                progress_reminder = f'\nProgress: {analyzed_count}/6 items analyzed.'
+                progress_reminder = f'\nProgress: {analyzed_count}/10 items analyzed.'
             self.scratchpad += progress_reminder
         
         # Removed confusing action examples that were causing hallucinations
@@ -338,11 +338,11 @@ class CollaborationSystem(System):
             if self.task == 'rr':
                 if 'n_candidate' not in self.kwargs:
                     logger.debug(f'rr task: n_candidate not found in kwargs. Current kwargs: {self.kwargs}')
-                    observation = 'For rr tasks, use Retrieve[user_id, 6] to get candidates before finishing.'
+                    observation = 'For rr tasks, use Retrieve[user_id, 10] to get candidates before finishing.'
                     log_head = ':red[Error]: '
                 else:
                     # Check if all retrieved items have been analyzed
-                    expected_items = self.kwargs.get('n_candidate', 6)
+                    expected_items = self.kwargs.get('n_candidate', 10)
                     if len(self.analyzed_items) < expected_items:
                         missing_items = expected_items - len(self.analyzed_items)
                         # Add detailed debugging information
