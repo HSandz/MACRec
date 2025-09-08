@@ -22,6 +22,10 @@ class GenerationTask(Task):
         parser.add_argument('--model', type=str, default='google/gemini-2.0-flash-001', help='Model name for all agents')
         parser.add_argument('--task', type=str, default='rp', choices=['rp', 'sr', 'rr', 'gen'], help='Task name')
         parser.add_argument('--max_his', type=int, default=10, help='Max history length')
+        
+        parser.add_argument('--openrouter', type=str, help='Use OpenRouter with specified model (e.g., --openrouter google/gemini-2.0-flash-001)')
+        parser.add_argument('--ollama', type=str, help='Use Ollama with specified model (e.g., --ollama llama3.2:1b)')
+        
         return parser
 
     def get_data(self, data_file: str, max_his: int) -> pd.DataFrame:
@@ -207,22 +211,69 @@ class GenerationTask(Task):
         
         self.after_generate()
 
-    def run(self, api_config: str, dataset: str, data_file: str, system: str, system_config: str, task: str, max_his: int, model: str = 'gemini'):
+    def run(self, api_config: str, dataset: str, data_file: str, system: str, system_config: str, task: str, max_his: int, model: str = 'gemini', openrouter: str = None, ollama: str = None):
         if dataset == 'None':
             dataset = os.path.basename(os.path.dirname(data_file))
         self.dataset = dataset
         self.task = task
         self.max_his = max_his
-        self.model_override = model
-        self.system_kwargs = {
-            'task': self.task,
-            'leak': False,
-            'dataset': self.dataset,
-            'model_override': model,  # Always pass the model override
-        }
+        
+        # Only apply model override if explicitly specified via CLI
+        if openrouter or ollama:
+            # Determine model provider and setup
+            provider_info = self._parse_provider_options(model, openrouter, ollama)
+            self.model_override = provider_info['model_name']
+            self.provider_type = provider_info['provider_type']
+            
+            self.system_kwargs = {
+                'task': self.task,
+                'leak': False,
+                'dataset': self.dataset,
+                'model_override': self.model_override,
+                'provider_type': self.provider_type,
+            }
+            
+            logger.info(f"🤖 Using {provider_info['provider_type']} with model: {provider_info['model_name']}")
+        else:
+            # No CLI override - use individual agent configurations
+            self.model_override = None
+            self.provider_type = None
+            
+            self.system_kwargs = {
+                'task': self.task,
+                'leak': False,
+                'dataset': self.dataset,
+            }
+            
+            logger.info("🤖 Using individual agent configurations from config files")
         
         init_api(read_json(api_config))
         data_df = self.get_data(data_file, max_his)
         self.get_system(system, system_config)
         data = self.prompt_data(data_df)
         self.generate(data, steps=self.running_steps)
+    
+    def _parse_provider_options(self, model: str, openrouter: str, ollama: str) -> dict:
+        """Parse provider-specific options and return provider info."""
+        # Count how many provider options are specified
+        provider_count = sum(1 for x in [openrouter, ollama] if x is not None)
+        
+        if provider_count > 1:
+            raise ValueError("Cannot specify multiple providers. Use either --openrouter OR --ollama, not both.")
+        
+        if openrouter:
+            return {
+                'provider_type': 'openrouter',
+                'model_name': openrouter
+            }
+        elif ollama:
+            return {
+                'provider_type': 'ollama', 
+                'model_name': ollama
+            }
+        else:
+            # Use legacy --model parameter with OpenRouter as default
+            return {
+                'provider_type': 'openrouter',
+                'model_name': model
+            }

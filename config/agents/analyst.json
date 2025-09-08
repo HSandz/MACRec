@@ -1,11 +1,11 @@
 {
-    "model_type": "openrouter",
-    "model_name": "google/gemini-2.0-flash-lite-001",
-    "temperature": 0.1,
+    "model_type": "ollama",
+    "model_name": "gemma3:1b",
+    "temperature": 0,
     "max_tokens": 300,
     "json_mode": true,
     "max_turns": 10,
-    "enable_compression": true,
+    "enable_compression": false,
     "compression_ratio": 0.8,
     "tool_config": {
         "info_retriever": {

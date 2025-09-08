@@ -12,9 +12,12 @@ def main():
     init_args, init_extras = init_parser.parse_known_args()
 
     logger.remove()
-    logger.add(sys.stderr, level=init_args.verbose)
+    # Terminal output: only show high-level messages (SUCCESS, WARNING, ERROR, CRITICAL)
+    # But allow DEBUG/INFO if explicitly requested via --verbose
+    terminal_level = init_args.verbose if init_args.verbose in ['DEBUG', 'TRACE'] else 'SUCCESS'
+    logger.add(sys.stderr, level=terminal_level)
     os.makedirs('logs', exist_ok=True)
-    # log name use the time when the program starts, level is INFO
+    # Log file: keep all detailed INFO level logging including prompts and token usage
     logger.add('logs/{time:YYYY-MM-DD_HH-mm-ss}.log', level='INFO')
 
     try:

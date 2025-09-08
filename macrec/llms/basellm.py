@@ -189,22 +189,44 @@ class BaseLLM(ABC):
         try:
             # Import here to avoid circular imports
             from macrec.llms.openrouter import OpenRouterLLM
+            from macrec.llms.ollama import OllamaLLM
             
-            # Use a simple, reliable model for compression
-            # Avoid the same model that might be having issues
+            # Try OpenRouter models first
             compression_models = [
-                'google/gemini-2.0-flash-lite-001',  # Free and fast
-                'openai/gpt-3.5-turbo',  # Reliable fallback
-                'anthropic/claude-3-haiku'  # Another reliable option
+                ('openrouter', 'google/gemini-2.0-flash-lite-001'),  # Free and fast
+                ('openrouter', 'openai/gpt-3.5-turbo'),  # Reliable fallback
+                ('openrouter', 'anthropic/claude-3-haiku'),  # Another reliable option
             ]
             
-            for model in compression_models:
+            # Add Ollama models as fallbacks
+            try:
+                # Check if Ollama is available
+                ollama_test = OllamaLLM(model_name='llama3.2')
+                if ollama_test._check_ollama_server():
+                    ollama_models = ollama_test.list_models()
+                    # Add common lightweight models if available
+                    for model in ['llama3.2:1b', 'llama3.2', 'gemma:2b', 'phi3']:
+                        if any(model in available for available in ollama_models):
+                            compression_models.append(('ollama', model))
+            except:
+                pass  # Ollama not available, skip
+            
+            for provider, model in compression_models:
                 try:
-                    compression_llm = OpenRouterLLM(
-                        model_name=model,
-                        max_tokens=512,  # Keep compression responses short
-                        temperature=0.3  # Lower temperature for consistent compression
-                    )
+                    if provider == 'openrouter':
+                        compression_llm = OpenRouterLLM(
+                            model_name=model,
+                            max_tokens=512,  # Keep compression responses short
+                            temperature=0.3  # Lower temperature for consistent compression
+                        )
+                    elif provider == 'ollama':
+                        compression_llm = OllamaLLM(
+                            model_name=model,
+                            max_tokens=512,
+                            temperature=0.3
+                        )
+                    else:
+                        continue
                     
                     # IMPORTANT: Disable compression for the compression LLM to prevent recursion
                     compression_llm.enable_compression = False
@@ -213,13 +235,13 @@ class BaseLLM(ABC):
                     # Test the compression LLM with a simple prompt
                     test_response = compression_llm("Test compression. Respond with 'OK'.")
                     if test_response and "error" not in test_response.lower():
-                        logger.debug(f"Successfully created compression LLM with model: {model}")
+                        logger.debug(f"Successfully created compression LLM with {provider} model: {model}")
                         return compression_llm
                     else:
-                        logger.warning(f"Compression LLM test failed for {model}: {test_response}")
+                        logger.warning(f"Compression LLM test failed for {provider}/{model}: {test_response}")
                         
                 except Exception as e:
-                    logger.debug(f"Failed to create compression LLM with {model}: {e}")
+                    logger.debug(f"Failed to create compression LLM with {provider}/{model}: {e}")
                     continue
             
             # If all models fail, return None

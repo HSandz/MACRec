@@ -90,28 +90,6 @@ class CollaborationSystem(System):
                 raise ValueError(f'Agent {agent} is not supported.')
         assert 'Manager' in self.agents, 'Manager is required.'
     
-    def _apply_model_override(self, config: dict) -> dict:
-        """Apply model override to a configuration dict."""
-        config = config.copy()
-        
-        # Use OpenRouter for all model overrides
-        config['model_type'] = 'openrouter'
-        config['model_name'] = self.model_override
-        
-        # Get OpenRouter API key from config
-        try:
-            from macrec.utils import read_json
-            api_config = read_json('config/api-config.json')
-            if api_config.get('provider') == 'openrouter' and 'api_key' in api_config:
-                config['api_key'] = api_config['api_key']
-                logger.info(f"Using OpenRouter API for model: {self.model_override}")
-            else:
-                logger.warning("OpenRouter API key not found in config")
-        except Exception as e:
-            logger.warning(f"Could not read API config for model override: {e}")
-        
-        return config
-
     @property
     def manager(self) -> Optional[Manager]:
         if 'Manager' not in self.agents:

@@ -4,7 +4,7 @@ from transformers import AutoTokenizer
 from langchain.prompts import PromptTemplate
 
 from macrec.agents.base import Agent
-from macrec.llms import GeminiLLM, OpenRouterLLM
+from macrec.llms import GeminiLLM, OpenRouterLLM, OllamaLLM
 from macrec.utils import format_step, run_once, configure_prompt_compression, apply_compression_to_llm
 
 class Manager(Agent):
@@ -51,14 +51,14 @@ class Manager(Agent):
         self.json_mode = self.action_llm.json_mode
         
         # Initialize tokenizers based on LLM type
-        if isinstance(self.thought_llm, (GeminiLLM, OpenRouterLLM)):
-            # For Gemini and OpenRouter, we'll use a simple word-based estimation
+        if isinstance(self.thought_llm, (GeminiLLM, OpenRouterLLM, OllamaLLM)):
+            # For Gemini, OpenRouter, and Ollama, we'll use a simple word-based estimation
             self.thought_enc = None
         else:
             self.thought_enc = AutoTokenizer.from_pretrained(self.thought_llm.model_name)
             
-        if isinstance(self.action_llm, (GeminiLLM, OpenRouterLLM)):
-            # For Gemini and OpenRouter, we'll use a simple word-based estimation
+        if isinstance(self.action_llm, (GeminiLLM, OpenRouterLLM, OllamaLLM)):
+            # For Gemini, OpenRouter, and Ollama, we'll use a simple word-based estimation
             self.action_enc = None
         else:
             self.action_enc = AutoTokenizer.from_pretrained(self.action_llm.model_name)
