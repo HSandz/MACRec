@@ -11,7 +11,85 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
 
 ![framework](./assets/MAC-workflow.png)
 
-### File structure
+## Key Features
+
+- 🤖 **Multi-Agent Collaboration**: Manager, Analyst, Searcher, Interpreter, Reflector, and Retriever agents
+- ☁️ **Cloud LLM Support**: Access to 200+ models via OpenRouter (GPT, Claude, Gemini, Llama, etc.)
+- 🏠 **Local LLM Support**: Privacy-focused local inference via Ollama
+- 🔧 **Flexible Configuration**: Mix and match different models for different agents
+- 🎯 **Multiple Tasks**: Rating Prediction (RP), Sequential Recommendation (SR), Retrieve & Rank (RR), Generation (GEN)
+- 📊 **Comprehensive Evaluation**: Built-in metrics and token usage tracking
+
+## Quick Start
+
+### 1. Environment Setup
+
+```bash
+# Create conda environment
+conda create -n macrec python=3.10.18
+conda activate macrec
+
+# Install PyTorch
+pip install torch --extra-index-url https://download.pytorch.org/whl/cu118
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 2. Setup LLM Providers
+
+#### Option A: Cloud Models (OpenRouter)
+1. Create account at [OpenRouter.ai](https://openrouter.ai)
+2. Get your API key
+3. Configure `config/api-config.json`:
+```json
+{
+    "provider": "openrouter",
+    "api_key": "your-openrouter-api-key-here"
+}
+```
+
+#### Option B: Local Models (Ollama)
+1. Install Ollama from [ollama.ai](https://ollama.ai)
+2. Pull models: `ollama pull llama3.2:1b`
+3. Start server: `ollama serve`
+
+### 3. Prepare Data
+
+```bash
+# Windows
+scripts\preprocess.bat
+
+# Linux/Mac
+bash ./scripts/preprocess.sh
+```
+
+### 4. Run Your First Experiment
+
+```bash
+# Test with cloud models (OpenRouter)
+python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 3 --openrouter google/gemini-2.0-flash-001
+
+# Test with local models (Ollama)
+python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 3 --ollama llama3.2:1b
+```
+
+### Training LightGCN Models (just for MovieLens 100k dataset)
+
+To train LightGCN models and generate embeddings for use with the retriever agent:
+
+```shell
+python lightgcn/run.py
+```
+
+This will:
+- Train a LightGCN model on the specified dataset
+- You can modify hyperparameters in `lightgcn/config.yaml`
+- Save model checkpoints in the `lightgcn/saved/` directory
+- Generate and save user/item embeddings in the `lightgcn/output` directory
+- Create ID mapping files for the embedding retriever tool in the `lightgcn/output` directory
+
+## Project Structure
 
 - `macrec/`: The source folder.
     - `agents/`: All agent classes are defined here.
@@ -78,174 +156,188 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
 - `run/`: The evaluation result folder.
 - `scripts/`: Some useful scripts.
 
-### Setup the environment
+## Usage
 
-0. **Create and activate a conda environment with Python 3.10.18:**
-    ```shell
-    conda create -n macrec python=3.10.18
-    conda activate macrec
-    ```
+### Command Line Interface
 
-1. **Install PyTorch (Note: change the URL setting if using another version of CUDA):**
-    ```shell
-    pip install torch --extra-index-url https://download.pytorch.org/whl/cu118
-    ```
+The framework provides flexible CLI options for different LLM providers:
 
-2. **Install project dependencies:**
-    ```shell
-    pip install -r requirements.txt
-    ```
+#### Cloud Models (OpenRouter)
+```bash
+# Use specific OpenRouter model for all agents
+python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 3 --openrouter google/gemini-2.0-flash-001
 
-3. **Download and preprocess datasets:**
-
-   **Quick setup (ml-100k, Amazon):**
-   
-   **On Windows:**
-   ```shell
-   scripts\preprocess.bat
-   ```
-   
-   **On Unix/Linux/Mac:**
-   ```shell
-   bash ./scripts/preprocess.sh
-   ```
-
-   **Download specific Amazon datasets:**
-   
-   You can download and preprocess any Amazon category dataset using the following command:
-   ```shell
-   python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category {dataset} --n_neg_items 7
-   ```
-
-   **Available Amazon Dataset Categories:**
-
-   | Category | Command |
-   |----------|---------|
-   | Books | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Books --n_neg_items 7` |
-   | Electronics | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Electronics --n_neg_items 7` |
-   | Movies and TV | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Movies_and_TV" --n_neg_items 7` |
-   | CDs and Vinyl | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "CDs_and_Vinyl" --n_neg_items 7` |
-   | Clothing, Shoes and Jewelry | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Clothing_Shoes_and_Jewelry" --n_neg_items 7` |
-   | Home and Kitchen | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Home_and_Kitchen" --n_neg_items 7` |
-   | Kindle Store | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Kindle_Store" --n_neg_items 7` |
-   | Sports and Outdoors | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Sports_and_Outdoors" --n_neg_items 7` |
-   | Cell Phones and Accessories | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Cell_Phones_and_Accessories" --n_neg_items 7` |
-   | Health and Personal Care | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Health_and_Personal_Care" --n_neg_items 7` |
-   | Toys and Games | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Toys_and_Games" --n_neg_items 7` |
-   | Video Games | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Video_Games" --n_neg_items 7` |
-   | Tools and Home Improvement | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Tools_and_Home_Improvement" --n_neg_items 7` |
-   | Beauty | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Beauty --n_neg_items 7` |
-   | Apps for Android | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Apps_for_Android" --n_neg_items 7` |
-   | Office Products | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Office_Products" --n_neg_items 7` |
-   | Pet Supplies | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Pet_Supplies" --n_neg_items 7` |
-   | Automotive | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Automotive --n_neg_items 7` |
-   | Grocery and Gourmet Food | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Grocery_and_Gourmet_Food" --n_neg_items 7` |
-   | Patio, Lawn and Garden | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Patio_Lawn_and_Garden" --n_neg_items 7` |
-   | Baby | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Baby --n_neg_items 7` |
-   | Digital Music | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Digital_Music" --n_neg_items 7` |
-   | Musical Instruments | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Musical_Instruments" --n_neg_items 7` |
-   | Amazon Instant Video | `python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category "Amazon_Instant_Video" --n_neg_items 7` |
-
-   **Note:** Dataset downloads can take significant time (a few minutes to several hours) depending on the category size and your internet connection. The Books dataset, for example, is approximately 3GB and may take 20-30 minutes to download.
-
-**Note:** We specifically test the code with Python 3.10.18. Other versions may not work as expected. Always activate the conda environment before running any commands:
-```shell
-conda activate macrec
+# Popular cloud models
+--openrouter google/gemini-2.0-flash-001     # Gemini 2.0 Flash
+--openrouter openai/gpt-4o                   # GPT-4o
+--openrouter anthropic/claude-3-5-sonnet     # Claude 3.5
+--openrouter meta-llama/llama-3.1-70b-instruct  # Llama 3.1 70B
 ```
 
-### Training LightGCN Models (just for MovieLens 100k dataset)
+#### Local Models (Ollama)
+```bash
+# Use specific Ollama model for all agents
+python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 3 --ollama llama3.2:1b
 
-To train LightGCN models and generate embeddings for use with the retriever agent:
-
-```shell
-python lightgcn/run.py
+# Popular local models
+--ollama llama3.2:1b      # Llama 3.2 1B (fast, good for testing)
+--ollama llama3.2:3b      # Llama 3.2 3B (balanced)
+--ollama llama3.1:8b      # Llama 3.1 8B (high quality)
+--ollama gemma2:2b        # Google Gemma 2B
+--ollama qwen2.5:7b       # Qwen 2.5 7B
 ```
 
-This will:
-- Train a LightGCN model on the specified dataset
-- You can modify hyperparameters in `lightgcn/config.yaml`
-- Save model checkpoints in the `lightgcn/saved/` directory
-- Generate and save user/item embeddings in the `lightgcn/output` directory
-- Create ID mapping files for the embedding retriever tool in the `lightgcn/output` directory
+#### Mixed Provider Configuration
+Use individual agent configurations without CLI overrides:
+```bash
+# Uses individual agent configs (some agents with Ollama, others with OpenRouter)
+python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 3
+```
 
-### API Configuration
+### Available Tasks
 
-This project now uses **OpenRouter.ai with BYOK (Bring Your Own Key)** for all LLM access, including Gemini models.
+| Task | Description | Command Example |
+|------|-------------|-----------------|
+| **sr** | Sequential Recommendation | `--task sr` |
+| **rp** | Rating Prediction | `--task rp` |
+| **rr** | Retrieve & Rank | `--task rr` |
+| **gen** | Review Generation | `--task gen` |
 
-#### Setup OpenRouter with Your Gemini API Key
-1. Go to [OpenRouter.ai](https://openrouter.ai) and create an account
-2. Add your Gemini API key to OpenRouter's BYOK settings
-3. Get your OpenRouter API key
+### System Configurations
 
-#### Configure the Project
-Create or update `config/api-config.json`:
+| Configuration | Agents | Best For |
+|---------------|---------|----------|
+| `analyse.json` | Manager + Analyst | Quick testing, simple tasks |
+| `retrieve_analyse.json` | Manager + Retriever + Analyst | Tasks needing item retrieval |
+| `reflect_analyse_search.json` | Manager + Reflector + Analyst + Searcher | Complex reasoning tasks |
+| `full.json` | All 6 agents | Maximum capability |
+
+### Example Workflows
+
+#### 1. Quick Testing (Small Sample)
+```bash
+python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 3 --ollama llama3.2:1b
+```
+
+#### 2. Full Evaluation
+```bash
+python main.py --main Evaluate --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/retrieve_analyse.json --task sr --openrouter google/gemini-2.0-flash-001
+```
+
+#### 3. Mixed Provider Setup
+Edit agent configs to use different providers, then run:
+```bash
+python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 5
+```
+
+## Dataset Support
+
+### Included Datasets
+- **MovieLens 100K**: Small dataset for quick testing
+- **Amazon Categories**: 24 product categories (Books, Electronics, etc.)
+- **Netflix**: Movie ratings dataset
+- **Yelp**: Business reviews dataset
+
+### Download Amazon Datasets
+```bash
+# Download specific Amazon category
+python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Books --n_neg_items 7
+
+# Available categories: Books, Electronics, Movies_and_TV, Clothing_Shoes_and_Jewelry, 
+# Home_and_Kitchen, Sports_and_Outdoors, Beauty, Video_Games, etc.
+```
+
+## Advanced Features
+
+### LightGCN Integration
+Train embedding models for the Retriever agent:
+```bash
+cd lightgcn
+python run.py
+```
+
+### Web Demo
+```bash
+streamlit run web_demo.py
+# Visit http://localhost:8501
+```
+
+### Token Usage Tracking
+All experiments automatically track:
+- API calls per agent
+- Token usage (input/output)
+- Cost estimation
+- Model performance metrics
+- Detailed logs in `logs/` directory
+
+## Configuration
+
+### Agent Configuration
+Each agent can be configured individually in `config/agents/`:
 ```json
 {
-    "provider": "openrouter",
-    "api_key": "your-openrouter-api-key-here"
+    "model_type": "ollama",
+    "model_name": "llama3.2:1b",
+    "temperature": 0.7,
+    "max_tokens": 1000
 }
 ```
 
-**Benefits of using OpenRouter with BYOK:**
-- Access Gemini models through OpenRouter's unified API
-- Use your own Gemini API quota and billing
-- Standardized API interface for all models
-- Easy switching between different LLM providers
-
-**Note:** Direct Gemini API support has been removed. All Gemini models are now accessed through OpenRouter.ai with your own API keys.
-
-### Run with the command line
-
-Use the following to run specific tasks:
-```shell
-python main.py -m $task_name --verbose $verbose $extra_args
+### System Configuration
+Define which agents to use in `config/systems/collaboration/`:
+```json
+{
+    "agents": ["manager", "analyst"],
+    "max_iterations": 3,
+    "collaboration_strategy": "sequential"
+}
 ```
 
-Then `main.py` will run the `${task_name}Task` defined in `macrec/tasks/*.py`.
+## Performance Tips
 
-E.g., to evaluate the sequence recommendation task in MovieLens-100k dataset for the `CollaborationSystem` with *Reflector*, *Analyst*, *Searcher*, and *Retriever* using Gemini (default):
-```shell
-python main.py --main Evaluate --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/reflect_analyse_search.json --task sr
-```
+### Choosing the Right Model
 
-To use different models, specify the `--model` parameter:
-```shell
-# Use OpenRouter GPT model
-python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/retrieve_analyse.json --task rr --samples 3 --model openai/gpt-oss-20b:free
+#### Cloud Models (Recommended for Production)
+- **High Performance**: `google/gemini-2.0-flash-001`, `openai/gpt-4o`, `anthropic/claude-3-5-sonnet`
+- **Balanced**: `meta-llama/llama-3.1-70b-instruct`, `google/gemini-1.5-pro`
+- **Budget-Friendly**: `meta-llama/llama-3.1-8b-instruct`, `google/gemini-2.0-flash-001`
 
-# Use Gemini Pro model
-python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/retrieve_analyse.json --task rr --samples 3 --model gemini-1.5-pro
-```
+#### Local Models (Privacy & Cost-Effective)
+- **Testing/Development**: `llama3.2:1b`, `gemma2:2b` (fast, lower quality)
+- **Production**: `llama3.1:8b`, `qwen2.5:7b` (good balance)
+- **High Quality**: `llama3.1:70b` (requires significant resources)
 
-Available model options include:
-- **Default**: `gemini` - Gemini 2.0 Flash via OpenRouter (google/gemini-2.0-flash-001)
-- `gemini-2.0-flash-001` - Specific Gemini model via OpenRouter
-- `gemini-1.5-pro` - Gemini Pro model via OpenRouter
-- `google/gemini-2.0-flash-001` - Direct OpenRouter Gemini model name
-- `openai/gpt-oss-20b:free` - OpenRouter free GPT model
-- `meta-llama/llama-3.1-8b-instruct` - Llama model via OpenRouter
-- `meta-llama/llama-3.1-70b-instruct` - Larger Llama model
-- `openai/gpt-4o` - GPT-4o via OpenRouter
-- `anthropic/claude-3-5-sonnet` - Claude model
-- `mistralai/mistral-7b-instruct` - Mistral model
-- And many others available on [OpenRouter](https://openrouter.ai/models)
+### Optimization Strategies
 
-You can refer to the `scripts/` folder for some useful scripts.
+#### For Small Models (1B-3B parameters)
+- Use simpler prompts
+- Reduce max_tokens to 500-1000
+- Consider single-agent systems for simple tasks
+- Enable response validation and retries
 
-### Run with the web demo
+#### For Large Models (70B+ parameters)
+- Leverage full multi-agent capabilities
+- Use complex reasoning chains
+- Enable reflection and self-correction
 
-Use the following to run the web demo:
-```shell
-streamlit run demo.py
-```
+### Troubleshooting
 
-Then open the browser and visit `http://localhost:8501/` to use the web demo.
+#### Common Issues
+1. **Ollama Connection Error**: Ensure Ollama server is running (`ollama serve`)
+2. **Model Not Found**: Pull the model first (`ollama pull model_name`)
+3. **Out of Memory**: Try smaller models or reduce batch size
+4. **API Rate Limits**: Add delays or use different providers
 
-Please note that the systems utilizing open-source LLMs or other language models may require a significant amount of memory. These systems have been disabled on machines without CUDA support.
+#### Performance Monitoring
+- Check `logs/` directory for detailed execution logs
+- Monitor token usage in saved statistics files
+- Use `--samples` parameter for testing before full runs
 
-### Citation
-If you find our work useful, please do not save your star and cite our work:
-```
+## Citation
+
+If you find our work useful, please cite our paper:
+
+```bibtex
 @inproceedings{wang2024macrec,
   title={MACRec: A Multi-Agent Collaboration Framework for Recommendation},
   author={Wang, Zhefan and Yu, Yuanqing and Zheng, Wendi and Ma, Weizhi and Zhang, Min},
@@ -254,3 +346,14 @@ If you find our work useful, please do not save your star and cite our work:
   year={2024}
 }
 ```
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+**Need Help?** 
+- 📖 Check the `docs/` directory for detailed documentation
+- 🐛 Report issues on GitHub
+- 💬 Join our community discussions
