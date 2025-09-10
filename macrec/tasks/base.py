@@ -1,11 +1,15 @@
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from loguru import logger
-from typing import Any
+from typing import Any, Optional
 
 from macrec.rl.reward import Reward, RatingPredictionRewardV1, RatingPredictionRewardV2, RatingPredictionReflectionReward, SequentialRecommendationRewardV1, SequentialRecommendationReflectionReward
+from macrec.utils.wandb_config import WandbConfig
 
 class Task(ABC):
+    def __init__(self):
+        self.wandb_config: Optional[WandbConfig] = None
+        
     @staticmethod
     @abstractmethod
     def parse_task_args(parser: ArgumentParser) -> ArgumentParser:
@@ -25,6 +29,25 @@ class Task(ABC):
         if __name not in self.__dict__:
             return None
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{__name}'")
+    
+    def init_wandb(self, project_name: str = "macrec", config: Optional[dict] = None, tags: Optional[list] = None):
+        """Initialize wandb for logging."""
+        if self.wandb_config is None:
+            self.wandb_config = WandbConfig(project_name=project_name)
+            self.wandb_config.init(config=config, tags=tags)
+        else:
+            logger.warning("Wandb already initialized")
+    
+    def log_metrics(self, metrics: dict, step: Optional[int] = None):
+        """Log metrics to wandb if initialized."""
+        if self.wandb_config:
+            self.wandb_config.log_metrics(metrics, step)
+    
+    def finish_wandb(self):
+        """Finish wandb run if initialized."""
+        if self.wandb_config:
+            self.wandb_config.finish()
+            self.wandb_config = None
 
     @abstractmethod
     def run(self, *args, **kwargs):

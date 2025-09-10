@@ -71,6 +71,19 @@ class EvaluateTask(GenerationTask):
         }
         output_file_name = '_'.join([f'{k}={v}' for k, v in output_args.items()]) + '.jsonl'
         self.output_file = jsonlines.open(os.path.join(run_dir, output_file_name), mode="w", dumps=NumpyEncoder(ensure_ascii=False).encode, flush=True)
+        
+        # Initialize wandb for evaluation
+        self.init_wandb(
+            project_name=f"macrec-{self.task}",
+            config={
+                "task": self.task,
+                "dataset": dataset,
+                "system": self.args.system,
+                "topks": self.topks,
+                "max_his": self.args.max_his
+            },
+            tags=[self.task, "evaluation", dataset]
+        )
 
     def after_step(self, answer: Any, gt_answer: int | float | str, step: int, record: dict) -> None:
         record[f'Answer_{step}'] = answer
@@ -88,6 +101,20 @@ class EvaluateTask(GenerationTask):
         self.output_file.close()
         logger.success("===================================Evaluation Report===================================")
         self.metrics.report()
+        
+        # Log final metrics to wandb
+        final_metrics = {}
+        for metric_name, metric_obj in self.metrics.items():
+            if hasattr(metric_obj, 'compute'):
+                final_metrics[metric_name] = metric_obj.compute()
+            elif hasattr(metric_obj, 'value'):
+                final_metrics[metric_name] = metric_obj.value
+                
+        if final_metrics:
+            self.log_metrics(final_metrics)
+        
+        # Finish wandb run
+        self.finish_wandb()
 
     def run(self, steps: int, topks: list[int], *args, **kwargs):
         assert kwargs['task'] in ['rp', 'sr', 'rr'], "Only support rating (rp) and ranking (sr/rr) tasks."
