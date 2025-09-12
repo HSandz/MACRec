@@ -1,15 +1,15 @@
 {
     "analyst_base_prompt": {
         "type": "template",
-        "content": "Analyze {analyse_type} {id} for {task_type}. Commands:\n(1) UserInfo[id] (2) ItemInfo[id] (3) UserHistory[id,k] (4) ItemHistory[id,k] (5) Finish[result]\nRules: No duplicates, gather 3-5 data points, then Finish.\n\nTarget: {analyse_type} {id}\n{history}"
+        "content": "Analyze {analyse_type} {id} for {task_type}.\n\nCommands: UserInfo[id], ItemInfo[id], UserHistory[id,k], ItemHistory[id,k], Finish[result]\nGather 3-5 data points, avoid duplicates, then Finish.\n\nTarget: {analyse_type} {id}\n{history}"
     },
     "analyst_prompt": {
         "type": "template",
-        "content": "{analyst_base_prompt}\n\nRules: No duplicate commands, check history, use Finish when ready (3-5 data points).\n\nCommand Examples:\n- UserInfo[123] - get user profile\n- UserHistory[123,3] - get 3 user interactions\n- ItemInfo[456] - get item details\n- ItemHistory[456,2] - get 2 item interactions\n- Finish[analysis summary] - complete when you have 3-5 data points\n\nCommand: "
+        "content": "{analyst_base_prompt}\n\nExamples: UserInfo[123], UserHistory[123,3], ItemInfo[456], Finish[analysis]\nCommand: "
     },
     "analyst_prompt_json": {
         "type": "template", 
-        "content": "{analyst_base_prompt}\n\nRules: No duplicate commands, check history, use Finish when ready (3-5 data points).\n\nCommand Examples:\n- {{\"type\":\"UserInfo\",\"content\":123}} - get user profile\n- {{\"type\":\"UserHistory\",\"content\":[123,3]}} - get 3 user interactions\n- {{\"type\":\"ItemInfo\",\"content\":456}} - get item details\n- {{\"type\":\"Finish\",\"content\":\"analysis summary\"}} - complete when you have 3-5 data points\n\nUse JSON format: {{\"type\":\"CommandName\",\"content\":value}}\nCommand: "
+        "content": "{analyst_base_prompt}\n\nJSON format: {{\"type\":\"CommandName\",\"content\":value}}\nExamples: {{\"type\":\"UserInfo\",\"content\":123}}, {{\"type\":\"Finish\",\"content\":\"analysis\"}}\nCommand: "
     },
     "analyst_examples": {
         "type": "raw",
@@ -17,18 +17,18 @@
     },
     "analyst_examples_json": {
         "type": "raw",
-        "content": "{{\"type\":\"UserInfo\",\"content\":123}}; {{\"type\":\"ItemInfo\",\"content\":456}}; {{\"type\":\"Finish\",\"content\":\"User 123 prefers anime\"}}"
+        "content": "{{\"type\":\"UserInfo\",\"content\":123}}; {{\"type\":\"Finish\",\"content\":\"User likes anime\"}}"
     },
     "analyst_fewshot": {
         "type": "raw",
-        "content": "User 123 analysis:\nUserInfo[123] → UserHistory[123,3] → ItemInfo[23] → ItemInfo[45] → Finish[User 123 likes anime genre]"
+        "content": "UserInfo[123] → UserHistory[123,3] → ItemInfo[23] → Finish[User 123 likes anime]"
     },
     "analyst_fewshot_json": {
         "type": "raw",
-        "content": "User 123 analysis:\n{{\"type\":\"UserInfo\",\"content\":123}} → {{\"type\":\"UserHistory\",\"content\":[123,3]}} → {{\"type\":\"ItemInfo\",\"content\":23}} → {{\"type\":\"Finish\",\"content\":\"User 123 likes anime\"}}"
+        "content": "{{\"type\":\"UserInfo\",\"content\":123}} → {{\"type\":\"UserHistory\",\"content\":[123,3]}} → {{\"type\":\"Finish\",\"content\":\"User likes anime\"}}"
     },
     "analyst_hint": {
         "type": "raw",
-        "content": "Use Finish command to complete the task."
+        "content": "Use Finish to complete analysis."
     }
 }
