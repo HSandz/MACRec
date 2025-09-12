@@ -165,9 +165,8 @@ class OllamaLLM(BaseLLM):
             # Add JSON mode if enabled
             if self.json_mode:
                 payload["format"] = "json"
-                # Add instruction to the prompt for JSON mode
-                final_prompt_with_json = f"{final_prompt}\n\nPlease respond with valid JSON only."
-                payload["prompt"] = final_prompt_with_json
+                # The JSON instructions should come from the prompt templates, not hardcoded here
+                payload["prompt"] = final_prompt
             
             # Make the API request with enhanced error handling
             response = requests.post(
@@ -228,7 +227,7 @@ class OllamaLLM(BaseLLM):
                         logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_input} prompt + ~{estimated_output} completion = ~{estimated_total} total tokens (estimated)")
                     
                     # Log cumulative usage
-                    logger.debug(f"📊 Cumulative Usage ({self.agent_context}): {self.total_input_tokens} input + {self.total_output_tokens} output = {self.total_input_tokens + self.total_output_tokens} total tokens across {self.api_calls} calls")
+                    logger.info(f"� Cumulative Usage ({self.agent_context}): {self.total_input_tokens + self.total_output_tokens} total tokens across {self.api_calls} calls")
                     
                     return content
                 else:

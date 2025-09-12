@@ -32,7 +32,7 @@ class CollaborationSystem(System):
         self.init_agents(self.config['agents'])
         self.manager_kwargs = {
             'max_step': self.max_step,
-            'task_type': self.task,  # Add task_type so manager knows what task it's working on
+            'task_type': self.task,
         }
         if self.reflector is not None:
             self.manager_kwargs['reflections'] = ''
@@ -384,46 +384,66 @@ class CollaborationSystem(System):
                                 logger.debug(f'Added user {entity_id} to analyzed_users. Total analyzed: {len(self.analyzed_users)}')
                 
                 self.log(f':violet[Calling] :red[Analyst] :violet[with] :blue[{argument}]:violet[...]', agent=self.manager, logging=False)
-                observation = self.analyst.invoke(argument=argument, json_mode=self.manager.json_mode)
-                log_head = f':violet[Response from] :red[Analyst] :violet[with] :blue[{argument}]:violet[:]\n- '
-                
-                # Check if the analyst returned an error and suggest correction
-                if observation and "Invalid id:" in observation and ("user_" in observation or "item_" in observation):
-                    # Add a helpful hint to the scratchpad about the error
-                    observation += " Please retry with the correct format in your next action."
+                try:
+                    observation = self.analyst.invoke(argument=argument, json_mode=self.manager.json_mode)
+                    log_head = f':violet[Response from] :red[Analyst] :violet[with] :blue[{argument}]:violet[:]\n- '
+                    
+                    # Check if the analyst returned an error and suggest correction
+                    if observation and "Invalid" in observation:
+                        # Add a helpful hint to the scratchpad about the error
+                        observation += " Please retry with the correct format in your next action."
+                except Exception as e:
+                    logger.error(f"Error in Analyst invocation: {e}")
+                    observation = f"Analyst encountered an error: {str(e)}. Please try a different action or check your input format."
+                    log_head = f':red[Error from] :red[Analyst] :red[with] :blue[{argument}]:red[:]\n- '
         elif action_type.lower() == 'search':
             if self.searcher is None:
                 observation = 'Searcher is not configured. Cannot execute the action "Search".'
             else:
                 self.log(f':violet[Calling] :red[Searcher] :violet[with] :blue[{argument}]:violet[...]', agent=self.manager, logging=False)
-                observation = self.searcher.invoke(argument=argument, json_mode=self.manager.json_mode)
-                log_head = f':violet[Response from] :red[Searcher] :violet[with] :blue[{argument}]:violet[:]\n- '
+                try:
+                    observation = self.searcher.invoke(argument=argument, json_mode=self.manager.json_mode)
+                    log_head = f':violet[Response from] :red[Searcher] :violet[with] :blue[{argument}]:violet[:]\n- '
+                except Exception as e:
+                    logger.error(f"Error in Searcher invocation: {e}")
+                    observation = f"Searcher encountered an error: {str(e)}. Please try a different search query."
+                    log_head = f':red[Error from] :red[Searcher] :red[with] :blue[{argument}]:red[:]\n- '
         elif action_type.lower() == 'retrieve':
             if self.retriever is None:
                 observation = 'Retriever is not configured. Cannot execute the action "Retrieve".'
             else:
                 self.log(f':violet[Calling] :red[Retriever] :violet[with] :blue[{argument}]:violet[...]', agent=self.manager, logging=False)
-                observation = self.retriever.invoke(argument=argument, json_mode=self.manager.json_mode)
-                log_head = f':violet[Response from] :red[Retriever] :violet[with] :blue[{argument}]:violet[:]\n- '
-                
-                # For rr tasks, extract item IDs from retriever response to help with tracking
-                if self.task == 'rr' and observation:
-                    # Parse the observation to extract item IDs and convert to integers for consistency
-                    item_id_strings = re.findall(r'^(\d+):', observation, re.MULTILINE)
-                    if item_id_strings:
-                        # Convert to integers for consistent tracking
-                        item_ids = [int(id_str) for id_str in item_id_strings]
-                        logger.debug(f'Retrieved items for analysis tracking: {item_ids}')
-                        # Add to manager kwargs for better context
-                        if 'retrieved_items' not in self.manager_kwargs:
-                            self.manager_kwargs['retrieved_items'] = item_ids
+                try:
+                    observation = self.retriever.invoke(argument=argument, json_mode=self.manager.json_mode)
+                    log_head = f':violet[Response from] :red[Retriever] :violet[with] :blue[{argument}]:violet[:]\n- '
+                    
+                    # For rr tasks, extract item IDs from retriever response to help with tracking
+                    if self.task == 'rr' and observation:
+                        # Parse the observation to extract item IDs and convert to integers for consistency
+                        item_id_strings = re.findall(r'^(\d+):', observation, re.MULTILINE)
+                        if item_id_strings:
+                            # Convert to integers for consistent tracking
+                            item_ids = [int(id_str) for id_str in item_id_strings]
+                            logger.debug(f'Retrieved items for analysis tracking: {item_ids}')
+                            # Add to manager kwargs for better context
+                            if 'retrieved_items' not in self.manager_kwargs:
+                                self.manager_kwargs['retrieved_items'] = item_ids
+                except Exception as e:
+                    logger.error(f"Error in Retriever invocation: {e}")
+                    observation = f"Retriever encountered an error: {str(e)}. Please try a different retrieval query."
+                    log_head = f':red[Error from] :red[Retriever] :red[with] :blue[{argument}]:red[:]\n- '
         elif action_type.lower() == 'interpret':
             if self.interpreter is None:
                 observation = 'Interpreter is not configured. Cannot execute the action "Interpret".'
             else:
                 self.log(f':violet[Calling] :red[Interpreter] :violet[with] :blue[{argument}]:violet[...]', agent=self.manager, logging=False)
-                observation = self.interpreter.invoke(argument=argument, json_mode=self.manager.json_mode)
-                log_head = f':violet[Response from] :red[Interpreter] :violet[with] :blue[{argument}]:violet[:]\n- '
+                try:
+                    observation = self.interpreter.invoke(argument=argument, json_mode=self.manager.json_mode)
+                    log_head = f':violet[Response from] :red[Interpreter] :violet[with] :blue[{argument}]:violet[:]\n- '
+                except Exception as e:
+                    logger.error(f"Error in Interpreter invocation: {e}")
+                    observation = f"Interpreter encountered an error: {str(e)}. Please try a different interpretation request."
+                    log_head = f':red[Error from] :red[Interpreter] :red[with] :blue[{argument}]:red[:]\n- '
         else:
             observation = 'Invalid Action type or format. Valid Action examples are {self.manager.valid_action_example}.'
 
@@ -433,10 +453,32 @@ class CollaborationSystem(System):
         self.log(f'{log_head}{observation}', agent=self.manager, logging=False)
 
     def step(self):
-        self.think()
-        action_type, argument = self.act()
-        self.execute(action_type, argument)
-        self.step_n += 1
+        try:
+            self.think()
+            action_type, argument = self.act()
+            self.execute(action_type, argument)
+            self.step_n += 1
+        except Exception as e:
+            logger.error(f"Error in step {self.step_n}: {e}")
+            # Add error information to scratchpad to help system recover
+            error_observation = f"System encountered an error: {str(e)}. Continuing with next action."
+            self.scratchpad += f'\nObservation: {error_observation}'
+            self.log(f':red[System Error]:red[:] {error_observation}', agent=self.manager, logging=False)
+            self.step_n += 1
+            
+            # If we get too many consecutive errors, halt the system
+            if hasattr(self, '_consecutive_errors'):
+                self._consecutive_errors += 1
+            else:
+                self._consecutive_errors = 1
+                
+            if self._consecutive_errors >= 5:
+                logger.error("Too many consecutive errors. Halting system.")
+                self.halt("System halted due to excessive errors.")
+            else:
+                # Reset error counter on successful step
+                if not str(e):  # If no error, reset counter
+                    self._consecutive_errors = 0
 
     def reflect(self) -> bool:
         if (not self.is_finished() and not self.is_halted()) or self.reflector is None:
@@ -519,7 +561,22 @@ class CollaborationSystem(System):
         max_reflections = 3
         
         while not self.is_finished() and not self.is_halted():
-            self.step()
+            try:
+                self.step()
+                # Reset consecutive error counter on successful step
+                if hasattr(self, '_consecutive_errors'):
+                    self._consecutive_errors = 0
+            except Exception as e:
+                logger.error(f"Critical error in main loop: {e}")
+                # Try to gracefully finish instead of crashing
+                if hasattr(self, 'manager') and hasattr(self.manager, 'finish'):
+                    try:
+                        self.manager.finish(f"System encountered critical error: {str(e)}. Attempting graceful shutdown.")
+                    except:
+                        logger.error("Failed to gracefully finish. System will halt.")
+                        break
+                else:
+                    break
         
         # Perform reflection after reasoning is complete
         should_continue_reflecting = self.reflect()

@@ -163,6 +163,8 @@ class Analyst(ToolAgent):
         
         if action_type.lower() == 'userinfo':
             try:
+                if argument is None:
+                    raise ValueError("Argument cannot be None")
                 query_user_id = int(argument)
                 # Check if already queried
                 if query_user_id in self.queried_users:
@@ -173,10 +175,13 @@ class Analyst(ToolAgent):
                     self.queried_users.add(query_user_id)
                     self.gathered_info[f"user_{query_user_id}"] = observation
                     log_head = f':violet[Look up UserInfo of user] :red[{query_user_id}]:violet[...]\n- '
-            except ValueError or TypeError:
-                observation = f"Invalid user id: {argument}"
+            except (ValueError, TypeError):
+                observation = f"Invalid user id: {argument}. Please provide a valid user ID number."
+                log_head = ':red[Invalid UserInfo command]:red[...]\n- '
         elif action_type.lower() == 'iteminfo':
             try:
+                if argument is None:
+                    raise ValueError("Argument cannot be None")
                 query_item_id = int(argument)
                 # Check if already queried
                 if query_item_id in self.queried_items:
@@ -187,8 +192,9 @@ class Analyst(ToolAgent):
                     self.queried_items.add(query_item_id)
                     self.gathered_info[f"item_{query_item_id}"] = observation
                     log_head = f':violet[Look up ItemInfo of item] :red[{query_item_id}]:violet[...]\n- '
-            except ValueError or TypeError:
-                observation = f"Invalid item id: {argument}"
+            except (ValueError, TypeError):
+                observation = f"Invalid item id: {argument}. Please provide a valid item ID number."
+                log_head = ':red[Invalid ItemInfo command]:red[...]\n- '
         elif action_type.lower() == 'userhistory':
             valid = True
             if self.json_mode:
@@ -202,11 +208,13 @@ class Analyst(ToolAgent):
                         valid = False
             else:
                 try:
+                    if argument is None:
+                        raise ValueError("Argument cannot be None")
                     query_user_id, k = argument.split(',')
                     query_user_id = int(query_user_id)
                     k = int(k)
-                except ValueError or TypeError:
-                    observation = f"Invalid user id and retrieval number: {argument}"
+                except (ValueError, TypeError):
+                    observation = f"Invalid user id and retrieval number: {argument}. Please provide format 'user_id,number'."
                     valid = False
             if valid:
                 # Check if already queried
@@ -231,11 +239,13 @@ class Analyst(ToolAgent):
                         valid = False
             else:
                 try:
+                    if argument is None:
+                        raise ValueError("Argument cannot be None")
                     query_item_id, k = argument.split(',')
                     query_item_id = int(query_item_id)
                     k = int(k)
-                except ValueError or TypeError:
-                    observation = f"Invalid item id and retrieval number: {argument}"
+                except (ValueError, TypeError):
+                    observation = f"Invalid item id and retrieval number: {argument}. Please provide format 'item_id,number'."
                     valid = False
             if valid:
                 # Check if already queried
@@ -265,9 +275,43 @@ class Analyst(ToolAgent):
         assert 'user_id' in self.system.data_sample, "User id is not provided."
         assert 'item_id' in self.system.data_sample, "Item id is not provided."
         self.interaction_retriever.reset(user_id=self.system.data_sample['user_id'], item_id=self.system.data_sample['item_id'])
+        
+        consecutive_invalid_commands = 0
+        max_invalid_commands = 3
+        
         while not self.is_finished():
-            command = self._prompt_analyst(id=id, analyse_type=analyse_type)
-            self.command(command)
+            try:
+                command = self._prompt_analyst(id=id, analyse_type=analyse_type)
+                
+                # Check if command is valid before executing
+                action_type, argument = parse_action(command, json_mode=self.json_mode)
+                
+                if action_type.lower() == 'invalid':
+                    consecutive_invalid_commands += 1
+                    logger.warning(f"Invalid command generated: {command} (attempt {consecutive_invalid_commands})")
+                    
+                    if consecutive_invalid_commands >= max_invalid_commands:
+                        logger.error(f"Too many consecutive invalid commands. Forcing finish.")
+                        self.finish("Analysis terminated due to repeated invalid responses.")
+                        break
+                    
+                    # Add error feedback to history to help the model learn
+                    error_observation = f"Invalid command format: '{command}'. Please use the correct JSON format with valid values."
+                    turn = {
+                        'command': command,
+                        'observation': error_observation,
+                    }
+                    self._history.append(turn)
+                    continue
+                else:
+                    consecutive_invalid_commands = 0  # Reset counter on valid command
+                
+                self.command(command)
+            except Exception as e:
+                logger.error(f"Error in analyst forward: {e}")
+                self.finish(f"Analysis terminated due to error: {str(e)}")
+                break
+                
         if not self.finished:
             return "Analyst did not return any result."
         return self.results
@@ -303,7 +347,7 @@ class Analyst(ToolAgent):
                 else:
                     try:
                         id = int(id)
-                    except ValueError or TypeError:
+                    except (ValueError, TypeError):
                         observation = f"Invalid id: {id}. The id should be an integer."
                         return observation
         return self(analyse_type=analyse_type, id=id)
