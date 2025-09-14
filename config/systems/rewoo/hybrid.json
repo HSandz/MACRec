@@ -1,0 +1,35 @@
+{
+    "supported_tasks": [
+        "rp",
+        "sr",
+        "rr",
+        "gen"
+    ],
+    "agents": {
+        "Manager": {
+            "action_config_path": "config/agents/manager_action.json",
+            "thought_config_path": "config/agents/manager_thought.json"
+        },
+        "Planner": {
+            "config_path": "config/agents/planner.json"
+        },
+        "Retriever": {
+            "config_path": "config/agents/retriever.json",
+            "prompt_config": "config/prompts/agent_prompt/retriever.json"
+        },
+        "Analyst": {
+            "config_path": "config/agents/analyst.json",
+            "prompt_config": "config/prompts/agent_prompt/analyst.json"
+        },
+        "Reflector": {
+            "config_path": "config/agents/reflector.json",
+            "prompt_config": "config/prompts/agent_prompt/reflector.json"
+        },
+        "Solver": {
+            "config_path": "config/agents/solver.json"
+        }
+    },
+    "agent_prompt": "config/prompts/manager_prompt/reflect_analyse.json",
+    "data_prompt": "config/prompts/data_prompt/{task}.json",
+    "max_step": 15
+}

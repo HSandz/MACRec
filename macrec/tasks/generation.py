@@ -9,7 +9,7 @@ import datetime
 
 from macrec.tasks.base import Task
 from macrec.utils import init_api, read_json, token_tracker
-from macrec.systems import ReActSystem, ReflectionSystem, AnalyseSystem, CollaborationSystem
+from macrec.systems import ReActSystem, ReflectionSystem, AnalyseSystem, CollaborationSystem, ReWOOSystem
 
 class GenerationTask(Task):
     @staticmethod
@@ -17,7 +17,7 @@ class GenerationTask(Task):
         parser.add_argument('--api_config', type=str, default='config/api-config.json', help='Api configuration file')
         parser.add_argument('--dataset', type=str, default='None', help='Dataset name')
         parser.add_argument('--data_file', type=str, required=True, help='Dataset file')
-        parser.add_argument('--system', type=str, default='react', choices=['react', 'reflection', 'analyse', 'collaboration'], help='System name')
+        parser.add_argument('--system', type=str, default='react', choices=['react', 'reflection', 'analyse', 'collaboration', 'rewoo'], help='System name')
         parser.add_argument('--system_config', type=str, required=True, help='System configuration file')
         parser.add_argument('--model', type=str, default='google/gemini-2.0-flash-001', help='Model name for all agents')
         parser.add_argument('--task', type=str, default='rp', choices=['rp', 'sr', 'rr', 'gen'], help='Task name')
@@ -87,6 +87,8 @@ class GenerationTask(Task):
             self.system = AnalyseSystem(config_path=system_config, **self.system_kwargs)
         elif system == 'collaboration':
             self.system = CollaborationSystem(config_path=system_config, **self.system_kwargs)
+        elif system == 'rewoo':
+            self.system = ReWOOSystem(config_path=system_config, **self.system_kwargs)
         else:
             raise NotImplementedError
 

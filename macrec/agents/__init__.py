@@ -6,3 +6,5 @@ from macrec.agents.searcher import Searcher
 from macrec.agents.interpreter import Interpreter
 from macrec.agents.analyst import Analyst
 from macrec.agents.retriever import Retriever
+from macrec.agents.planner import Planner
+from macrec.agents.solver import Solver
