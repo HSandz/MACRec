@@ -14,6 +14,7 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
 ## Key Features
 
 - 🤖 **Multi-Agent Collaboration**: Manager, Analyst, Searcher, Interpreter, Reflector, and Retriever agents
+- 🧠 **ReWOO Style**: Reasoning Without Observation - 3-phase workflow (Planning → Working → Solving)
 - ☁️ **Cloud LLM Support**: Access to 200+ models via OpenRouter (GPT, Claude, Gemini, Llama, etc.)
 - 🏠 **Local LLM Support**: Privacy-focused local inference via Ollama
 - 🔧 **Flexible Configuration**: Mix and match different models for different agents
@@ -72,6 +73,9 @@ python main.py --main Test --data_file data/ml-100k/test.csv --system collaborat
 
 # Test with local models (Ollama)
 python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 3 --ollama llama3.2:1b
+
+# Test ReWOO system (3-phase reasoning workflow)
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 3
 ```
 
 ### Training LightGCN Models (just for MovieLens 100k dataset)
@@ -100,6 +104,8 @@ This will:
         - `reflector.py`: The *Reflector* agent class.
         - `retriever.py`: The *Retriever* agent class for candidate item retrieval using precomputed embeddings.
         - `searcher.py`: The *Searcher* agent class.
+        - `planner.py`: The *Planner* agent for ReWOO-style task decomposition.
+        - `solver.py`: The *Solver* agent for ReWOO-style result aggregation.
     - `dataset/`: All dataset preprocessing methods.
     - `evaluation/`: The basic evaluation method, including the ranking metrics and the rating metrics.
     - `llms/`: The wrapper for LLMs (both API and open source LLMs).
@@ -108,6 +114,7 @@ This will:
     - `systems/`: The multi-agent system classes are defined here.
         - `base.py`: The base system class.
         - `collaboration.py`: The collaboration system class. **We recommend using this class for most of the tasks.**
+        - `rewoo.py`: The ReWOO (Reasoning Without Observation) system class implementing 3-phase workflow.
         - `analyse.py`: ***(Deprecated)*** The system with a *Manager* and an *Analyst*. Do not support the `chat` task.
         - `chat.py`: ***(Deprecated)*** The system with a *Manager*, a *Searcher*, and a *Task Interpreter*. Only support the `chat` task.
         - `react.py`: ***(Deprecated)*** The system with a single *Manager*. Do not support the `chat` task.
@@ -205,12 +212,19 @@ python main.py --main Test --data_file data/ml-100k/test.csv --system collaborat
 
 ### System Configurations
 
+#### Collaboration System
 | Configuration | Agents | Best For |
 |---------------|---------|----------|
 | `analyse.json` | Manager + Analyst | Quick testing, simple tasks |
 | `retrieve_analyse.json` | Manager + Retriever + Analyst | Tasks needing item retrieval |
 | `reflect_analyse_search.json` | Manager + Reflector + Analyst + Searcher | Complex reasoning tasks |
 | `full.json` | All 6 agents | Maximum capability |
+
+#### ReWOO System (3-Phase Reasoning)
+| Configuration | Agents | Best For |
+|---------------|---------|----------|
+| `basic.json` | Planner + Analyst + Solver | Structured reasoning, limited agents |
+| `full.json` | Planner + All Workers + Solver | Complex multi-step reasoning |
 
 ### Example Workflows
 
@@ -224,7 +238,16 @@ python main.py --main Test --data_file data/ml-100k/test.csv --system collaborat
 python main.py --main Evaluate --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/retrieve_analyse.json --task sr --openrouter google/gemini-2.0-flash-001
 ```
 
-#### 3. Mixed Provider Setup
+#### 3. ReWOO System Testing
+```bash
+# Basic ReWOO with limited agents
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 1 --openrouter google/gemini-2.0-flash-001
+
+# Full ReWOO with all workers
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/full.json --task sr --samples 1 --openrouter google/gemini-2.0-flash-001
+```
+
+#### 4. Mixed Provider Setup
 Edit agent configs to use different providers, then run:
 ```bash
 python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 5
@@ -249,6 +272,28 @@ python main.py --main Preprocess --data_dir data --dataset amazon --amazon_categ
 
 ## Advanced Features
 
+### ReWOO System (Reasoning Without Observation)
+The ReWOO system implements a structured 3-phase reasoning approach:
+
+1. **Planning Phase**: Planner agent decomposes tasks into sub-problems
+2. **Working Phase**: Worker agents execute each step independently  
+3. **Solving Phase**: Solver agent aggregates results into final recommendations
+
+#### Key Benefits
+- **Structured Reasoning**: Clear separation of planning, execution, and synthesis
+- **Flexible Worker Assignment**: Adapts to available agents (basic vs full configuration)
+- **Improved Accuracy**: Multi-step reasoning with intermediate validation
+- **Scalable**: Can handle complex tasks by breaking them into manageable steps
+
+#### Usage Examples
+```bash
+# Use basic ReWOO (Planner + Analyst + Solver)
+python main.py --main Test --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 1
+
+# Use full ReWOO (Planner + All Workers + Solver) 
+python main.py --main Test --system rewoo --system_config config/systems/rewoo/full.json --task sr --samples 1
+```
+
 ### LightGCN Integration
 Train embedding models for the Retriever agent:
 ```bash
@@ -272,6 +317,21 @@ All experiments automatically track:
 
 ## Configuration
 
+### System Types
+
+#### Collaboration System (`--system collaboration`)
+Traditional multi-agent system where agents collaborate dynamically:
+- **Manager**: Orchestrates the overall process
+- **Agents**: Work together on different aspects (analysis, retrieval, interpretation)
+- **Best For**: General recommendation tasks, complex interactions
+
+#### ReWOO System (`--system rewoo`)  
+Structured 3-phase reasoning system:
+- **Phase 1**: Planner decomposes the task
+- **Phase 2**: Workers execute steps independently
+- **Phase 3**: Solver synthesizes results
+- **Best For**: Complex reasoning tasks, systematic analysis
+
 ### Agent Configuration
 Each agent can be configured individually in `config/agents/`:
 ```json
@@ -284,12 +344,23 @@ Each agent can be configured individually in `config/agents/`:
 ```
 
 ### System Configuration
-Define which agents to use in `config/systems/collaboration/`:
+Define which agents to use and system behavior:
+
+#### Collaboration System
 ```json
 {
     "agents": ["manager", "analyst"],
     "max_iterations": 3,
     "collaboration_strategy": "sequential"
+}
+```
+
+#### ReWOO System  
+```json
+{
+    "agents": ["planner", "analyst", "solver"],
+    "max_plan_steps": 5,
+    "execution_strategy": "structured"
 }
 ```
 
