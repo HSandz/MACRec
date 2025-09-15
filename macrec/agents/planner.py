@@ -77,8 +77,13 @@ IMPORTANT: If only Analyst is available, create a simple plan that analyzes the 
         if task == 'sr':
             base_message += """
 For Sequential Recommendation:
-- Plan should include analyzing user history, identifying patterns, retrieving candidates, and ranking
-- Consider temporal aspects and sequence patterns
+- CRITICAL: Do NOT assign ranking tasks to Analyst - that is the Solver's job
+- Create specific analysis steps for the target user and each candidate item individually
+- Analyst should only analyze entities (users, items) and provide insights
+- The Solver will use all Analyst results to generate the final ranking
+- Plan should include: user profile analysis, user history analysis, and individual candidate item analysis
+- Consider temporal aspects and sequence patterns in user analysis
+- Each candidate item should have its own analysis step
 """
         elif task == 'rp':
             base_message += """
@@ -102,7 +107,7 @@ For Review Generation:
         return base_message
         
     def user_message(self, query: str, task: str, **kwargs) -> str:
-        """Generate user message for planning."""
+        """Generate user message for planning with entity extraction."""
         context = ""
         if 'user_id' in kwargs:
             context += f"User ID: {kwargs['user_id']}\n"
@@ -112,10 +117,40 @@ For Review Generation:
             context += f"Number of candidates: {kwargs['n_candidate']}\n"
         if 'history' in kwargs:
             context += f"User history available: Yes\n"
+        
+        # For SR tasks, provide specific planning guidance
+        planning_guidance = ""
+        if task == 'sr':
+            # Extract user ID and candidate items from query
+            import re
+            
+            user_id_match = re.search(r'user[_\s]*id[:\]]*\s*(\d+)', query, re.IGNORECASE)
+            candidate_matches = re.findall(r'(\d+):\s*Title:', query)
+            
+            if user_id_match:
+                user_id = user_id_match.group(1)
+                planning_guidance += f"\nDETECTED ENTITIES:\n"
+                planning_guidance += f"- Target User: {user_id}\n"
+                
+                if candidate_matches:
+                    planning_guidance += f"- Candidate Items: {', '.join(candidate_matches[:8])}...\n"  # Show first 8
+                    planning_guidance += f"\nRECOMMENDED PLAN STRUCTURE:\n"
+                    planning_guidance += f"#E1 = Analyst[Analyze user {user_id}'s profile and demographic information]\n"
+                    planning_guidance += f"#E2 = Analyst[Analyze user {user_id}'s historical interaction patterns and preferences]\n"
+                    
+                    # Add individual candidate analysis steps
+                    for i, item_id in enumerate(candidate_matches[:6], start=3):  # Limit to first 6 candidates
+                        planning_guidance += f"#E{i} = Analyst[Analyze candidate item {item_id} features and attributes]\n"
+                    
+                    planning_guidance += f"\nIMPORTANT:\n"
+                    planning_guidance += f"- Each step should analyze ONE specific entity (user profile, user history, or individual item)\n"
+                    planning_guidance += f"- Do NOT create steps for ranking - the Solver will handle final ranking\n"
+                    planning_guidance += f"- Focus on gathering detailed analysis of each entity\n"
             
         return f"""Task: {task.upper()}
 {context}
 Query: {query}
+{planning_guidance}
 
 Please create a detailed execution plan for this {task} task. Break it down into specific steps that workers can execute independently."""
 

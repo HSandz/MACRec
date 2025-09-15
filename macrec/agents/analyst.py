@@ -258,7 +258,9 @@ class Analyst(ToolAgent):
                     self.gathered_info[history_key] = observation
                     log_head = f':violet[Look up ItemHistory of item] :red[{query_item_id}] :violet[with at most] :red[{k}] :violet[users...]\n- '
         elif action_type.lower() == 'finish':
-            observation = self.finish(results=argument)
+            # Generate detailed analysis based on gathered information
+            detailed_analysis = self._generate_detailed_analysis(argument)
+            observation = self.finish(results=detailed_analysis)
             log_head = ':violet[Finish with results]:\n- '
         else:
             observation = f'Unknown command type: {action_type}.'
@@ -269,6 +271,61 @@ class Analyst(ToolAgent):
             'observation': observation,
         }
         self._history.append(turn)
+
+    def _generate_detailed_analysis(self, original_finish_content: str) -> str:
+        """Generate detailed analysis based on gathered information."""
+        if not self.gathered_info:
+            # No information gathered, return original content
+            return original_finish_content
+        
+        # Build comprehensive analysis from gathered data
+        analysis_parts = []
+        
+        # Add original finish content if meaningful
+        if original_finish_content and original_finish_content.strip().lower() != 'analysis':
+            analysis_parts.append(f"Initial Analysis: {original_finish_content}")
+        
+        # Analyze gathered user information
+        user_info_parts = []
+        user_history_parts = []
+        item_info_parts = []
+        
+        for key, value in self.gathered_info.items():
+            if key.startswith('user_') and not key.startswith('user_history_'):
+                user_id = key.replace('user_', '')
+                user_info_parts.append(f"User {user_id}: {value}")
+            elif key.startswith('user_history_'):
+                user_id = key.replace('user_history_', '')
+                user_history_parts.append(f"User {user_id} History: {value}")
+            elif key.startswith('item_'):
+                item_id = key.replace('item_', '')
+                item_info_parts.append(f"Item {item_id}: {value}")
+        
+        # Compile analysis sections
+        if user_info_parts:
+            analysis_parts.append("User Information Analysis:")
+            analysis_parts.extend([f"  - {part}" for part in user_info_parts])
+        
+        if user_history_parts:
+            analysis_parts.append("User History Analysis:")
+            analysis_parts.extend([f"  - {part}" for part in user_history_parts])
+        
+        if item_info_parts:
+            analysis_parts.append("Item Information Analysis:")
+            analysis_parts.extend([f"  - {part}" for part in item_info_parts])
+        
+        # Add summary insights
+        if len(self.gathered_info) > 1:
+            analysis_parts.append(f"Summary: Analyzed {len(self.gathered_info)} data points including user profiles, interaction histories, and item details to provide comprehensive recommendation insights.")
+        
+        # Join all parts
+        detailed_analysis = "\n".join(analysis_parts)
+        
+        # Fallback to original if no meaningful analysis generated
+        if not detailed_analysis.strip():
+            return original_finish_content
+        
+        return detailed_analysis
 
     def forward(self, id: int, analyse_type: str, *args: Any, **kwargs: Any) -> str:
         assert self.system.data_sample is not None, "Data sample is not provided."
@@ -283,7 +340,40 @@ class Analyst(ToolAgent):
             try:
                 command = self._prompt_analyst(id=id, analyse_type=analyse_type)
                 
-                # Check if command is valid before executing
+                # Handle JSON arrays of commands
+                if self.json_mode and command.strip().startswith('['):
+                    # Parse JSON array of commands
+                    try:
+                        import json
+                        commands_array = json.loads(command.strip())
+                        if isinstance(commands_array, list):
+                            # Execute each command in sequence
+                            for cmd_obj in commands_array:
+                                if isinstance(cmd_obj, dict) and 'type' in cmd_obj:
+                                    # Convert back to JSON string for individual processing
+                                    individual_command = json.dumps(cmd_obj)
+                                    action_type, argument = parse_action(individual_command, json_mode=self.json_mode)
+                                    
+                                    if action_type.lower() == 'invalid':
+                                        consecutive_invalid_commands += 1
+                                        logger.warning(f"Invalid command in array: {individual_command}")
+                                        continue
+                                    else:
+                                        consecutive_invalid_commands = 0
+                                    
+                                    self.command(individual_command)
+                                    
+                                    # Break if finished (Finish command was executed)
+                                    if self.is_finished():
+                                        break
+                            continue  # Skip normal single command processing
+                        else:
+                            logger.warning(f"Expected JSON array but got: {type(commands_array)}")
+                    except Exception as e:
+                        logger.error(f"Error parsing JSON array: {e}")
+                        # Fall back to single command processing
+                
+                # Normal single command processing
                 action_type, argument = parse_action(command, json_mode=self.json_mode)
                 
                 if action_type.lower() == 'invalid':
