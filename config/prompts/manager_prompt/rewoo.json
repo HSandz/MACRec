@@ -1,0 +1,26 @@
+{
+    "rewoo_description": {
+        "type": "raw",
+        "content": "ReWOO (Reasoning without Observation) system for recommendation tasks. Uses Planning, Working, and Solving phases to decompose complex recommendation problems."
+    },
+    "planning_phase_prompt": {
+        "type": "template",
+        "content": "PLANNING PHASE: Decompose the {task} task into structured sub-problems.\nQuery: {query}\n\nGenerate a step-by-step plan using available workers."
+    },
+    "working_phase_prompt": {
+        "type": "template",
+        "content": "WORKING PHASE: Execute plan step {step_id}.\nPlan: {plan}\nStep: {current_step}\nPrevious Results: {previous_results}\n\nExecute this step and provide detailed results."
+    },
+    "solving_phase_prompt": {
+        "type": "template",
+        "content": "SOLVING PHASE: Synthesize all worker results into final recommendation.\nOriginal Query: {query}\nPlan: {plan}\nAll Results: {all_results}\n\nProvide the final {task} recommendation."
+    },
+    "rewoo_system_intro": {
+        "type": "raw",
+        "content": "You are managing a ReWOO (Reasoning without Observation) system for recommendation tasks. The system operates in three phases: Planning (decompose task), Working (execute sub-tasks), and Solving (synthesize results)."
+    },
+    "phase_transitions": {
+        "type": "raw",
+        "content": "Phase 1: Planning - Create execution plan\nPhase 2: Working - Execute each plan step\nPhase 3: Solving - Generate final recommendation"
+    }
+}

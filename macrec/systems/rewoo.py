@@ -90,6 +90,10 @@ class ReWOOSystem(System):
                             agent_llm_config = self._apply_model_override(agent_llm_config)
                             final_agent_config['config'] = agent_llm_config
                 
+                # Add prompt_config if specified in the agent config
+                if 'prompt_config' in agent_config:
+                    final_agent_config['prompt_config'] = agent_config['prompt_config']
+                
                 self.agents[agent] = agent_class(**final_agent_config, **self.agent_kwargs)
             except KeyError:
                 raise ValueError(f'Agent {agent} is not supported.')
@@ -326,21 +330,27 @@ class ReWOOSystem(System):
             logger.debug(f"Worker {worker_type} json_mode: {json_mode}")
             
             if worker_type.lower() == 'analyst':
-                # Use the same argument parsing as collaboration system
+                # Use the task description to determine what to analyze
                 args = self._parse_analyst_arguments_from_context(task_desc)
                 logger.debug(f"Analyst args: {args}, type: {type(args)}")
+                
+                # Pass the full task description as analysis context
+                kwargs = {
+                    'task_context': task_desc,  # Pass the specific plan step description
+                    **self.manager_kwargs
+                }
                 
                 # Handle argument format based on json_mode
                 if json_mode and isinstance(args, list):
                     # JSON mode expects list format
-                    result = worker.invoke(argument=args, json_mode=json_mode)
+                    result = worker.invoke(argument=args, json_mode=json_mode, **kwargs)
                 elif not json_mode and isinstance(args, list):
                     # Non-JSON mode expects string format
                     arg_string = f"{args[0]},{args[1]}" if len(args) >= 2 else "user,1"
-                    result = worker.invoke(argument=arg_string, json_mode=json_mode)
+                    result = worker.invoke(argument=arg_string, json_mode=json_mode, **kwargs)
                 else:
                     # Pass as-is
-                    result = worker.invoke(argument=args, json_mode=json_mode)
+                    result = worker.invoke(argument=args, json_mode=json_mode, **kwargs)
                     
             elif worker_type.lower() == 'retriever':
                 # Use the same argument parsing as collaboration system  

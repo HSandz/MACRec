@@ -106,15 +106,31 @@ class Analyst(ToolAgent):
         if len(self.gathered_info) >= 3:  # If we have info about 3+ entities
             finish_hint = f"\nYou have gathered information about {len(self.gathered_info)} entities. Consider if you have enough information to provide a meaningful analysis and use Finish command."
         
+        # Add task context if provided (for ReWOO-specific analysis)
+        task_context_info = ""
+        
+        # Debug logging to see what task_context we receive
+        logger.debug(f"Analyst _build_analyst_prompt kwargs: {kwargs}")
+        if 'task_context' in kwargs:
+            logger.debug(f"Analyst task_context received: {kwargs['task_context']}")
+        
         # First format the base prompt with shared content
-        base_prompt_content = self.prompts['analyst_base_prompt'].format(
-            examples=self.analyst_examples,
-            fewshot=self.analyst_fewshot,
-            history=self.history,
-            max_step=self.max_turns,
-            hint=self.hint if len(self._history) + 1 >= self.max_turns else '',
-            **kwargs
-        )
+        if 'task_context' in kwargs and kwargs['task_context']:
+            # Replace the generic template with specific task context for ReWOO
+            base_prompt_content = f"{kwargs['task_context']}\n\nCommands: UserInfo[id], ItemInfo[id], UserHistory[id,k], ItemHistory[id,k], Finish[result]\nGather 3-5 data points, avoid duplicates, then Finish.\n\nTarget: {kwargs.get('analyse_type', 'user')} {kwargs.get('id', '')}\n{self.history}"
+            task_context_info = f"\n\nSPECIFIC FOCUS: {kwargs['task_context']}"
+            logger.debug(f"Using task_context for base prompt: {kwargs['task_context']}")
+        else:
+            # Use the standard template
+            base_prompt_content = self.prompts['analyst_base_prompt'].format(
+                examples=self.analyst_examples,
+                fewshot=self.analyst_fewshot,
+                history=self.history,
+                max_step=self.max_turns,
+                hint=self.hint if len(self._history) + 1 >= self.max_turns else '',
+                **kwargs
+            )
+            logger.debug("Using standard template, no task_context")
         
         # Then format the specific prompt (regular or JSON) using the base
         prompt = self.analyst_prompt.format(
@@ -126,7 +142,7 @@ class Analyst(ToolAgent):
         if remaining_steps <= 3:
             step_info += " You should consider finishing your analysis soon."
         
-        return prompt + context_info + finish_hint + step_info + repetition_warning + command_summary
+        return prompt + context_info + finish_hint + task_context_info + step_info + repetition_warning + command_summary
 
     def _prompt_analyst(self, **kwargs) -> str:
         analyst_prompt = self._build_analyst_prompt(**kwargs)
@@ -338,7 +354,7 @@ class Analyst(ToolAgent):
         
         while not self.is_finished():
             try:
-                command = self._prompt_analyst(id=id, analyse_type=analyse_type)
+                command = self._prompt_analyst(id=id, analyse_type=analyse_type, **kwargs)
                 
                 # Handle JSON arrays of commands
                 if self.json_mode and command.strip().startswith('['):
@@ -406,7 +422,16 @@ class Analyst(ToolAgent):
             return "Analyst did not return any result."
         return self.results
 
-    def invoke(self, argument: Any, json_mode: bool) -> str:
+    def invoke(self, argument: Any, json_mode: bool, task_context: str = None, **kwargs) -> str:
+        """
+        Invoke the analyst with specific arguments and optional task context.
+        
+        Args:
+            argument: The analysis argument (analyse_type, id)
+            json_mode: Whether to use JSON mode
+            task_context: Optional specific task description for context-aware analysis
+            **kwargs: Additional keyword arguments
+        """
         if json_mode:
             if not isinstance(argument, list) or len(argument) != 2:
                 observation = "The argument of the action 'Analyse' should be a list with two elements: analyse type (user or item) and id."
@@ -440,7 +465,9 @@ class Analyst(ToolAgent):
                     except (ValueError, TypeError):
                         observation = f"Invalid id: {id}. The id should be an integer."
                         return observation
-        return self(analyse_type=analyse_type, id=id)
+        
+        # Pass task_context to the analysis method
+        return self(analyse_type=analyse_type, id=id, task_context=task_context, **kwargs)
 
 if __name__ == '__main__':
     from langchain.prompts import PromptTemplate

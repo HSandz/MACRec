@@ -9,8 +9,8 @@ class Solver(Agent):
     Takes the planned execution results and synthesizes them into a coherent answer.
     """
     
-    def __init__(self, config_path: str = None, config: dict = None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, config_path: str = None, config: dict = None, prompt_config: str = None, prompts: dict = None, *args, **kwargs):
+        super().__init__(prompts=prompts or {}, prompt_config=prompt_config, *args, **kwargs)
         self.solution_history = []
         
         if config is not None:
@@ -28,72 +28,44 @@ class Solver(Agent):
         
     def system_message(self, task: str, **kwargs) -> str:
         """Generate system message for the solver based on the task type."""
-        base_message = f"""You are a ReWOO Solver for recommendation tasks. Your role is to aggregate and synthesize worker results into a final recommendation for {task} tasks.
-
-CRITICAL INSTRUCTIONS:
-1. You will receive a plan and the execution results from multiple workers
-2. Synthesize all the information to provide a coherent, final recommendation
-3. Ensure your output matches the expected format for the {task} task
-4. Consider all worker outputs and their relationships when forming your solution
-
-Your task is to analyze the worker results and provide the final answer."""
+        # Load prompt from config (required)
+        if 'solver_system_prompt' not in self.prompts:
+            raise ValueError("solver_system_prompt not found in prompts config. Please ensure prompt_config is properly loaded.")
+            
+        base_message = self.prompts['solver_system_prompt'].format(task=task)
         
-        if task == 'sr':
-            base_message += """
-For Sequential Recommendation:
-- CRITICAL: Use ONLY the candidate items provided in the original query - do not generate new items
-- The original query contains specific candidate items with IDs - you must rank these exact items
-- Provide a ranked list of the candidate item IDs from the original query
-- Consider temporal patterns and user preferences from the analysis
-- Format: Return only the item IDs in ranked order (e.g., [1311, 627, 71, ...])
-- DO NOT create new fictional items or generic recommendations
-"""
-        elif task == 'rp':
-            base_message += """
-For Rating Prediction:
-- Provide predicted ratings for user-item pairs
-- Consider user preferences and item characteristics
-- Format: Return numerical rating predictions
-"""
-        elif task == 'rr':
-            base_message += """
-For Retrieve & Rank:
-- Provide a ranked list of the retrieved candidate items
-- Consider analysis results from all candidates
-- Format: Return ranked list of item IDs with scores/reasons
-"""
-        elif task == 'gen':
-            base_message += """
-For Review Generation:
-- Generate a coherent review based on analysis results
-- Consider user preferences and item characteristics
-- Format: Return a natural language review
-"""
+        # Add task-specific guidance from config
+        guidance_key = f'solver_{task}_guidance'
+        if guidance_key in self.prompts:
+            base_message += self.prompts[guidance_key]
             
         return base_message
         
     def user_message(self, plan: str, worker_results: Dict[str, Any], task: str, **kwargs) -> str:
         """Generate user message with plan and worker results."""
-        message = f"""Original Plan:
-{plan}
-
-Worker Execution Results:
-"""
-        
+        # Format worker results
+        worker_results_text = ""
         for step_var, result in worker_results.items():
-            message += f"{step_var}: {result}\n"
-            
+            worker_results_text += f"{step_var}: {result}\n"
+        
         # Include original query data so Solver can see candidate items
+        original_query = ""
         if kwargs.get('data'):
-            message += f"""
+            original_query = f"""
 Original Query Data:
 {kwargs['data']}
 """
-            
-        message += f"""
-Based on the above plan and execution results, please provide the final recommendation for this {task.upper()} task."""
         
-        return message
+        # Use config template (required)
+        if 'solver_user_prompt' not in self.prompts:
+            raise ValueError("solver_user_prompt not found in prompts config.")
+            
+        return self.prompts['solver_user_prompt'].format(
+            plan=plan,
+            worker_results=worker_results_text,
+            original_query=original_query,
+            task=task.upper()
+        )
 
     def forward(self, *args, **kwargs) -> str:
         """Forward pass - delegate to invoke method."""
@@ -166,6 +138,7 @@ Based on the above plan and execution results, please provide the final recommen
                 
                 # Second, look for explicit ranking mentions like "1. Item 1311" or "Item 1311:"
                 ranking_patterns = [
+                    r'\d+\.\s*\*?\*?(\d+)\s*\(',  # "1. **627 (" or "1. 627 (" format
                     r'(?:Item|item)\s*(\d+)',  # "Item 1311" or "item 1311"
                     r'(\d+):\s*(?:Title|title)',  # "1311: Title" format
                     r'#(\d+)',  # "#1311" format

@@ -9,8 +9,8 @@ class Planner(Agent):
     without making external calls. Creates a structured plan for workers to execute.
     """
     
-    def __init__(self, config_path: str = None, config: dict = None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, config_path: str = None, config: dict = None, prompt_config: str = None, prompts: dict = None, *args, **kwargs):
+        super().__init__(prompts=prompts or {}, prompt_config=prompt_config, *args, **kwargs)
         self.plan_history = []
         
         if config is not None:
@@ -54,55 +54,20 @@ class Planner(Agent):
         if "Interpreter" in available_workers:
             workers_desc += "- Interpreter: Interprets natural language queries or requirements\n"
         
-        base_message = f"""You are a ReWOO Planner for recommendation tasks. Your role is to decompose complex {task} tasks into a structured plan of sub-problems without making any external calls.
-
-CRITICAL INSTRUCTIONS:
-1. You must create a step-by-step plan that can be executed by workers
-2. Do NOT execute any actions yourself - only plan them
-3. Use variables like #E1, #E2, etc. to reference results from previous steps
-4. Each step should specify the worker type and the exact task
-5. ONLY use workers that are actually available: {available_workers}
-
-Available Workers:
-{workers_desc.rstrip()}
-
-Plan Format:
-Plan: #E1 = WorkerType[task_description]
-#E2 = WorkerType[task_description, depends_on: #E1]
-#E3 = WorkerType[task_description, depends_on: #E1, #E2]
-
-IMPORTANT: If only Analyst is available, create a simple plan that analyzes the user, then analyzes candidate items, then provides a ranking based on the analysis.
-"""
+        # Load prompt from config (required)
+        if 'planner_system_prompt' not in self.prompts:
+            raise ValueError("planner_system_prompt not found in prompts config. Please ensure prompt_config is properly loaded.")
+            
+        base_message = self.prompts['planner_system_prompt'].format(
+            task=task,
+            available_workers=available_workers,
+            workers_desc=workers_desc.rstrip()
+        )
         
-        if task == 'sr':
-            base_message += """
-For Sequential Recommendation:
-- CRITICAL: Do NOT assign ranking tasks to Analyst - that is the Solver's job
-- Create specific analysis steps for the target user and each candidate item individually
-- Analyst should only analyze entities (users, items) and provide insights
-- The Solver will use all Analyst results to generate the final ranking
-- Plan should include: user profile analysis, user history analysis, and individual candidate item analysis
-- Consider temporal aspects and sequence patterns in user analysis
-- Each candidate item should have its own analysis step
-"""
-        elif task == 'rp':
-            base_message += """
-For Rating Prediction:
-- Plan should include analyzing user preferences, item characteristics, and predicting ratings
-- Consider user-item interaction patterns
-"""
-        elif task == 'rr':
-            base_message += """
-For Retrieve & Rank:
-- Plan should include retrieving candidate items, analyzing each candidate, and ranking them
-- Must analyze all retrieved candidates before ranking
-"""
-        elif task == 'gen':
-            base_message += """
-For Review Generation:
-- Plan should include analyzing item features, user preferences, and generating coherent reviews
-- Consider review style and content requirements
-"""
+        # Add task-specific guidance from config
+        guidance_key = f'planner_{task}_guidance'
+        if guidance_key in self.prompts:
+            base_message += self.prompts[guidance_key]
             
         return base_message
         
@@ -127,32 +92,35 @@ For Review Generation:
             user_id_match = re.search(r'user[_\s]*id[:\]]*\s*(\d+)', query, re.IGNORECASE)
             candidate_matches = re.findall(r'(\d+):\s*Title:', query)
             
-            if user_id_match:
+            if user_id_match and candidate_matches:
                 user_id = user_id_match.group(1)
-                planning_guidance += f"\nDETECTED ENTITIES:\n"
-                planning_guidance += f"- Target User: {user_id}\n"
+                candidate_items = ', '.join(candidate_matches[:8]) + "..."
                 
-                if candidate_matches:
-                    planning_guidance += f"- Candidate Items: {', '.join(candidate_matches[:8])}...\n"  # Show first 8
-                    planning_guidance += f"\nRECOMMENDED PLAN STRUCTURE:\n"
-                    planning_guidance += f"#E1 = Analyst[Analyze user {user_id}'s profile and demographic information]\n"
-                    planning_guidance += f"#E2 = Analyst[Analyze user {user_id}'s historical interaction patterns and preferences]\n"
+                # Create candidate steps
+                candidate_steps = ""
+                for i, item_id in enumerate(candidate_matches[:6], start=3):
+                    candidate_steps += f"#E{i} = Analyst[Analyze candidate item {item_id} features and attributes]\n"
+                
+                # Use config template (required)
+                if 'planner_sr_structure' not in self.prompts:
+                    raise ValueError("planner_sr_structure not found in prompts config.")
                     
-                    # Add individual candidate analysis steps
-                    for i, item_id in enumerate(candidate_matches[:6], start=3):  # Limit to first 6 candidates
-                        planning_guidance += f"#E{i} = Analyst[Analyze candidate item {item_id} features and attributes]\n"
-                    
-                    planning_guidance += f"\nIMPORTANT:\n"
-                    planning_guidance += f"- Each step should analyze ONE specific entity (user profile, user history, or individual item)\n"
-                    planning_guidance += f"- Do NOT create steps for ranking - the Solver will handle final ranking\n"
-                    planning_guidance += f"- Focus on gathering detailed analysis of each entity\n"
+                planning_guidance = self.prompts['planner_sr_structure'].format(
+                    user_id=user_id,
+                    candidate_items=candidate_items,
+                    candidate_steps=candidate_steps
+                )
+        
+        # Use config template (required)
+        if 'planner_user_prompt' not in self.prompts:
+            raise ValueError("planner_user_prompt not found in prompts config.")
             
-        return f"""Task: {task.upper()}
-{context}
-Query: {query}
-{planning_guidance}
-
-Please create a detailed execution plan for this {task} task. Break it down into specific steps that workers can execute independently."""
+        return self.prompts['planner_user_prompt'].format(
+            task=task,
+            context=context,
+            query=query,
+            planning_guidance=planning_guidance
+        )
 
     def forward(self, *args, **kwargs) -> str:
         """Forward pass - delegate to invoke method."""
