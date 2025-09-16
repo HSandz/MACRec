@@ -9,7 +9,7 @@
     },
     "analyst_prompt_json": {
         "type": "template", 
-        "content": "{analyst_base_prompt}\n\nJSON format: {{\"type\":\"CommandName\",\"content\":value}}\nExamples: {{\"type\":\"UserInfo\",\"content\":123}}, {{\"type\":\"Finish\",\"content\":\"analysis\"}}\nCommand: "
+        "content": "{analyst_base_prompt}\n\nJSON format: {{\"type\":\"CommandName\",\"content\":value}}\nExamples: {{\"type\":\"UserInfo\",\"content\":123}}, {{\"type\":\"Finish\",\"content\":\"User 123 likes anime and action movies\"}}\nIMPORTANT: Finish content must be SIMPLE TEXT STRING only, not objects or arrays.\nCommand: "
     },
     "analyst_examples": {
         "type": "raw",
@@ -17,7 +17,7 @@
     },
     "analyst_examples_json": {
         "type": "raw",
-        "content": "{{\"type\":\"UserInfo\",\"content\":123}}; {{\"type\":\"Finish\",\"content\":\"User likes anime\"}}"
+        "content": "{{\"type\":\"UserInfo\",\"content\":123}}; {{\"type\":\"Finish\",\"content\":\"User 123 likes anime movies and action films\"}}"
     },
     "analyst_fewshot": {
         "type": "raw",
@@ -25,7 +25,7 @@
     },
     "analyst_fewshot_json": {
         "type": "raw",
-        "content": "{{\"type\":\"UserInfo\",\"content\":123}} → {{\"type\":\"UserHistory\",\"content\":[123,3]}} → {{\"type\":\"Finish\",\"content\":\"User likes anime\"}}"
+        "content": "{{\"type\":\"UserInfo\",\"content\":123}} → {{\"type\":\"UserHistory\",\"content\":[123,3]}} → {{\"type\":\"Finish\",\"content\":\"User prefers action and sci-fi movies\"}}"
     },
     "analyst_hint": {
         "type": "raw",

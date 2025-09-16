@@ -127,13 +127,13 @@ Original Query Data:
                     items = []
                     for item in items_str:
                         item = item.strip()
-                        # Check if it's a reasonable candidate item ID (not user ID or historical items)
+                        # Check if it's a reasonable candidate item ID
                         if item.isdigit():
                             item_id = int(item)
-                            # Filter out obvious user IDs (typically 1-1000) and focus on candidate items
-                            if item_id > 1000 or item_id in [71, 258, 627, 700, 858, 938, 1091, 1311]:  # Common candidate ranges
+                            # Accept any positive integer as a valid item ID (remove restrictive filtering)
+                            if item_id > 0:
                                 items.append(item_id)
-                    if items and len(items) > 1:  # Ensure we have multiple candidate items
+                    if items and len(items) >= 2:  # Ensure we have at least 2 candidate items
                         return items[:10]  # Top 10
                 
                 # Second, look for explicit ranking mentions like "1. Item 1311" or "Item 1311:"
@@ -142,6 +142,7 @@ Original Query Data:
                     r'(?:Item|item)\s*(\d+)',  # "Item 1311" or "item 1311"
                     r'(\d+):\s*(?:Title|title)',  # "1311: Title" format
                     r'#(\d+)',  # "#1311" format
+                    r'\b(\d+)\b(?=\s*[,\]])',  # Standalone numbers before comma or bracket
                 ]
                 
                 for pattern in ranking_patterns:
@@ -150,10 +151,10 @@ Original Query Data:
                         items = []
                         for match in matches:
                             item_id = int(match)
-                            # Focus on reasonable candidate item IDs
-                            if item_id > 1000 or item_id in [71, 258, 627, 700, 858, 938, 1091, 1311]:
+                            # Accept any positive integer as valid item ID
+                            if item_id > 0:
                                 items.append(item_id)
-                        if items and len(items) > 1:
+                        if items and len(items) >= 2:
                             return items[:10]
                 
                 # Third, extract from candidate item analysis sections
@@ -164,16 +165,20 @@ Original Query Data:
                         return items
                 
                 # Fallback: if we can't find a proper ranking, extract known candidate IDs from the solution
-                # Common candidate IDs we've seen in the query
-                common_candidates = [1311, 858, 627, 71, 1091, 700, 938, 258]
+                # Look for any sequence of numbers that could be item IDs
+                all_numbers = re.findall(r'\b(\d+)\b', solution)
                 found_candidates = []
-                for candidate in common_candidates:
-                    if str(candidate) in solution:
-                        found_candidates.append(candidate)
-                        
-                if found_candidates:
-                    logger.warning(f"Using fallback candidate extraction: {found_candidates}")
-                    return found_candidates
+                for num_str in all_numbers:
+                    num = int(num_str)
+                    # Accept reasonable item IDs (exclude obvious user IDs like single digits)
+                    if num > 10 and num not in found_candidates:  # Avoid very small numbers and duplicates
+                        found_candidates.append(num)
+                        if len(found_candidates) >= 8:  # Stop when we have enough candidates
+                            break
+                            
+                if found_candidates and len(found_candidates) >= 2:
+                    logger.warning(f"Using fallback number extraction: {found_candidates}")
+                    return found_candidates[:10]
                 
                 # Final fallback: return a reasonable default for testing
                 logger.warning(f"Could not extract valid candidate items from solution: {solution[:200]}...")

@@ -46,7 +46,14 @@ def parse_action(action: str, json_mode: bool = False) -> tuple[str, Any]:
             if 'type' not in json_action:
                 return 'Invalid', None
             
-            return json_action['type'], json_action.get('content', None)
+            # Validate command type
+            action_type = json_action['type']
+            valid_types = ['UserInfo', 'ItemInfo', 'UserHistory', 'ItemHistory', 'Finish']
+            
+            if action_type not in valid_types:
+                return 'Invalid', None
+            
+            return action_type, json_action.get('content', None)
         except Exception as e:
             # Log the parsing error for debugging
             from loguru import logger

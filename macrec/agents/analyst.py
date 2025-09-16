@@ -274,8 +274,23 @@ class Analyst(ToolAgent):
                     self.gathered_info[history_key] = observation
                     log_head = f':violet[Look up ItemHistory of item] :red[{query_item_id}] :violet[with at most] :red[{k}] :violet[users...]\n- '
         elif action_type.lower() == 'finish':
+            # Handle various types of finish content
+            if isinstance(argument, dict):
+                # If argument is a dict, try to extract meaningful content
+                if 'content' in argument:
+                    finish_content = str(argument['content'])
+                else:
+                    # Convert dict to readable string
+                    finish_content = str(argument)
+            elif isinstance(argument, list):
+                # If argument is a list, join elements
+                finish_content = ', '.join(str(item) for item in argument)
+            else:
+                # Use argument as-is for strings and other types
+                finish_content = str(argument) if argument is not None else "Analysis completed"
+            
             # Generate detailed analysis based on gathered information
-            detailed_analysis = self._generate_detailed_analysis(argument)
+            detailed_analysis = self._generate_detailed_analysis(finish_content)
             observation = self.finish(results=detailed_analysis)
             log_head = ':violet[Finish with results]:\n- '
         else:
