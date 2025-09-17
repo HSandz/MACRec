@@ -117,7 +117,7 @@ class Analyst(ToolAgent):
         # First format the base prompt with shared content
         if 'task_context' in kwargs and kwargs['task_context']:
             # Replace the generic template with specific task context for ReWOO
-            base_prompt_content = f"{kwargs['task_context']}\n\nCommands: UserInfo[id], ItemInfo[id], UserHistory[id,k], ItemHistory[id,k], Finish[result]\nGather 3-5 data points, avoid duplicates, then Finish.\n\nTarget: {kwargs.get('analyse_type', 'user')} {kwargs.get('id', '')}\n{self.history}"
+            base_prompt_content = f"{kwargs['task_context']}\n\nCommands: UserInfo[id], ItemInfo[id], UserHistory[id], ItemHistory[id], Finish[result]\nGather 3-5 data points, avoid duplicates, then Finish.\n\nTarget: {kwargs.get('analyse_type', 'user')} {kwargs.get('id', '')}\n{self.history}"
             task_context_info = f"\n\nSPECIFIC FOCUS: {kwargs['task_context']}"
             logger.debug(f"Using task_context for base prompt: {kwargs['task_context']}")
         else:
@@ -212,67 +212,41 @@ class Analyst(ToolAgent):
                 observation = f"Invalid item id: {argument}. Please provide a valid item ID number."
                 log_head = ':red[Invalid ItemInfo command]:red[...]\n- '
         elif action_type.lower() == 'userhistory':
-            valid = True
-            if self.json_mode:
-                if not isinstance(argument, list) or len(argument) != 2:
-                    observation = f"Invalid user id and retrieval number: {argument}"
-                    valid = False
-                else:
-                    query_user_id, k = argument
-                    if not isinstance(query_user_id, int) or not isinstance(k, int):
-                        observation = f"Invalid user id and retrieval number: {argument}"
-                        valid = False
-            else:
-                try:
-                    if argument is None:
-                        raise ValueError("Argument cannot be None")
-                    query_user_id, k = argument.split(',')
-                    query_user_id = int(query_user_id)
-                    k = int(k)
-                except (ValueError, TypeError):
-                    observation = f"Invalid user id and retrieval number: {argument}. Please provide format 'user_id,number'."
-                    valid = False
-            if valid:
+            try:
+                if argument is None:
+                    raise ValueError("Argument cannot be None")
+                query_user_id = int(argument)
                 # Check if already queried
                 history_key = f"user_history_{query_user_id}"
                 if history_key in self.gathered_info:
                     observation = f"User {query_user_id} history already retrieved. Use gathered information instead."
                     log_head = f':orange[Skipped duplicate UserHistory query for user] :red[{query_user_id}]:orange[...]\n- '
                 else:
-                    observation = self.interaction_retriever.user_retrieve(user_id=query_user_id, k=k)
+                    # Use default k=10 for history retrieval
+                    observation = self.interaction_retriever.user_retrieve(user_id=query_user_id, k=10)
                     self.gathered_info[history_key] = observation
-                    log_head = f':violet[Look up UserHistory of user] :red[{query_user_id}] :violet[with at most] :red[{k}] :violet[items...]\n- '
+                    log_head = f':violet[Look up UserHistory of user] :red[{query_user_id}]:violet[...]\n- '
+            except (ValueError, TypeError):
+                observation = f"Invalid user id: {argument}. Please provide a valid user ID number."
+                log_head = ':red[Invalid UserHistory command]:red[...]\n- '
         elif action_type.lower() == 'itemhistory':
-            valid = True
-            if self.json_mode:
-                if not isinstance(argument, list) or len(argument) != 2:
-                    observation = f"Invalid item id and retrieval number: {argument}"
-                    valid = False
-                else:
-                    query_item_id, k = argument
-                    if not isinstance(query_item_id, int) or not isinstance(k, int):
-                        observation = f"Invalid item id and retrieval number: {argument}"
-                        valid = False
-            else:
-                try:
-                    if argument is None:
-                        raise ValueError("Argument cannot be None")
-                    query_item_id, k = argument.split(',')
-                    query_item_id = int(query_item_id)
-                    k = int(k)
-                except (ValueError, TypeError):
-                    observation = f"Invalid item id and retrieval number: {argument}. Please provide format 'item_id,number'."
-                    valid = False
-            if valid:
+            try:
+                if argument is None:
+                    raise ValueError("Argument cannot be None")
+                query_item_id = int(argument)
                 # Check if already queried
                 history_key = f"item_history_{query_item_id}"
                 if history_key in self.gathered_info:
                     observation = f"Item {query_item_id} history already retrieved. Use gathered information instead."
                     log_head = f':orange[Skipped duplicate ItemHistory query for item] :red[{query_item_id}]:orange[...]\n- '
                 else:
-                    observation = self.interaction_retriever.item_retrieve(item_id=query_item_id, k=k)
+                    # Use default k=10 for history retrieval
+                    observation = self.interaction_retriever.item_retrieve(item_id=query_item_id, k=10)
                     self.gathered_info[history_key] = observation
-                    log_head = f':violet[Look up ItemHistory of item] :red[{query_item_id}] :violet[with at most] :red[{k}] :violet[users...]\n- '
+                    log_head = f':violet[Look up ItemHistory of item] :red[{query_item_id}]:violet[...]\n- '
+            except (ValueError, TypeError):
+                observation = f"Invalid item id: {argument}. Please provide a valid item ID number."
+                log_head = ':red[Invalid ItemHistory command]:red[...]\n- '
         elif action_type.lower() == 'finish':
             # Handle various types of finish content
             if isinstance(argument, dict):
@@ -378,11 +352,20 @@ class Analyst(ToolAgent):
                         import json
                         commands_array = json.loads(command.strip())
                         if isinstance(commands_array, list):
+                            # Track commands in this array to prevent duplicates
+                            executed_in_array = set()
                             # Execute each command in sequence
                             for cmd_obj in commands_array:
                                 if isinstance(cmd_obj, dict) and 'type' in cmd_obj:
                                     # Convert back to JSON string for individual processing
                                     individual_command = json.dumps(cmd_obj)
+                                    
+                                    # Skip if already executed in this array
+                                    if individual_command in executed_in_array:
+                                        logger.info(f"Skipping duplicate command in array: {individual_command}")
+                                        continue
+                                    executed_in_array.add(individual_command)
+                                    
                                     action_type, argument = parse_action(individual_command, json_mode=self.json_mode)
                                     
                                     if action_type.lower() == 'invalid':
