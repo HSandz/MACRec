@@ -64,10 +64,26 @@ class CalculateTask(Task):
     def run(self, task: str, k: list[int], run_data_file: str):
         self.task = task
         self.get_metrics(k)
+        
+        # Initialize counters for valid answer tracking
+        valid_count = 0
+        total_count = 0
+        
         with jsonlines.open(run_data_file) as reader:
             for obj in reader:
+                total_count += 1
+                # Check if validity information is available from saved data
+                if 'System_Finished' in obj and obj['System_Finished']:
+                    valid_count += 1
+                
                 # self.update_evaluation(answer=obj['Answer_0'], gt_answer=obj['Answer_GT'])
                 self.update_evaluation(answer=obj['Answer_1'], gt_answer=obj['Answer_GT'])
+        
+        # Log valid answer statistics if available
+        if total_count > 0:
+            valid_percentage = (valid_count / total_count * 100)
+            logger.success(f"Valid Answers: {valid_count}/{total_count} samples ({valid_percentage:.1f}%)")
+        
         self.report()
 
 if __name__ == '__main__':

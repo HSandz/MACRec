@@ -39,6 +39,9 @@ class EvaluateTask(GenerationTask):
 
     def update_evaluation(self, answer: float | int | str, gt_answer: float | int | str) -> str:
         valid = self.system.finished
+        self.total_count += 1
+        if valid:
+            self.valid_count += 1
         logger.debug(f'Answer: {answer}, Ground Truth: {gt_answer}')
         if valid:
             return self.metrics.update(output={
@@ -57,6 +60,9 @@ class EvaluateTask(GenerationTask):
 
     def before_generate(self) -> None:
         self.get_metrics(self.topks)
+        # Initialize counters for tracking valid answers
+        self.valid_count = 0
+        self.total_count = 0
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         dataset = os.path.basename(os.path.dirname(self.args.data_file))
         data_file = os.path.basename(self.args.data_file)
@@ -82,12 +88,16 @@ class EvaluateTask(GenerationTask):
 
     def after_iteration(self, answer: Any, gt_answer: int | float | str, record: dict, pbar: tqdm) -> None:
         record['Answer_GT'] = gt_answer
+        record['System_Finished'] = self.system.finished
         self.output_file.write(record)
         pbar.set_description(self.update_evaluation(answer, gt_answer))
 
     def after_generate(self) -> None:
         self.output_file.close()
         logger.success("===================================Evaluation Report===================================")
+        # Log valid answer statistics
+        valid_percentage = (self.valid_count / self.total_count * 100) if self.total_count > 0 else 0
+        logger.success(f"Valid Answers: {self.valid_count}/{self.total_count} samples ({valid_percentage:.1f}%)")
         self.metrics.report()
         
 
