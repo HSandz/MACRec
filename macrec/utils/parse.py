@@ -48,7 +48,7 @@ def parse_action(action: str, json_mode: bool = False) -> tuple[str, Any]:
             
             # Validate command type
             action_type = json_action['type']
-            valid_types = ['UserInfo', 'ItemInfo', 'UserHistory', 'ItemHistory', 'Finish']
+            valid_types = ['Analyse', 'UserInfo', 'ItemInfo', 'UserHistory', 'ItemHistory', 'Finish']
             
             if action_type not in valid_types:
                 return 'Invalid', None

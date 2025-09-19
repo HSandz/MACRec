@@ -1,7 +1,7 @@
 {
     "manager_prompt": {
         "type": "template",
-        "content": "Solve {task_type} task with Thought, Action, Observation steps. Actions:\n(1) Analyse[user/item, id] — analyze preferences/features\n(2) Finish[response] — complete task\n\nMax steps: {max_step}\n\nGenerate ONLY the next single step. {examples}\n\nInput: {input}\n{scratchpad}"
+        "content": "Solve {task_type} task with Thought, Action, Observation steps. Actions:\n(1) Analyse[user/item, id] — analyze preferences/features\n(2) Finish[response] — complete task\n\nMax steps: {max_step}\n\nGenerate ONLY the next single step. Examples:\n{examples}\n\nInput: {input}\n{scratchpad}"
     },
     "manager_prompt_json": {
         "type": "template",
