@@ -63,6 +63,7 @@ class EvaluateTask(GenerationTask):
         # Initialize counters for tracking valid answers
         self.valid_count = 0
         self.total_count = 0
+        self.failed_samples = []  # Track which samples failed
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         dataset = os.path.basename(os.path.dirname(self.args.data_file))
         data_file = os.path.basename(self.args.data_file)
@@ -89,6 +90,26 @@ class EvaluateTask(GenerationTask):
     def after_iteration(self, answer: Any, gt_answer: int | float | str, record: dict, pbar: tqdm) -> None:
         record['Answer_GT'] = gt_answer
         record['System_Finished'] = self.system.finished
+        
+        # Debug logging for system state
+        sample_id = record.get('sample_id', 'unknown')
+        user_id = record.get('user_id', 'unknown')
+        logger.info(f"Sample {sample_id} (User {user_id}): system.finished={self.system.finished}, answer_type={type(answer)}, answer={answer}")
+        
+        # Track failed samples
+        if not self.system.finished:
+            sample_info = {
+                'sample_id': record.get('sample_id', 'unknown'),
+                'user_id': record.get('user_id', 'unknown')
+            }
+            self.failed_samples.append(sample_info)
+        
+        # Log sample completion status
+        if self.system.finished:
+            logger.info(f"Sample SUCCESS: {sample_id} (User {user_id})")
+        else:
+            logger.info(f"Sample FAILED: {sample_id} (User {user_id})")
+        
         self.output_file.write(record)
         pbar.set_description(self.update_evaluation(answer, gt_answer))
 
@@ -98,6 +119,15 @@ class EvaluateTask(GenerationTask):
         # Log valid answer statistics
         valid_percentage = (self.valid_count / self.total_count * 100) if self.total_count > 0 else 0
         logger.success(f"Valid Answers: {self.valid_count}/{self.total_count} samples ({valid_percentage:.1f}%)")
+        
+        # Log failed samples
+        if self.failed_samples:
+            logger.warning(f"Failed Samples ({len(self.failed_samples)}):")
+            for failed_sample in self.failed_samples:
+                logger.warning(f"  - Sample {failed_sample['sample_id']} (User {failed_sample['user_id']})")
+        else:
+            logger.success("All samples completed successfully!")
+        
         self.metrics.report()
         
 
