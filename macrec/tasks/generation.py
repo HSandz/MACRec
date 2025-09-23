@@ -30,8 +30,18 @@ class GenerationTask(Task):
 
     def get_data(self, data_file: str, max_his: int) -> pd.DataFrame:
         df = pd.read_csv(data_file)
-        df['history'] = df['history'].fillna('None')
-        df['history'] = df['history'].apply(lambda x: '\n'.join(x.split('\n')[-max_his:]))
+        
+        # Handle missing 'history' column
+        if 'history' not in df.columns:
+            df['history'] = 'None'
+        else:
+            df['history'] = df['history'].fillna('None')
+            df['history'] = df['history'].apply(lambda x: '\n'.join(x.split('\n')[-max_his:]))
+        
+        # Handle missing 'user_profile' column
+        if 'user_profile' not in df.columns:
+            df['user_profile'] = 'None'
+        
         if self.task == 'sr':
             candidate_example: str = df['candidate_item_attributes'][0]
             self.n_candidate = len(candidate_example.split('\n'))

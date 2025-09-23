@@ -169,10 +169,15 @@ class Analyst(ToolAgent):
                     self.finish(f"Analysis completed. Detected alternating repetitive pattern, ending analysis.")
                     return
         
-        # Force finish if we have gathered sufficient information
-        if len(self.gathered_info) >= 5 and len(self._history) >= 5:
-            self.finish(f"Analysis completed. Gathered sufficient information about {len(self.gathered_info)} entities.")
-            return
+        # Only force finish if we have gathered too much information AND we're in a loop
+        # This prevents premature termination while allowing natural LLM-driven completion
+        if len(self.gathered_info) >= 7 and len(self._history) >= 8:
+            # Check if we've been stuck without progress for several turns
+            recent_actions = [parse_action(h.split('Command: ')[-1] if 'Command: ' in h else '', json_mode=self.json_mode)[0] 
+                             for h in self._history[-4:] if h.strip()]
+            if len(set(recent_actions)) <= 2:  # Only if stuck in repetitive pattern
+                self.finish(f"Analysis completed. Gathered sufficient information about {len(self.gathered_info)} entities.")
+                return
         
         log_head = ''
         action_type, argument = parse_action(command, json_mode=self.json_mode)
@@ -344,6 +349,15 @@ class Analyst(ToolAgent):
         while not self.is_finished():
             try:
                 command = self._prompt_analyst(id=id, analyse_type=analyse_type, **kwargs)
+                
+                # Ensure command is a string
+                if not isinstance(command, str):
+                    logger.error(f"LLM returned non-string response: {type(command)} - {command}")
+                    if isinstance(command, dict):
+                        # Try to extract content from dict response
+                        command = command.get('content', str(command))
+                    else:
+                        command = str(command)
                 
                 # Handle JSON arrays of commands
                 if self.json_mode and command.strip().startswith('['):

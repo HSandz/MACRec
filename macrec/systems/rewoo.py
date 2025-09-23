@@ -298,7 +298,10 @@ class ReWOOSystem(System):
 
     def _dependencies_satisfied(self, step: Dict[str, Any]) -> bool:
         """Check if all dependencies for a step are satisfied."""
-        for dep in step['dependencies']:
+        dependencies = step.get('dependencies', [])
+        variable = step.get('variable', 'unknown')
+        
+        for dep in dependencies:
             if dep not in self.execution_results:
                 return False
         return True

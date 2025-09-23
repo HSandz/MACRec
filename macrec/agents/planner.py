@@ -177,8 +177,13 @@ class Planner(Agent):
         for line in lines:
             line = line.strip()
             
+            # Handle lines that start with "Plan: #E1 = ..." by removing the "Plan: " prefix
+            if line.startswith('Plan: ') and '#E' in line:
+                line = line[6:]  # Remove "Plan: " prefix
+            
             # Parse basic plan format: #E1 = Worker[task]
             if '=' in line and line.startswith('#E'):
+                logger.info(f"Found step line: '{line}'")
                 # Extract step variable and action
                 var_part, action_part = line.split('=', 1)
                 variable = var_part.strip()
@@ -195,8 +200,15 @@ class Planner(Agent):
                     
                     # The worker_part should be the worker type
                     worker_type = worker_part
+                elif '[' in action:
+                    # Handle incomplete/truncated lines that have '[' but no ']'
+                    worker_part = action.split('[')[0].strip()
+                    worker_type = worker_part
+                    task_desc = "Incomplete task description (truncated)"
+                    # Skip this incomplete step
+                    continue
                     
-                # Extract dependencies (from the task description)
+                # Extract dependencies (from the action part)
                 dependencies = []
                 if 'depends_on:' in action:
                     dep_part = action.split('depends_on:')[1]
@@ -213,6 +225,9 @@ class Planner(Agent):
                     'raw_action': action
                 }
                 steps.append(current_step)
+                
+                # Debug logging
+                logger.info(f"Parsed step: {variable} -> deps: {dependencies}")
             
             # Parse detailed worker type specifications: "#E1 = Analyze User History" followed by "Worker Type: Analyst"
             elif line.startswith('#E') and '=' in line and 'Worker Type:' not in line:

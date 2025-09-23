@@ -46,14 +46,22 @@ def parse_action(action: str, json_mode: bool = False) -> tuple[str, Any]:
             if 'type' not in json_action:
                 return 'Invalid', None
             
-            # Validate command type
+            # Validate command type (case-insensitive)
             action_type = json_action['type']
             valid_types = ['Analyse', 'UserInfo', 'ItemInfo', 'UserHistory', 'ItemHistory', 'Finish']
             
-            if action_type not in valid_types:
+            # Convert action_type to lowercase for comparison, but find the correct case from valid_types
+            action_type_lower = action_type.lower()
+            valid_action = None
+            for valid_type in valid_types:
+                if valid_type.lower() == action_type_lower:
+                    valid_action = valid_type
+                    break
+            
+            if valid_action is None:
                 return 'Invalid', None
             
-            return action_type, json_action.get('content', None)
+            return valid_action, json_action.get('content', None)
         except Exception as e:
             # Log the parsing error for debugging
             from loguru import logger
@@ -149,7 +157,7 @@ def parse_ranking_answer(answer: str | Any, gt_answer: int, n_candidate: int = N
         return {
             'valid': False,
             'answer': [],
-            'message': f'Answer should contain {n_candidate} ids, which is the same as the number of candidates in the question.'
+            'message': f'Answer should contain only a list of {n_candidate} ids, which is the same as the number of candidates in the question.'
         }
     
     try:

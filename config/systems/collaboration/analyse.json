@@ -16,5 +16,5 @@
     },
     "agent_prompt": "config/prompts/manager_prompt/analyse.json",
     "data_prompt": "config/prompts/data_prompt/{task}.json",
-    "max_step": 10
+    "max_step": 12
 }
