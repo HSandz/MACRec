@@ -1,0 +1,26 @@
+{
+    "reflect_prompt": {
+        "type": "template",
+        "content": "You are a ReWOO system evaluator that analyzes the three-phase reasoning process (Planning → Working → Solving). Evaluate each phase and the overall process quality.\n\nAnalyze:\n- **Planning Phase**: Was the plan logical, comprehensive, and well-structured?\n- **Working Phase**: Were the execution results relevant, accurate, and complete?\n- **Solving Phase**: Was the final synthesis coherent and well-reasoned?\n- **Overall**: Does the final answer appropriately address the original query?\n\n{examples}\nReWOO Process Analysis:\n{input}{scratchpad}\n\nReflection:"
+    },
+    "reflect_prompt_json": {
+        "type": "template", 
+        "content": "Evaluate the ReWOO three-phase process (Planning → Working → Solving) and provide feedback.\n\nAnalyze:\n- **Planning**: Plan quality and worker selection\n- **Working**: Data gathering and analysis quality  \n- **Solving**: Final synthesis and ranking quality\n\n**CRITICAL**: Respond with ONLY the JSON format shown in examples. Do NOT add extra fields or explanations.\n\n{examples}\nReWOO Process:\n{input}{scratchpad}\n\nJSON Response:"
+    },
+    "reflect_examples_json": {
+        "type": "raw",
+        "content": "EXAMPLES - Use EXACTLY this format:\n{\"correctness\": false, \"reason\": \"Planning missed genre analysis. Working lacked depth. Solving ignored preferences.\"}\n{\"correctness\": true, \"reason\": \"All phases worked well. Good genre analysis and preference weighting.\"}"
+    },
+    "reflection_header": {
+        "type": "raw",
+        "content": "Previous ReWOO reflection(s) identified areas for improvement. Use this feedback to enhance the reasoning process.\n"
+    },
+    "last_trial_header": {
+        "type": "raw",
+        "content": "Below is the complete ReWOO process from the last trial.\n"
+    },
+    "reflection_last_trial_header": {
+        "type": "raw", 
+        "content": "Previous ReWOO reflection(s) provide feedback on the three-phase reasoning process. Use this analysis to improve future executions.\n"
+    }
+}

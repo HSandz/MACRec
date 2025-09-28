@@ -275,10 +275,75 @@ class ReWOOSystem(System):
         # Extract and return final answer
         final_answer = self.solver.extract_final_answer(solution, self.task)
         
+        # Add reflection capability if Reflector is available
+        if self.reflector:
+            logger.info("ReWOO Phase 3.1: Reflection")
+            
+            # Create a scratchpad-like summary of the entire ReWOO process for reflection
+            rewoo_process = self._build_rewoo_scratchpad(solution, final_answer)
+            
+            # Use reflector to analyze the complete ReWOO process
+            self.reflector(input=self.input, scratchpad=rewoo_process)
+            
+            if self.reflector.json_mode and self.reflector.reflections:
+                try:
+                    import json
+                    reflection_json = json.loads(self.reflector.reflections[-1])
+                    
+                    # Log reflection results
+                    if 'correctness' in reflection_json:
+                        correctness = reflection_json['correctness']
+                        reason = reflection_json.get('reason', 'No reason provided')
+                        
+                        if not correctness:
+                            logger.warning(f"ReWOO Reflection identified issues: {reason}")
+                            self.log(f"**ReWOO Reflection Issues Identified:**\n{reason}", agent=self.reflector)
+                        else:
+                            logger.info(f"ReWOO Reflection confirms correctness: {reason}")
+                            self.log(f"**ReWOO Reflection Confirms Correctness:**\n{reason}", agent=self.reflector)
+                            
+                except Exception as e:
+                    logger.error(f'Invalid reflection JSON output: {self.reflector.reflections[-1]}')
+                    logger.error(f'JSON parsing error: {e}')
+                    # Continue execution even if reflection parsing fails
+            else:
+                # Non-JSON mode reflection
+                if self.reflector.reflections:
+                    self.log(f"**ReWOO Reflection:**\n{self.reflector.reflections[-1]}", agent=self.reflector)
+        
         # Log the final solution
         logger.info(f"ReWOO Final Answer: {final_answer}")
         
         return self.finish(final_answer)
+
+    def _build_rewoo_scratchpad(self, solution: str, final_answer: str) -> str:
+        """Build a comprehensive scratchpad of the ReWOO process for reflection."""
+        scratchpad = f"\n=== ReWOO Process Summary ===\n"
+        scratchpad += f"Task: {self.task.upper()}\n"
+        scratchpad += f"Original Query: {getattr(self, 'input', 'No input')}\n\n"
+        
+        # Phase 1: Planning
+        scratchpad += "=== Phase 1: Planning ===\n"
+        if self.current_plan:
+            scratchpad += f"Generated Plan:\n{self.current_plan}\n\n"
+        else:
+            scratchpad += "No plan generated - POTENTIAL ISSUE\n\n"
+        
+        # Phase 2: Working
+        scratchpad += "=== Phase 2: Working (Execution Results) ===\n"
+        if self.execution_results:
+            for step_var, result in self.execution_results.items():
+                scratchpad += f"{step_var}: {result}\n"
+        else:
+            scratchpad += "No execution results - POTENTIAL ISSUE\n"
+        scratchpad += "\n"
+        
+        # Phase 3: Solving
+        scratchpad += "=== Phase 3: Solving ===\n"
+        scratchpad += f"Solver Output:\n{solution}\n"
+        scratchpad += f"Final Answer: {final_answer}\n"
+        
+        return scratchpad
 
     def _prepare_planning_query(self) -> str:
         """Prepare the query for the planner based on task and context using exact same data as collaboration system."""

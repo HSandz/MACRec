@@ -223,7 +223,10 @@ python main.py --main Test --data_file data/ml-100k/test.csv --system collaborat
 #### ReWOO System (3-Phase Reasoning)
 | Configuration | Agents | Best For |
 |---------------|---------|----------|
-| `basic.json` | Planner + Analyst + Solver | Structured reasoning, limited agents |
+| `analyst.json` | Planner + Analyst + Solver | Structured reasoning, limited agents |
+| `reflector.json` | Planner + Analyst + Solver + Reflector | Recommendations with validation |
+| `analyst_searcher.json` | Planner + Analyst + Searcher + Solver | Genre-aware recommendations |
+| `analyst_retriever.json` | Planner + Analyst + Retriever + Solver | Retrieve & rank tasks |
 | `full.json` | Planner + All Workers + Solver | Complex multi-step reasoning |
 
 ### Example Workflows
@@ -243,7 +246,7 @@ python main.py --main Evaluate --data_file data/ml-100k/test.csv --system collab
 # Basic ReWOO with limited agents
 python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 1 --openrouter google/gemini-2.0-flash-001
 
-# Full ReWOO with all workers
+# Full ReWOO with all workers (NOT tested)
 python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/full.json --task sr --samples 1 --openrouter google/gemini-2.0-flash-001
 ```
 
@@ -278,20 +281,22 @@ The ReWOO system implements a structured 3-phase reasoning approach:
 1. **Planning Phase**: Planner agent decomposes tasks into sub-problems
 2. **Working Phase**: Worker agents execute each step independently  
 3. **Solving Phase**: Solver agent aggregates results into final recommendations
+4. **Reflection Phase** (Optional): Reflector agent validates workflow execution and result quality
 
 #### Key Benefits
 - **Structured Reasoning**: Clear separation of planning, execution, and synthesis
 - **Flexible Worker Assignment**: Adapts to available agents (basic vs full configuration)
 - **Improved Accuracy**: Multi-step reasoning with intermediate validation
+- **Quality Assurance**: Optional Reflector validates completeness and format compliance
 - **Scalable**: Can handle complex tasks by breaking them into manageable steps
 
 #### Usage Examples
 ```bash
 # Use basic ReWOO (Planner + Analyst + Solver)
-python main.py --main Test --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 1
+python main.py --main Test --system rewoo --system_config config/systems/rewoo/analyst.json --task sr --samples 1
 
-# Use full ReWOO (Planner + All Workers + Solver) 
-python main.py --main Test --system rewoo --system_config config/systems/rewoo/full.json --task sr --samples 1
+# Use ReWOO with Reflection (Planner + Analyst + Solver → Reflector)
+python main.py --main Test --system rewoo --system_config config/systems/rewoo/reflector.json --task sr --samples 1
 ```
 
 ### LightGCN Integration
