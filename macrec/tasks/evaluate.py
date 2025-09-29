@@ -7,7 +7,6 @@ from argparse import ArgumentParser
 
 from macrec.tasks.generation import GenerationTask
 from macrec.utils import str2list, NumpyEncoder
-from macrec.systems import ReflectionSystem
 from macrec.evaluation import MetricDict, HitRatioAt, NDCGAt, RMSE, Accuracy, MAE
 
 class EvaluateTask(GenerationTask):

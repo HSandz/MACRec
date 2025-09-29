@@ -1,17 +1,26 @@
 import json
 import re
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 from loguru import logger
 
 from macrec.systems.base import System
-from macrec.agents import Agent, Manager, Analyst, Interpreter, Reflector, Searcher, Retriever
+from macrec.factories import DefaultAgentFactory, ConfigManager
+from macrec.components import CollaborationOrchestrator, AgentCoordinator
+from macrec.agents.base import Agent
 from macrec.utils import parse_answer, parse_action, format_chat_history
+
+if TYPE_CHECKING:
+    from macrec.agents import Manager, Analyst, Interpreter, Reflector, Searcher, Retriever
 
 class CollaborationSystem(System):
     def __init__(self, task: str, config_path: str, leak: bool = False, web_demo: bool = False, dataset: Optional[str] = None, *args, **kwargs) -> None:
         # Initialize state tracking for rr tasks first
         self.analyzed_items = set()  # Track which items have been analyzed
         self.analyzed_users = set()  # Track which users have been analyzed
+        
+        # Initialize factory and orchestrator components
+        self.agent_factory = DefaultAgentFactory()
+        self.agent_coordinator = AgentCoordinator(self.agent_factory)
         
         super().__init__(task, config_path, leak, web_demo, dataset, *args, **kwargs)
         self.action_history = []  # Track action history to detect loops
@@ -25,106 +34,55 @@ class CollaborationSystem(System):
 
     def init(self, *args, **kwargs) -> None:
         """
-        Initialize the ReAct system.
+        Initialize the Collaboration system with factory pattern.
         """
         self.max_step: int = self.config.get('max_step', 10)
         assert 'agents' in self.config, 'Agents are required.'
-        self.init_agents(self.config['agents'])
+        
+        # Use agent coordinator to initialize agents
+        self.agent_coordinator.initialize_agents(
+            self.config['agents'], 
+            **self.agent_kwargs
+        )
+        
         self.manager_kwargs = {
             'max_step': self.max_step,
             'task_type': self.task,
         }
-        if self.reflector is not None:
+        
+        # Access agents through coordinator
+        if self.agent_coordinator.get_agent('Reflector') is not None:
             self.manager_kwargs['reflections'] = ''
-        if self.interpreter is not None:
+        if self.agent_coordinator.get_agent('Interpreter') is not None:
             self.manager_kwargs['task_prompt'] = ''
             
         # Initialize tracking sets for rr tasks
         self.analyzed_items = set()
         self.analyzed_users = set()
 
-    def init_agents(self, agents: dict[str, dict]) -> None:
-        self.agents: dict[str, Agent] = dict()
-        for agent, agent_config in agents.items():
-            try:
-                agent_class = globals()[agent]
-                assert issubclass(agent_class, Agent), f'Agent {agent} is not a subclass of Agent.'
-                
-                # Apply model override if specified
-                final_agent_config = agent_config.copy()
-                if self.model_override:
-                    # Handle different agent types
-                    if agent == 'Manager':
-                        # Manager has thought and action configs
-                        thought_config = None
-                        action_config = None
-                        
-                        if 'thought_config_path' in agent_config:
-                            with open(agent_config['thought_config_path'], 'r') as f:
-                                thought_config = json.load(f)
-                        
-                        if 'action_config_path' in agent_config:
-                            with open(agent_config['action_config_path'], 'r') as f:
-                                action_config = json.load(f)
-                        
-                        # Apply model override to both configs
-                        if thought_config:
-                            thought_config = self._apply_model_override(thought_config)
-                            final_agent_config['thought_config'] = thought_config
-                        
-                        if action_config:
-                            action_config = self._apply_model_override(action_config)
-                            final_agent_config['action_config'] = action_config
-                    
-                    else:
-                        # Other agents have a single config_path
-                        if 'config_path' in agent_config:
-                            with open(agent_config['config_path'], 'r') as f:
-                                agent_llm_config = json.load(f)
-                            
-                            agent_llm_config = self._apply_model_override(agent_llm_config)
-                            final_agent_config['config'] = agent_llm_config
-                
-                self.agents[agent] = agent_class(**final_agent_config, **self.agent_kwargs)
-            except KeyError:
-                raise ValueError(f'Agent {agent} is not supported.')
-        assert 'Manager' in self.agents, 'Manager is required.'
-    
     @property
-    def manager(self) -> Optional[Manager]:
-        if 'Manager' not in self.agents:
-            return None
-        return self.agents['Manager']
+    def manager(self) -> Optional['Manager']:
+        return self.agent_coordinator.get_agent('Manager')
 
     @property
-    def analyst(self) -> Optional[Analyst]:
-        if 'Analyst' not in self.agents:
-            return None
-        return self.agents['Analyst']
+    def analyst(self) -> Optional['Analyst']:
+        return self.agent_coordinator.get_agent('Analyst')
 
     @property
-    def interpreter(self) -> Optional[Interpreter]:
-        if 'Interpreter' not in self.agents:
-            return None
-        return self.agents['Interpreter']
+    def interpreter(self) -> Optional['Interpreter']:
+        return self.agent_coordinator.get_agent('Interpreter')
 
     @property
-    def reflector(self) -> Optional[Reflector]:
-        if 'Reflector' not in self.agents:
-            return None
-        return self.agents['Reflector']
+    def reflector(self) -> Optional['Reflector']:
+        return self.agent_coordinator.get_agent('Reflector')
 
     @property
-    def searcher(self) -> Optional[Searcher]:
-        if 'Searcher' not in self.agents:
-            return None
-        return self.agents['Searcher']
+    def searcher(self) -> Optional['Searcher']:
+        return self.agent_coordinator.get_agent('Searcher')
 
     @property
-    def retriever(self) -> Optional[Retriever]:
-        if 'Retriever' not in self.agents:
-            return None
-        return self.agents['Retriever']
+    def retriever(self) -> Optional['Retriever']:
+        return self.agent_coordinator.get_agent('Retriever')
 
     def reset(self, clear: bool = False, preserve_progress: bool = False, *args, **kwargs) -> None:
         # Store progress state before reset if we're preserving progress
@@ -181,16 +139,8 @@ class CollaborationSystem(System):
             if cleared_fields:
                 logger.debug(f'Cleared {cleared_fields} from manager_kwargs for new sample')
             
-        if hasattr(self, 'analyst') and self.analyst is not None:
-            self.analyst.reset()
-        if hasattr(self, 'searcher') and self.searcher is not None:
-            self.searcher.reset()
-        if hasattr(self, 'retriever') and self.retriever is not None:
-            self.retriever.reset()
-        if hasattr(self, 'interpreter') and self.interpreter is not None:
-            self.interpreter.reset()
-        if self.reflector is not None:
-            self.reflector.reset()
+        # Reset agents using agent coordinator
+        self.agent_coordinator.reset_all_agents()
 
     def add_chat_history(self, chat: str, role: str) -> None:
         assert self.task == 'chat', 'Chat history is only available for chat task.'

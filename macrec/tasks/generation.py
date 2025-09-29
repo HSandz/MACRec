@@ -9,7 +9,7 @@ import datetime
 
 from macrec.tasks.base import Task
 from macrec.utils import init_api, read_json, token_tracker
-from macrec.systems import ReActSystem, ReflectionSystem, AnalyseSystem, CollaborationSystem, ReWOOSystem
+from macrec.systems import CollaborationSystem, ReWOOSystem
 
 class GenerationTask(Task):
     @staticmethod
@@ -89,18 +89,14 @@ class GenerationTask(Task):
             raise NotImplementedError
 
     def get_system(self, system: str, system_config: str):
-        if system == 'react':
-            self.system = ReActSystem(config_path=system_config, **self.system_kwargs)
-        elif system == 'reflection':
-            self.system = ReflectionSystem(config_path=system_config, **self.system_kwargs)
-        elif system == 'analyse':
-            self.system = AnalyseSystem(config_path=system_config, **self.system_kwargs)
-        elif system == 'collaboration':
+        if system == 'collaboration':
             self.system = CollaborationSystem(config_path=system_config, **self.system_kwargs)
         elif system == 'rewoo':
             self.system = ReWOOSystem(config_path=system_config, **self.system_kwargs)
+        elif system in ['react', 'reflection', 'analyse']:
+            raise NotImplementedError(f"System '{system}' has been deprecated and removed. Please use 'collaboration' or 'rewoo' instead.")
         else:
-            raise NotImplementedError
+            raise NotImplementedError(f"Unknown system: {system}. Available systems: collaboration, rewoo")
 
     @property
     @abstractmethod

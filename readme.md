@@ -93,6 +93,41 @@ This will:
 - Generate and save user/item embeddings in the `lightgcn/output` directory
 - Create ID mapping files for the embedding retriever tool in the `lightgcn/output` directory
 
+## Architecture
+
+MACRec features a modern, maintainable architecture built with clean software design principles:
+
+### Core Components
+
+- **🏭 Factory Pattern**: Centralized agent creation with dependency injection
+- **🔧 Component Architecture**: Modular orchestrators and coordinators for system workflow management
+- **⚙️ Configuration Interface**: Standardized configuration handling with validation
+- **🎯 System Orchestration**: Clean separation between collaboration and ReWOO workflows
+
+### Available Systems
+
+#### Collaboration System (`--system collaboration`)
+Traditional multi-agent system where agents collaborate dynamically:
+- **Manager**: Orchestrates the overall process (required)
+- **Worker Agents**: Collaborate on different aspects (analysis, retrieval, interpretation)
+- **Architecture**: Uses `AgentCoordinator` and `CollaborationOrchestrator` for workflow management
+- **Best For**: General recommendation tasks, complex agent interactions
+
+#### ReWOO System (`--system rewoo`)  
+Structured 3-phase reasoning system with optional Manager:
+- **Phase 1**: Planner decomposes the task into structured steps
+- **Phase 2**: Worker agents execute steps independently  
+- **Phase 3**: Solver synthesizes results into final recommendations
+- **Architecture**: Uses `ReWOOOrchestrator` for phase-based workflow management
+- **Best For**: Complex reasoning tasks requiring systematic analysis
+
+### Deprecated Systems
+The following systems have been removed in favor of the improved architecture:
+- ~~`analyse`~~ → Use `collaboration` system with `analyse.json` config
+- ~~`react`~~ → Use `collaboration` system with single-agent configs  
+- ~~`reflection`~~ → Use `collaboration` system with reflection-enabled configs
+- ~~`chat`~~ → Use `collaboration` system for chat tasks
+
 ## Project Structure
 
 - `macrec/`: The source folder.
@@ -106,19 +141,39 @@ This will:
         - `searcher.py`: The *Searcher* agent class.
         - `planner.py`: The *Planner* agent for ReWOO-style task decomposition.
         - `solver.py`: The *Solver* agent for ReWOO-style result aggregation.
+    - **`components.py`**: Core architectural components (orchestrators, coordinators, state management).
     - `dataset/`: All dataset preprocessing methods.
     - `evaluation/`: The basic evaluation method, including the ranking metrics and the rating metrics.
+    - **`factories.py`**: Factory pattern implementation for agent creation and dependency injection.
+    - **`config_interface.py`**: Standardized configuration management with validation.
     - `llms/`: The wrapper for LLMs (both API and open source LLMs).
     - `pages/`: The web demo pages are defined here.
     - `rl/`: The datasets and reward function for the RLHF are defined here.
     - `systems/`: The multi-agent system classes are defined here.
-        - `base.py`: The base system class.
-        - `collaboration.py`: The collaboration system class. **We recommend using this class for most of the tasks.**
-        - `rewoo.py`: The ReWOO (Reasoning Without Observation) system class implementing 3-phase workflow.
-        - `analyse.py`: ***(Deprecated)*** The system with a *Manager* and an *Analyst*. Do not support the `chat` task.
-        - `chat.py`: ***(Deprecated)*** The system with a *Manager*, a *Searcher*, and a *Task Interpreter*. Only support the `chat` task.
-        - `react.py`: ***(Deprecated)*** The system with a single *Manager*. Do not support the `chat` task.
-        - `reflection.py`: ***(Deprecated)*** The system with a *Manager* and a *Reflector*. Do not support the `chat` task.
+        - `base.py`: The base system class with improved architecture.
+        - **`collaboration.py`**: The collaboration system class with factory pattern integration.
+        - **`rewoo.py`**: The ReWOO system class with component-based architecture and 3-phase workflow.
+    - `tasks/`: For external function calls (e.g. main.py). **Note needs to be distinguished from recommended tasks.**
+        - `base.py`: The base agent class and base tool agent class.
+        - `interpreter.py`: The *Task Interpreter* agent class.
+        - `manager.py`: The *Manager* agent class.
+        - `reflector.py`: The *Reflector* agent class.
+        - `retriever.py`: The *Retriever* agent class for candidate item retrieval using precomputed embeddings.
+        - `searcher.py`: The *Searcher* agent class.
+        - `planner.py`: The *Planner* agent for ReWOO-style task decomposition.
+        - `solver.py`: The *Solver* agent for ReWOO-style result aggregation.
+    - **`components.py`**: Core architectural components (orchestrators, coordinators, state management).
+    - `dataset/`: All dataset preprocessing methods.
+    - `evaluation/`: The basic evaluation method, including the ranking metrics and the rating metrics.
+    - **`factories.py`**: Factory pattern implementation for agent creation and dependency injection.
+    - **`config_interface.py`**: Standardized configuration management with validation.
+    - `llms/`: The wrapper for LLMs (both API and open source LLMs).
+    - `pages/`: The web demo pages are defined here.
+    - `rl/`: The datasets and reward function for the RLHF are defined here.
+    - `systems/`: The multi-agent system classes are defined here.
+        - `base.py`: The base system class with improved architecture.
+        - **`collaboration.py`**: The collaboration system class with factory pattern integration.
+        - **`rewoo.py`**: The ReWOO system class with component-based architecture and 3-phase workflow.
     - `tasks/`: For external function calls (e.g. main.py). **Note needs to be distinguished from recommended tasks.**
         - `base.py`: The base task class.
         - `calculate.py`: The task for calculating the metrics.
@@ -320,14 +375,15 @@ All experiments automatically track:
 - Model performance metrics
 - Detailed logs in `logs/` directory
 
-## Configuration
+### Configuration
 
 ### System Types
 
 #### Collaboration System (`--system collaboration`)
 Traditional multi-agent system where agents collaborate dynamically:
-- **Manager**: Orchestrates the overall process
+- **Manager**: Orchestrates the overall process (required)
 - **Agents**: Work together on different aspects (analysis, retrieval, interpretation)
+- **Architecture**: Uses factory pattern for agent creation and component-based orchestration
 - **Best For**: General recommendation tasks, complex interactions
 
 #### ReWOO System (`--system rewoo`)  
@@ -335,6 +391,8 @@ Structured 3-phase reasoning system:
 - **Phase 1**: Planner decomposes the task
 - **Phase 2**: Workers execute steps independently
 - **Phase 3**: Solver synthesizes results
+- **Architecture**: Component-based with specialized orchestrators for each phase
+- **Manager**: Optional (system works without Manager agent)
 - **Best For**: Complex reasoning tasks, systematic analysis
 
 ### Agent Configuration

@@ -1,11 +1,16 @@
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from loguru import logger
 
 from macrec.systems.base import System
-from macrec.agents import Agent, Manager, Analyst, Interpreter, Reflector, Searcher, Retriever, Planner, Solver
+from macrec.factories import DefaultAgentFactory, ConfigManager
+from macrec.components import ReWOOOrchestrator, AgentCoordinator
+from macrec.agents.base import Agent
 from macrec.utils import parse_answer, parse_action, format_chat_history
+
+if TYPE_CHECKING:
+    from macrec.agents import Manager, Analyst, Interpreter, Reflector, Searcher, Retriever, Planner, Solver
 
 
 class ReWOOSystem(System):
@@ -22,13 +27,24 @@ class ReWOOSystem(System):
     """
     
     def __init__(self, task: str, config_path: str, leak: bool = False, web_demo: bool = False, dataset: Optional[str] = None, *args, **kwargs) -> None:
+        # Initialize factory and orchestrator components
+        self.agent_factory = DefaultAgentFactory()
+        self.agent_coordinator = AgentCoordinator(self.agent_factory)
+        self.orchestrator = None  # Will be initialized in init()
+        
         super().__init__(task, config_path, leak, web_demo, dataset, *args, **kwargs)
         
     def init(self, *args, **kwargs) -> None:
         """Initialize the ReWOO system."""
         self.max_step: int = self.config.get('max_step', 10)
         assert 'agents' in self.config, 'Agents are required.'
-        self.init_agents(self.config['agents'])
+        
+        # Initialize orchestrator with config manager
+        config_manager = ConfigManager(self.config)
+        self.orchestrator = ReWOOOrchestrator(config_manager, self.agent_coordinator)
+        # Pass agent_kwargs to ensure dataset and other parameters are available
+        self.orchestrator.initialize(**self.agent_kwargs)
+        
         self.manager_kwargs = {
             'max_step': self.max_step,
             'task_type': self.task,
@@ -46,111 +62,38 @@ class ReWOOSystem(System):
     @staticmethod
     def supported_tasks() -> list[str]:
         return ['rp', 'sr', 'rr', 'gen', 'chat']
-    
-    def init_agents(self, agents: dict[str, dict]) -> None:
-        """Initialize agents with ReWOO support."""
-        self.agents: dict[str, Agent] = dict()
-        for agent, agent_config in agents.items():
-            try:
-                agent_class = globals()[agent]
-                assert issubclass(agent_class, Agent), f'Agent {agent} is not a subclass of Agent.'
-                
-                # Apply model override if specified
-                final_agent_config = agent_config.copy()
-                if self.model_override:
-                    # Handle different agent types
-                    if agent == 'Manager':
-                        # Manager has thought and action configs
-                        thought_config = None
-                        action_config = None
-                        
-                        if 'thought_config_path' in agent_config:
-                            with open(agent_config['thought_config_path'], 'r') as f:
-                                thought_config = json.load(f)
-                        
-                        if 'action_config_path' in agent_config:
-                            with open(agent_config['action_config_path'], 'r') as f:
-                                action_config = json.load(f)
-                        
-                        # Apply model override to both configs
-                        if thought_config:
-                            thought_config = self._apply_model_override(thought_config)
-                            final_agent_config['thought_config'] = thought_config
-                        
-                        if action_config:
-                            action_config = self._apply_model_override(action_config)
-                            final_agent_config['action_config'] = action_config
-                    
-                    else:
-                        # Other agents have a single config_path
-                        if 'config_path' in agent_config:
-                            with open(agent_config['config_path'], 'r') as f:
-                                agent_llm_config = json.load(f)
-                            
-                            agent_llm_config = self._apply_model_override(agent_llm_config)
-                            final_agent_config['config'] = agent_llm_config
-                
-                # Add prompt_config if specified in the agent config
-                if 'prompt_config' in agent_config:
-                    final_agent_config['prompt_config'] = agent_config['prompt_config']
-                
-                self.agents[agent] = agent_class(**final_agent_config, **self.agent_kwargs)
-            except KeyError:
-                raise ValueError(f'Agent {agent} is not supported.')
-        
-        # Ensure required agents for ReWOO
-        if 'Planner' not in self.agents:
-            logger.warning('Planner not configured. ReWOO will fall back to collaboration mode.')
-        if 'Solver' not in self.agents:
-            logger.warning('Solver not configured. ReWOO will fall back to collaboration mode.')
 
     @property
-    def planner(self) -> Optional[Planner]:
-        if 'Planner' not in self.agents:
-            return None
-        return self.agents['Planner']
+    def planner(self) -> Optional['Planner']:
+        return self.agent_coordinator.get_agent('Planner')
 
     @property
-    def solver(self) -> Optional[Solver]:
-        if 'Solver' not in self.agents:
-            return None
-        return self.agents['Solver']
+    def solver(self) -> Optional['Solver']:
+        return self.agent_coordinator.get_agent('Solver')
 
     @property
-    def manager(self) -> Optional[Manager]:
-        if 'Manager' not in self.agents:
-            return None
-        return self.agents['Manager']
+    def manager(self) -> Optional['Manager']:
+        return self.agent_coordinator.get_agent('Manager')
 
     @property
-    def analyst(self) -> Optional[Analyst]:
-        if 'Analyst' not in self.agents:
-            return None
-        return self.agents['Analyst']
+    def analyst(self) -> Optional['Analyst']:
+        return self.agent_coordinator.get_agent('Analyst')
 
     @property
-    def retriever(self) -> Optional[Retriever]:
-        if 'Retriever' not in self.agents:
-            return None
-        return self.agents['Retriever']
+    def retriever(self) -> Optional['Retriever']:
+        return self.agent_coordinator.get_agent('Retriever')
 
     @property
-    def searcher(self) -> Optional[Searcher]:
-        if 'Searcher' not in self.agents:
-            return None
-        return self.agents['Searcher']
+    def searcher(self) -> Optional['Searcher']:
+        return self.agent_coordinator.get_agent('Searcher')
 
     @property
-    def interpreter(self) -> Optional[Interpreter]:
-        if 'Interpreter' not in self.agents:
-            return None
-        return self.agents['Interpreter']
+    def interpreter(self) -> Optional['Interpreter']:
+        return self.agent_coordinator.get_agent('Interpreter')
 
     @property
-    def reflector(self) -> Optional[Reflector]:
-        if 'Reflector' not in self.agents:
-            return None
-        return self.agents['Reflector']
+    def reflector(self) -> Optional['Reflector']:
+        return self.agent_coordinator.get_agent('Reflector')
 
     def reset(self, clear: bool = False, preserve_progress: bool = False, *args, **kwargs) -> None:
         """Reset the ReWOO system state."""
@@ -162,6 +105,9 @@ class ReWOOSystem(System):
             self.execution_results.clear()
             self.current_plan = None
             self.plan_steps = []
+        
+        # Reset all agents using coordinator
+        self.agent_coordinator.reset_all_agents()
         
         self.step_n = 1
         self.phase = 'planning'
@@ -296,10 +242,10 @@ class ReWOOSystem(System):
                         reason = reflection_json.get('reason', 'No reason provided')
                         
                         if not correctness:
-                            logger.warning(f"ReWOO Reflection identified issues: {reason}")
+                            logger.debug(f"ReWOO Reflection identified issues: {reason}")
                             self.log(f"**ReWOO Reflection Issues Identified:**\n{reason}", agent=self.reflector)
                         else:
-                            logger.info(f"ReWOO Reflection confirms correctness: {reason}")
+                            logger.debug(f"ReWOO Reflection confirms correctness: {reason}")
                             self.log(f"**ReWOO Reflection Confirms Correctness:**\n{reason}", agent=self.reflector)
                             
                 except Exception as e:
