@@ -18,6 +18,43 @@ def parse_action(action: str, json_mode: bool = False) -> tuple[str, Any]:
             # Clean the action string to handle multi-line responses
             action = action.strip()
             
+            # Try to parse the action directly first (handles most cases)
+            try:
+                json_action = json.loads(action)
+                # Handle case where action is wrapped in an array (common LLM mistake)
+                if isinstance(json_action, list) and len(json_action) == 1:
+                    json_action = json_action[0]
+                
+                # Proceed to validation
+                if 'type' not in json_action:
+                    return 'Invalid', None
+                
+                # Validate command type and content
+                action_type = json_action['type']
+                valid_types = ['Analyse', 'UserInfo', 'ItemInfo', 'UserHistory', 'ItemHistory', 'Finish']
+                
+                # Convert action_type to lowercase for comparison, but find the correct case from valid_types
+                action_type_lower = action_type.lower()
+                valid_action = None
+                for valid_type in valid_types:
+                    if valid_type.lower() == action_type_lower:
+                        valid_action = valid_type
+                        break
+                
+                if valid_action is None:
+                    return 'Invalid', None
+                
+                # Special validation: Finish command must have content
+                content = json_action.get('content', None)
+                if valid_action == 'Finish' and (content is None or content == ""):
+                    return 'Invalid', None
+                
+                return valid_action, content
+                
+            except json.JSONDecodeError:
+                # If direct parsing fails, try to extract JSON from mixed content
+                pass
+            
             # If action contains multiple lines, try to extract just the JSON part
             if '\n' in action:
                 lines = action.split('\n')
@@ -27,15 +64,61 @@ def parse_action(action: str, json_mode: bool = False) -> tuple[str, Any]:
                         action = line
                         break
                 else:
-                    # If no complete JSON line found, take the first line
-                    action = lines[0].strip()
+                    # If no complete JSON line found, try to reconstruct the JSON
+                    # Look for the start and end of JSON across multiple lines
+                    json_content = ""
+                    in_json = False
+                    for line in lines:
+                        line = line.strip()
+                        if line.startswith('{'):
+                            in_json = True
+                            json_content = line
+                        elif in_json:
+                            json_content += " " + line
+                            if line.endswith('}'):
+                                action = json_content
+                                break
             
             # Handle cases where the response contains text before/after the JSON
-            # Look for JSON object in the string
+            # Look for JSON object in the string using proper brace matching
             import re
-            json_match = re.search(r'\{[^{}]*\}', action)
-            if json_match:
-                action = json_match.group(0)
+            
+            # First try to find a complete JSON object using brace counting
+            start_idx = action.find('{')
+            if start_idx != -1:
+                brace_count = 0
+                end_idx = -1
+                in_string = False
+                escape_next = False
+                
+                for i, char in enumerate(action[start_idx:], start_idx):
+                    if escape_next:
+                        escape_next = False
+                        continue
+                    
+                    if char == '\\':
+                        escape_next = True
+                        continue
+                    
+                    if char == '"' and not escape_next:
+                        in_string = not in_string
+                        continue
+                    
+                    if not in_string:
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                end_idx = i + 1
+                                break
+                
+                if end_idx != -1:
+                    action = action[start_idx:end_idx]
+                else:
+                    # If brace counting fails, try to parse the entire action as JSON
+                    # This handles cases where the JSON might be well-formed but complex
+                    pass
             
             json_action = json.loads(action)
             # Handle case where action is wrapped in an array (common LLM mistake)
@@ -61,7 +144,12 @@ def parse_action(action: str, json_mode: bool = False) -> tuple[str, Any]:
             if valid_action is None:
                 return 'Invalid', None
             
-            return valid_action, json_action.get('content', None)
+            # Special validation: Finish command must have content
+            content = json_action.get('content', None)
+            if valid_action == 'Finish' and (content is None or content == ""):
+                return 'Invalid', None
+            
+            return valid_action, content
         except Exception as e:
             # Log the parsing error for debugging
             from loguru import logger
