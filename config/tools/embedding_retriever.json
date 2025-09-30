@@ -1,6 +1,6 @@
 {
     "base_dir": "lightgcn",
-    "run_dir": "output",
+    "run_dir": "ml-100k",
     "user_embeddings_file": "user_embeddings.csv",
     "item_embeddings_file": "item_embeddings.csv",
     "user_id_map_file": "user_id_mapping.json",

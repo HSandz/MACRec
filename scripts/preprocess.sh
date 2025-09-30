@@ -9,10 +9,13 @@ python main.py --main Preprocess --data_dir data/ml-100k --dataset ml-100k --n_n
 echo Preprocessing Amazon Beauty dataset...
 python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Beauty --n_neg_items 7
 
-#echo Preprocessing Amazon Books dataset...
-#python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Books --n_neg_items 7
+echo Preprocessing Amazon Video Games dataset...
+python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Video_Games --n_neg_items 7
+
+echo Preprocessing Amazon Electronics dataset...
+python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Electronics --n_neg_items 7
+
+#echo Preprocessing Amazon Movies and TV dataset...
+#python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Movies_and_TV --n_neg_items 7
 
 echo Preprocessing completed!
-
-# echo "Creating sample dataset..."
-# python main.py --main Sample --data_dir data/Beauty/test.csv --output_dir data/Beauty/test_1000.csv --random --samples 1000

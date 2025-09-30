@@ -15,13 +15,12 @@ from recommenders.models.deeprec.deeprec_utils import prepare_hparams
 # File paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 config_file = os.path.join(BASE_DIR, "config.yaml")
-os.makedirs(os.path.join(BASE_DIR, "output"), exist_ok=True)
-os.makedirs(os.path.join(BASE_DIR, "saved"), exist_ok=True)
-user_embedding_file = os.path.join(BASE_DIR, "output/user_embeddings.csv")
-item_embedding_file = os.path.join(BASE_DIR, "output/item_embeddings.csv")
-user_mapping_file = os.path.join(BASE_DIR, "output/user_id_mapping.json")
-item_mapping_file = os.path.join(BASE_DIR, "output/item_id_mapping.json")
-results_file = os.path.join(BASE_DIR, "saved/results.json")
+os.makedirs(os.path.join(BASE_DIR, "ml-100k"), exist_ok=True)
+user_embedding_file = os.path.join(BASE_DIR, "ml-100k/user_embeddings.csv")
+item_embedding_file = os.path.join(BASE_DIR, "ml-100k/item_embeddings.csv")
+user_mapping_file = os.path.join(BASE_DIR, "ml-100k/user_id_mapping.json")
+item_mapping_file = os.path.join(BASE_DIR, "ml-100k/item_id_mapping.json")
+results_file = os.path.join(BASE_DIR, "ml-100k/results.json")
 
 # Data Preparation
 df = movielens.load_pandas_df(size='100k')

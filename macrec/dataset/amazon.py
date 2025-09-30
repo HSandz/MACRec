@@ -229,4 +229,4 @@ def process_data(dir: str, n_neg_items: int = 9):
     all_df.to_csv(os.path.join(dir, 'all.csv'), index=False)
 
 if __name__ == '__main__':
-    process_data(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'Beauty'))
+    process_data(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'Books'))
