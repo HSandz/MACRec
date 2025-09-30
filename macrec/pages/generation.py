@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import streamlit as st
+from loguru import logger
 
 from macrec.systems import System
 from macrec.utils import add_chat_message
@@ -51,7 +52,11 @@ def gen_page(system: System, task: str, dataset: str):
         elif task == 'sr':
             st.markdown('##### Candidate Item Attributes:')
             data_sample_candidates = data_sample['candidate_item_attributes'].split('\n')
-            system.kwargs['n_candidate'] = len(data_sample_candidates)
+            # Set n_candidate for the system if it supports this parameter
+            if hasattr(system, 'kwargs') and system.kwargs is not None:
+                system.kwargs['n_candidate'] = len(data_sample_candidates)
+            elif hasattr(system, 'system_kwargs'):
+                system.system_kwargs['n_candidate'] = len(data_sample_candidates)
             data_sample_candidates = [f'{i + 1}. item_{line}' for i, line in enumerate(data_sample_candidates)]
             data_sample_candidates = '\n'.join(data_sample_candidates)
             st.markdown(f'```\n{data_sample_candidates}\n```')
@@ -102,17 +107,33 @@ def gen_page(system: System, task: str, dataset: str):
         with st.chat_message('assistant'):
             title = f'#### System running round {len(st.session_state.chat_history) // 2 + 1}'
             st.markdown(title)
-            answer = system()
-            st.session_state.chat_history.append({
-                'role': 'assistant',
-                'message': [title] + system.web_log
-            })
-        if task == 'rp':
-            add_chat_message('assistant', f'**Answer**: `{answer}`, Ground Truth: `{gt_answer}`')
-        elif task == 'sr':
-            answer = [f'{item_id}' if item_id != gt_answer else f'**{item_id}**' for item_id in answer]
-            add_chat_message('assistant', f'**Answer**: `{answer}`, Ground Truth: `{gt_answer}`')
-        elif task == 'gen':
-            add_chat_message('assistant', f'**Answer**: `{answer}`')
+            
+            try:
+                answer = system()
+                st.session_state.chat_history.append({
+                    'role': 'assistant',
+                    'message': [title] + system.web_log
+                })
+                
+                # Display results based on task type
+                if task == 'rp':
+                    add_chat_message('assistant', f'**Answer**: `{answer}`, Ground Truth: `{gt_answer}`')
+                elif task == 'sr':
+                    answer = [f'{item_id}' if item_id != gt_answer else f'**{item_id}**' for item_id in answer]
+                    add_chat_message('assistant', f'**Answer**: `{answer}`, Ground Truth: `{gt_answer}`')
+                elif task == 'rr':
+                    if isinstance(answer, list):
+                        answer = [f'{item_id}' if item_id != gt_answer else f'**{item_id}**' for item_id in answer]
+                        add_chat_message('assistant', f'**Answer**: `{answer}`, Ground Truth: `{gt_answer}`')
+                    else:
+                        add_chat_message('assistant', f'**Answer**: `{answer}`, Ground Truth: `{gt_answer}`')
+                elif task == 'gen':
+                    add_chat_message('assistant', f'**Answer**: `{answer}`')
+                    
+            except Exception as e:
+                st.error(f'Error during system execution: {str(e)}')
+                logger.error(f'System execution error: {e}')
+                add_chat_message('assistant', f'**Error**: System encountered an error: {str(e)}')
+                
         st.session_state.start_round = False
         st.rerun()

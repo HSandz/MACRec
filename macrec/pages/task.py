@@ -96,18 +96,34 @@ def task_config(task: str, system_type: type[System], config_path: str, model_ov
     logger.debug(f'task_config called with model_override: {model_override}')
     st.markdown(f'## `{system_type.__name__}` for {task2name(task)}')
     
-    # Display model info - all models use OpenRouter now
-    st.info(f"Using model: **{model_override}** via 🔴 **OpenRouter API**")
+    # Determine provider based on model name
+    if model_override.startswith('google/'):
+        provider_display = "🟢 **Google API (Gemini)**"
+    elif model_override.startswith('openai/'):
+        provider_display = "🔵 **OpenAI API**"
+    elif model_override.startswith('anthropic/'):
+        provider_display = "🟠 **Anthropic API (Claude)**"
+    elif '/' in model_override:
+        provider_display = "🔴 **OpenRouter API**"
+    else:
+        provider_display = "🔴 **OpenRouter API**"
+    
+    # Display model info with appropriate provider
+    st.info(f"Using model: **{model_override}** via {provider_display}")
     logger.debug(f'Model set: {model_override}')
     
     checking = check_config(config_path)
     if not checking:
-        st.error('This config file requires OpenSource models, which are not supported in this machine (without cuda toolkit).')
+        st.error('This config file requires models that are not currently supported or accessible. Please try a different configuration.')
         return
     
     # Dynamically get available datasets
     available_datasets = get_available_datasets()
     dataset = st.selectbox('Choose a dataset', available_datasets) if task != 'chat' else 'chat'
+    
+    # Add warning for deprecated system references
+    if any(deprecated in config_path for deprecated in ['react', 'reflection', 'analyse']):
+        st.warning(f"⚠️ **Warning**: You are using a configuration that may reference deprecated systems. Consider using equivalent `collaboration` system configurations for better performance.")
     renew = False
     if 'system_type' not in st.session_state:
         logger.debug(f'New system type: {system_type.__name__}')

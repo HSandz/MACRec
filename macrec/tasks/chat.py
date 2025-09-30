@@ -2,16 +2,16 @@ from argparse import ArgumentParser
 import datetime
 
 from macrec.tasks.base import Task
-from macrec.systems import ChatSystem
+from macrec.systems import CollaborationSystem
 from macrec.utils import init_api, read_json, token_tracker
 
 class ChatTask(Task):
     @staticmethod
     def parse_task_args(parser: ArgumentParser) -> ArgumentParser:
         parser.add_argument('--api_config', type=str, default='config/api-config.json', help='Api configuration file')
-        parser.add_argument('--system', type=str, default='react', choices=['chat'], help='System name')
+        parser.add_argument('--system', type=str, default='collaboration', choices=['collaboration'], help='System name')
         parser.add_argument('--system_config', type=str, required=True, help='System configuration file')
-        parser.add_argument('--model', type=str, default=None, help='Override model name for all agents (e.g., gpt-oss-120b for OpenRouter)')
+        parser.add_argument('--model', type=str, default=None, help='Override model name for all agents (e.g., gpt-4o for OpenRouter)')
         return parser
 
     def get_system(self, system: str, config_path: str, model_override: str = None):
@@ -19,10 +19,10 @@ class ChatTask(Task):
         if model_override:
             system_kwargs['model_override'] = model_override
             
-        if system == 'chat':
-            return ChatSystem(config_path=config_path, **system_kwargs)
+        if system == 'collaboration':
+            return CollaborationSystem(config_path=config_path, **system_kwargs)
         else:
-            raise NotImplementedError
+            raise NotImplementedError(f"Unknown system: {system}. Use 'collaboration' for chat tasks.")
 
     def run(self, api_config: str, system: str, system_config: str, model: str = None, *args, **kwargs) -> None:
         init_api(read_json(api_config))

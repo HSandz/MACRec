@@ -3,23 +3,29 @@ import streamlit as st
 from loguru import logger
 
 from macrec.pages.task import task_config
-from macrec.systems import *
+from macrec.systems import SYSTEMS
 from macrec.utils import task2name, init_api, system2dir, read_json
 
 all_tasks = ['rp', 'sr', 'rr', 'gen', 'chat']
 
-# Available model options
+# Available model options - Updated to reflect current supported models
 AVAILABLE_MODELS = [
-    'gemini-2.0-flash-001',
-    'gemini-2.0-flash-lite-001', 
-    'openai/gpt-oss-20b:free',
-    'z-ai/glm-4.5-air:free',
-    'deepseek/deepseek-r1-0528:free',
+    'google/gemini-2.0-flash-001',
+    'google/gemini-2.0-flash-lite-001',
+    'google/gemini-1.5-flash', 
+    'google/gemini-1.5-pro',
+    'openai/gpt-4o',
+    'openai/gpt-4o-mini',
+    'openai/gpt-3.5-turbo',
+    'anthropic/claude-3-5-sonnet',
+    'anthropic/claude-3-5-haiku',
     'meta-llama/llama-3.1-8b-instruct',
     'meta-llama/llama-3.1-70b-instruct',
-    'openai/gpt-4o',
-    'anthropic/claude-3-5-sonnet',
-    'mistralai/mistral-7b-instruct'
+    'meta-llama/llama-3.2-1b-instruct',
+    'meta-llama/llama-3.2-3b-instruct',
+    'mistralai/mistral-7b-instruct',
+    'deepseek/deepseek-r1',
+    'qwen/qwen-2.5-72b-instruct'
 ]
 
 def demo():
@@ -40,8 +46,8 @@ def demo():
         # Custom model input (full width when enabled)
         custom_model = st.sidebar.text_input(
             'Model name',
-            placeholder='e.g., openai/gpt-4o-mini',
-            help='Enter any model name supported by your API providers'
+            placeholder='e.g., openai/gpt-4o-mini, google/gemini-2.0-flash-001',
+            help='Enter any model name supported by OpenRouter or direct API providers'
         )
         model_override = custom_model if custom_model.strip() else 'google/gemini-2.0-flash-001'
         logger.debug(f'Using custom model: {model_override}')
@@ -73,7 +79,15 @@ def demo():
     supported_tasks = [task for task in supported_tasks if task in system_type.supported_tasks()]
     # choose a task
     task = st.sidebar.radio('Choose a task', all_tasks, format_func=task2name)
+    
+    # Show information about deprecated systems
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**💡 Note:** The following systems have been deprecated:")
+    st.sidebar.markdown("- `react` → Use `collaboration` system")
+    st.sidebar.markdown("- `reflection` → Use `collaboration` with reflection")
+    st.sidebar.markdown("- `analyse` → Use `collaboration` with analysis")
+    
     if task not in supported_tasks:
-        st.error(f'The task {task2name(task)} is not supported by the system `{system_type.__name__}` with the config file `{config_file}`.')
+        st.error(f'The task {task2name(task)} is not supported by the system `{system_type.__name__}` with the config file `{config_file}`. Supported tasks: {", ".join([task2name(t) for t in supported_tasks])}')
         return
     task_config(task=task, system_type=system_type, config_path=os.path.join(config_dir, config_file), model_override=model_override)
