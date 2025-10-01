@@ -36,3 +36,5 @@ wandb/
 trlx/
 
 cache/
+
+scripts/eval_guide.md

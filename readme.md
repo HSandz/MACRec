@@ -273,13 +273,12 @@ python main.py --main Test --data_file data/ml-100k/test.csv --system collaborat
 | `analyse.json` | Manager + Analyst | Quick testing, simple tasks |
 | `retrieve_analyse.json` | Manager + Retriever + Analyst | Tasks needing item retrieval |
 | `reflect_analyse_search.json` | Manager + Reflector + Analyst + Searcher | Complex reasoning tasks |
-| `full.json` | All 6 agents | Maximum capability |
 
 #### ReWOO System (3-Phase Reasoning)
 | Configuration | Agents | Best For |
 |---------------|---------|----------|
 | `analyst.json` | Planner + Analyst + Solver | Structured reasoning, limited agents |
-| `reflector.json` | Planner + Analyst + Solver + Reflector | Recommendations with validation |
+| `reflector.json` | Planner + Analyst + Reflector + Solver | Recommendations with validation |
 | `analyst_searcher.json` | Planner + Analyst + Searcher + Solver | Genre-aware recommendations |
 | `analyst_retriever.json` | Planner + Analyst + Retriever + Solver | Retrieve & rank tasks |
 | `full.json` | Planner + All Workers + Solver | Complex multi-step reasoning |
