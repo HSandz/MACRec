@@ -24,7 +24,7 @@
         },
         "Reflector": {
             "config_path": "config/agents/reflector_api.json",
-            "prompt_config": "config/prompts/agent_prompt/reflector.json"
+            "prompt_config": "config/prompts/agent_prompt/reflector_rewoo.json"
         },
         "Solver": {
             "config_path": "config/agents/solver.json"

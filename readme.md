@@ -277,10 +277,10 @@ python main.py --main Test --data_file data/ml-100k/test.csv --system collaborat
 #### ReWOO System (3-Phase Reasoning)
 | Configuration | Agents | Best For |
 |---------------|---------|----------|
-| `analyst.json` | Planner + Analyst + Solver | Structured reasoning, limited agents |
+| `basic.json` | Planner + Analyst + Solver | Structured reasoning, limited agents |
 | `reflector.json` | Planner + Analyst + Reflector + Solver | Recommendations with validation |
-| `analyst_searcher.json` | Planner + Analyst + Searcher + Solver | Genre-aware recommendations |
-| `analyst_retriever.json` | Planner + Analyst + Retriever + Solver | Retrieve & rank tasks |
+| `searcher.json` | Planner + Analyst + Searcher + Solver | Genre-aware recommendations |
+| `retriever.json` | Planner + Analyst + Retriever + Solver | Retrieve & rank tasks |
 | `full.json` | Planner + All Workers + Solver | Complex multi-step reasoning |
 
 ### Example Workflows
@@ -347,7 +347,10 @@ The ReWOO system implements a structured 3-phase reasoning approach:
 #### Usage Examples
 ```bash
 # Use basic ReWOO (Planner + Analyst + Solver)
-python main.py --main Test --system rewoo --system_config config/systems/rewoo/analyst.json --task sr --samples 1
+python main.py --main Test --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 1
+
+# ReWOO with reflection and automatic reruns enabled
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/reflector.json --task sr --samples 1 --enable-reflection-rerun --openrouter google/gemini-2.0-flash-001
 
 # Use ReWOO with Reflection (Planner + Analyst + Solver → Reflector)
 python main.py --main Test --system rewoo --system_config config/systems/rewoo/reflector.json --task sr --samples 1
