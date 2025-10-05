@@ -5,7 +5,7 @@
     },
     "planner_sr_guidance": {
         "type": "raw",
-        "content": "\nFor Sequential Recommendation:\n- CRITICAL: Do NOT assign ranking tasks to Analyst - that is the Solver's job\n- Create specific analysis steps for the target user and each candidate item individually\n- FOCUS: Include explicit genre preference extraction from user history\n- Plan should include: user profile analysis, user genre preferences analysis, and individual candidate item analysis\n- Each candidate item should have its own analysis step with genre focus\n- The Solver will use all Analyst results to generate genre-weighted ranking"
+        "content": "\nFor Sequential Recommendation:\n- CRITICAL: Do NOT assign ranking tasks to Analyst - that is the Solver's job\n- Create specific analysis steps for the target user and each candidate item individually\n- FOCUS: Include explicit genre preference extraction from user history\n- Plan should include: user profile analysis, user genre preferences analysis, and individual candidate item analysis\n- Each candidate item should have its own analysis step with genre focus\n- The Solver will use all Analyst results to generate genre-weighted ranking\n\nREFLECTION PROCESSING:\n- If previous reflection feedback is provided, IMMEDIATELY address the specific planning deficiency mentioned\n- Focus especially on missing genre analysis, analysis order, or task specificity issues\n- Revise your approach based on the exact guidance provided in reflection comments"
     },
     "planner_rp_guidance": {
         "type": "raw",

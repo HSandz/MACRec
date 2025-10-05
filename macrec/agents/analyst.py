@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict
 from loguru import logger
 
 from macrec.agents.base import ToolAgent
@@ -25,6 +25,8 @@ class Analyst(ToolAgent):
         self.queried_users = set()
         self.queried_items = set()
         self.gathered_info = {}
+        # Store execution context for cached data access
+        self.execution_context = None
         self.reset()
 
     @staticmethod
@@ -91,7 +93,7 @@ class Analyst(ToolAgent):
             command_summary = f"\n\nCOMMANDS ALREADY EXECUTED:\n" + "\n".join([f"- {cmd}" for cmd in unique_commands])
             command_summary += "\n\nDO NOT REPEAT ANY OF THE ABOVE COMMANDS. Choose a different action or use Finish."
         
-        # Add information about what has been queried already
+        # Add information about what has been queried already and what's cached
         context_info = ""
         if self.queried_users or self.queried_items:
             context_info += "\nAlready queried information:"
@@ -100,6 +102,18 @@ class Analyst(ToolAgent):
             if self.queried_items:
                 context_info += f"\n- Items: {sorted(list(self.queried_items))}"
             context_info += "\nDo NOT query the same entities again unless absolutely necessary."
+        
+        # Add cached data information if execution context is available
+        if self.execution_context and 'entity_cache' in self.execution_context:
+            cache = self.execution_context['entity_cache']
+            cached_items = []
+            if cache.get('users'):
+                cached_items.append(f"Users: {sorted(cache['users'].keys())}")
+            if cache.get('items'):
+                cached_items.append(f"Items: {sorted(cache['items'].keys())}")
+            if cached_items:
+                context_info += f"\n\nCACHED DATA AVAILABLE (from previous steps):\n- " + "\n- ".join(cached_items)
+                context_info += "\nIMPORTANT: Use cached data instead of re-querying these entities."
         
         # Check if we have sufficient information to finish
         finish_hint = ""
@@ -187,8 +201,19 @@ class Analyst(ToolAgent):
                 if argument is None:
                     raise ValueError("Argument cannot be None")
                 query_user_id = int(argument)
-                # Check if already queried
-                if query_user_id in self.queried_users:
+                
+                # Check execution context cache first (from previous steps)
+                if (self.execution_context and 'entity_cache' in self.execution_context and
+                    query_user_id in self.execution_context['entity_cache'].get('users', {})):
+                    cached_info = self.execution_context['entity_cache']['users'][query_user_id].get('info', '')
+                    if cached_info:
+                        observation = cached_info
+                        self.queried_users.add(query_user_id)
+                        self.gathered_info[f"user_{query_user_id}"] = observation
+                        log_head = f':green[Used CACHED UserInfo for user] :red[{query_user_id}]:green[ (saved API call)]\n- '
+                        logger.info(f"✓ Used cached data for user {query_user_id}, saved 1 API call")
+                # Check if already queried in current session
+                elif query_user_id in self.queried_users:
                     observation = f"User {query_user_id} information already retrieved. Use gathered information instead."
                     log_head = f':orange[Skipped duplicate UserInfo query for user] :red[{query_user_id}]:orange[...]\n- '
                 else:
@@ -204,8 +229,19 @@ class Analyst(ToolAgent):
                 if argument is None:
                     raise ValueError("Argument cannot be None")
                 query_item_id = int(argument)
-                # Check if already queried
-                if query_item_id in self.queried_items:
+                
+                # Check execution context cache first (from previous steps)
+                if (self.execution_context and 'entity_cache' in self.execution_context and
+                    query_item_id in self.execution_context['entity_cache'].get('items', {})):
+                    cached_info = self.execution_context['entity_cache']['items'][query_item_id].get('info', '')
+                    if cached_info:
+                        observation = cached_info
+                        self.queried_items.add(query_item_id)
+                        self.gathered_info[f"item_{query_item_id}"] = observation
+                        log_head = f':green[Used CACHED ItemInfo for item] :red[{query_item_id}]:green[ (saved API call)]\n- '
+                        logger.info(f"✓ Used cached data for item {query_item_id}, saved 1 API call")
+                # Check if already queried in current session
+                elif query_item_id in self.queried_items:
                     observation = f"Item {query_item_id} information already retrieved. Use gathered information instead."
                     log_head = f':orange[Skipped duplicate ItemInfo query for item] :red[{query_item_id}]:orange[...]\n- '
                 else:
@@ -221,9 +257,18 @@ class Analyst(ToolAgent):
                 if argument is None:
                     raise ValueError("Argument cannot be None")
                 query_user_id = int(argument)
-                # Check if already queried
                 history_key = f"user_history_{query_user_id}"
-                if history_key in self.gathered_info:
+                
+                # Check execution context cache first (from previous steps)
+                if (self.execution_context and 'entity_cache' in self.execution_context and
+                    query_user_id in self.execution_context['entity_cache'].get('user_histories', {})):
+                    cached_history = self.execution_context['entity_cache']['user_histories'][query_user_id]
+                    observation = cached_history
+                    self.gathered_info[history_key] = observation
+                    log_head = f':green[Used CACHED UserHistory for user] :red[{query_user_id}]:green[ (saved API call)]\n- '
+                    logger.info(f"✓ Used cached history for user {query_user_id}, saved 1 API call")
+                # Check if already queried in current session
+                elif history_key in self.gathered_info:
                     observation = f"User {query_user_id} history already retrieved. Use gathered information instead."
                     log_head = f':orange[Skipped duplicate UserHistory query for user] :red[{query_user_id}]:orange[...]\n- '
                 else:
@@ -239,9 +284,18 @@ class Analyst(ToolAgent):
                 if argument is None:
                     raise ValueError("Argument cannot be None")
                 query_item_id = int(argument)
-                # Check if already queried
                 history_key = f"item_history_{query_item_id}"
-                if history_key in self.gathered_info:
+                
+                # Check execution context cache first (from previous steps)
+                if (self.execution_context and 'entity_cache' in self.execution_context and
+                    query_item_id in self.execution_context['entity_cache'].get('item_histories', {})):
+                    cached_history = self.execution_context['entity_cache']['item_histories'][query_item_id]
+                    observation = cached_history
+                    self.gathered_info[history_key] = observation
+                    log_head = f':green[Used CACHED ItemHistory for item] :red[{query_item_id}]:green[ (saved API call)]\n- '
+                    logger.info(f"✓ Used cached history for item {query_item_id}, saved 1 API call")
+                # Check if already queried in current session
+                elif history_key in self.gathered_info:
                     observation = f"Item {query_item_id} history already retrieved. Use gathered information instead."
                     log_head = f':orange[Skipped duplicate ItemHistory query for item] :red[{query_item_id}]:orange[...]\n- '
                 else:
@@ -434,7 +488,7 @@ class Analyst(ToolAgent):
             return "Analyst did not return any result."
         return self.results
 
-    def invoke(self, argument: Any, json_mode: bool, task_context: str = None, **kwargs) -> str:
+    def invoke(self, argument: Any, json_mode: bool, task_context: str = None, execution_context: Dict[str, Any] = None, **kwargs) -> str:
         """
         Invoke the analyst with specific arguments and optional task context.
         
@@ -442,8 +496,12 @@ class Analyst(ToolAgent):
             argument: The analysis argument (analyse_type, id)
             json_mode: Whether to use JSON mode
             task_context: Optional specific task description for context-aware analysis
+            execution_context: Optional context with cached data from previous steps
             **kwargs: Additional keyword arguments
         """
+        # Store execution context for cache access
+        self.execution_context = execution_context
+        
         if json_mode:
             if not isinstance(argument, list) or len(argument) != 2:
                 observation = "The argument of the action 'Analyse' should be a list with two elements: analyse type (user or item) and id."

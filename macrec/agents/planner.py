@@ -83,6 +83,11 @@ class Planner(Agent):
         if 'history' in kwargs:
             context += f"User history available: Yes\n"
         
+        # Add reflection feedback if available
+        reflection_context = ""
+        if 'reflections' in kwargs and kwargs['reflections'].strip():
+            reflection_context = f"\n{kwargs['reflections']}\n"
+        
         # For SR tasks, provide specific planning guidance
         planning_guidance = ""
         if task == 'sr':
@@ -120,7 +125,7 @@ class Planner(Agent):
             context=context,
             query=query,
             planning_guidance=planning_guidance
-        )
+        ) + reflection_context
 
     def forward(self, *args, **kwargs) -> str:
         """Forward pass - delegate to invoke method."""

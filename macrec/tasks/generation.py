@@ -25,6 +25,7 @@ class GenerationTask(Task):
         
         parser.add_argument('--openrouter', type=str, help='Use OpenRouter with specified model (e.g., --openrouter google/gemini-2.0-flash-001)')
         parser.add_argument('--ollama', type=str, help='Use Ollama with specified model (e.g., --ollama llama3.2:1b)')
+        parser.add_argument('--enable-reflection-rerun', action='store_true', dest='enable_reflection_rerun', help='Enable automatic rerun when reflector returns correctness: false (only for ReWOO system)')
         
         return parser
 
@@ -222,7 +223,7 @@ class GenerationTask(Task):
         
         self.after_generate()
 
-    def run(self, api_config: str, dataset: str, data_file: str, system: str, system_config: str, task: str, max_his: int, model: str = 'gemini', openrouter: str = None, ollama: str = None):
+    def run(self, api_config: str, dataset: str, data_file: str, system: str, system_config: str, task: str, max_his: int, model: str = 'gemini', openrouter: str = None, ollama: str = None, enable_reflection_rerun: bool = False):
         if dataset == 'None':
             dataset = os.path.basename(os.path.dirname(data_file))
         self.dataset = dataset
@@ -242,6 +243,7 @@ class GenerationTask(Task):
                 'dataset': self.dataset,
                 'model_override': self.model_override,
                 'provider_type': self.provider_type,
+                'enable_reflection_rerun': enable_reflection_rerun,
             }
             
             logger.info(f"🤖 Using {provider_info['provider_type']} with model: {provider_info['model_name']}")
@@ -254,6 +256,7 @@ class GenerationTask(Task):
                 'task': self.task,
                 'leak': False,
                 'dataset': self.dataset,
+                'enable_reflection_rerun': enable_reflection_rerun,
             }
             
             logger.info("🤖 Using individual agent configurations from config files")

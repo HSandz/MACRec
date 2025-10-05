@@ -26,11 +26,20 @@ class ReWOOSystem(System):
     while adding ReWOO capabilities for improved reasoning and performance.
     """
     
-    def __init__(self, task: str, config_path: str, leak: bool = False, web_demo: bool = False, dataset: Optional[str] = None, *args, **kwargs) -> None:
+    def __init__(self, task: str, config_path: str, leak: bool = False, web_demo: bool = False, dataset: Optional[str] = None, enable_reflection_rerun: bool = False, *args, **kwargs) -> None:
         # Initialize factory and orchestrator components
         self.agent_factory = DefaultAgentFactory()
         self.agent_coordinator = AgentCoordinator(self.agent_factory)
         self.orchestrator = None  # Will be initialized in init()
+        self.enable_reflection_rerun = enable_reflection_rerun  # Store reflection rerun option
+        
+        # Initialize entity cache for context sharing between steps
+        self.entity_cache = {
+            'users': {},  # {user_id: user_data}
+            'items': {},  # {item_id: item_data}
+            'user_histories': {},  # {user_id: history_data}
+            'item_histories': {}   # {item_id: history_data}
+        }
         
         super().__init__(task, config_path, leak, web_demo, dataset, *args, **kwargs)
         
@@ -58,6 +67,12 @@ class ReWOOSystem(System):
         self.plan_steps = []
         self.step_n = 1
         self.phase = 'planning'
+        self._execution_errors = []  # Track errors for smart reflection
+        
+        # Separate kwargs for planner to receive reflection feedback
+        self.planner_kwargs = {
+            'reflections': '',  # Only planner receives reflection feedback
+        }
 
     @staticmethod
     def supported_tasks() -> list[str]:
@@ -105,12 +120,49 @@ class ReWOOSystem(System):
             self.execution_results.clear()
             self.current_plan = None
             self.plan_steps = []
+            # Clear entity cache
+            if hasattr(self, 'entity_cache'):
+                self.entity_cache = {
+                    'users': {},
+                    'items': {},
+                    'user_histories': {},
+                    'item_histories': {}
+                }
+            # Clear reflection storage
+            if hasattr(self, '_last_solution'):
+                delattr(self, '_last_solution')
+            if hasattr(self, '_last_final_answer'):
+                delattr(self, '_last_final_answer')
+            # Reset planner reflection feedback
+            if hasattr(self, 'planner_kwargs'):
+                self.planner_kwargs['reflections'] = ""
+        else:
+            # When preserving progress during reflection, add progress summary to planner_kwargs
+            if hasattr(self, 'analyzed_items') and self.analyzed_items:
+                current_progress = {
+                    'analyzed_items': list(self.analyzed_items),
+                    'analyzed_users': list(getattr(self, 'analyzed_users', set())),
+                    'step_n': getattr(self, 'step_n', 1)
+                }
+                
+                if 'reflections' not in self.planner_kwargs:
+                    self.planner_kwargs['reflections'] = ""
+                
+                progress_summary = f"\n=== Previous Progress ===\n"
+                if current_progress['analyzed_items']:
+                    progress_summary += f"- Analyzed items: {sorted(current_progress['analyzed_items'])}\n"
+                if current_progress['analyzed_users']:
+                    progress_summary += f"- Analyzed users: {sorted(current_progress['analyzed_users'])}\n"
+                progress_summary += f"- Completed {current_progress['step_n']} steps\n"
+                progress_summary += "IMPORTANT: Create a plan that avoids repeating the above analyses.\n"
+                self.planner_kwargs['reflections'] += progress_summary
         
         # Reset all agents using coordinator
         self.agent_coordinator.reset_all_agents()
         
         self.step_n = 1
         self.phase = 'planning'
+        self._execution_errors = []  # Clear error tracking
 
     def forward(self, user_input: Optional[str] = None, reset: bool = True) -> Any:
         """Forward method implementing ReWOO workflow with exact same data integration as collaboration system."""
@@ -135,19 +187,274 @@ class ReWOOSystem(System):
                 logger.info("ReWOO agents not available. Falling back to collaboration mode.")
                 return self._fallback_collaboration_mode()
             
-            if self.phase == 'planning':
-                return self._planning_phase()
-            elif self.phase == 'working':
-                return self._working_phase()
-            elif self.phase == 'solving':
-                return self._solving_phase()
+            # Execute ReWOO workflow
+            result = self._execute_rewoo_workflow()
+            
+            # Handle reflection and potential reruns (only if enabled)
+            if self.enable_reflection_rerun:
+                should_continue_reflecting = self._perform_reflection()
+                reflection_count = 0
+                max_reflections = 1
+                
+                while should_continue_reflecting and reflection_count < max_reflections:
+                    reflection_count += 1
+                    logger.debug(f'Starting ReWOO reflection cycle {reflection_count}/{max_reflections}')
+                    
+                    # Reset with progress preservation for reflection continuation
+                    self.reset(preserve_progress=True)
+                    
+                    # Re-execute ReWOO workflow with reflection feedback
+                    result = self._execute_rewoo_workflow()
+                    
+                    # Check if we should continue reflecting
+                    should_continue_reflecting = self._perform_reflection()
+                
+                if reflection_count >= max_reflections:
+                    logger.warning(f'Stopped after {max_reflections} ReWOO reflection cycle to prevent infinite loops')
             else:
-                return self._planning_phase()  # Default to planning
+                # Just perform reflection for logging purposes but don't rerun
+                self._perform_reflection_logging_only()
+            
+            return result
                 
         except Exception as e:
             logger.error(f"Error in ReWOO forward: {e}")
             # Fall back to collaboration mode on error
             return self._fallback_collaboration_mode()
+
+    def _execute_rewoo_workflow(self) -> str:
+        """Execute the complete ReWOO workflow (planning -> working -> solving)."""
+        if self.phase == 'planning':
+            result = self._planning_phase()
+        elif self.phase == 'working':
+            result = self._working_phase()
+        elif self.phase == 'solving':
+            result = self._solving_phase()
+        else:
+            result = self._planning_phase()  # Default to planning
+        
+        # If we haven't finished all phases, continue to the next one
+        while self.phase != 'completed' and not hasattr(self, '_finished'):
+            if self.phase == 'planning':
+                result = self._planning_phase()
+            elif self.phase == 'working':
+                result = self._working_phase()
+            elif self.phase == 'solving':
+                result = self._solving_phase()
+                self.phase = 'completed'  # Mark as completed after solving
+        
+        return result
+    
+    def _should_perform_reflection(self) -> tuple[bool, str]:
+        """
+        Determine if reflection is necessary based on smart criteria.
+        
+        Returns:
+            tuple[bool, str]: (should_reflect, reason)
+        """
+        import random
+        
+        # Check 1: Is final answer empty or malformed?
+        if hasattr(self, '_last_final_answer'):
+            answer = self._last_final_answer
+            
+            # Empty answer
+            if not answer or str(answer).strip() == '':
+                return True, "Final answer is empty"
+            
+            # Check for malformed answers based on task type
+            if self.task == 'sr' or self.task == 'rr':
+                # Sequential recommendation should return a list
+                if not isinstance(answer, list):
+                    return True, f"Expected list for {self.task} task, got {type(answer).__name__}"
+                if len(answer) == 0:
+                    return True, "Answer list is empty"
+                
+                # SEMANTIC VALIDATION: Check if answer contains correct candidate items
+                if hasattr(self, 'input') and self.input:
+                    # Extract candidate item IDs from query (format: "1311: Title: ...")
+                    candidate_matches = re.findall(r'(\d+):\s*Title:', self.input)
+                    if candidate_matches:
+                        expected_candidates = set(int(item_id) for item_id in candidate_matches)
+                        actual_items = set(answer)
+                        
+                        # Check 1a: Wrong number of items
+                        if len(answer) != len(expected_candidates):
+                            return True, f"Wrong count: expected {len(expected_candidates)} items, got {len(answer)}"
+                        
+                        # Check 1b: Contains invalid items (not in candidate list)
+                        invalid_items = actual_items - expected_candidates
+                        if invalid_items:
+                            return True, f"Contains non-candidate items: {sorted(invalid_items)}"
+                        
+                        # Check 1c: Missing required items
+                        missing_items = expected_candidates - actual_items
+                        if missing_items:
+                            return True, f"Missing candidate items: {sorted(missing_items)}"
+                        
+                        # Check 1d: Duplicate items
+                        if len(answer) != len(actual_items):
+                            return True, "Contains duplicate items"
+                            
+            elif self.task == 'rp':
+                # Rating prediction should return a number
+                try:
+                    float(answer)
+                except (ValueError, TypeError):
+                    return True, f"Expected numeric rating, got invalid value: {answer}"
+        else:
+            # No final answer available - this is an error
+            return True, "No final answer generated"
+        
+        # Check 2: Were there critical errors during execution?
+        if hasattr(self, '_execution_errors') and self._execution_errors:
+            error_count = len(self._execution_errors)
+            if error_count > 0:
+                return True, f"Detected {error_count} execution error(s)"
+        
+        # Check 3: Random sampling for quality monitoring (10% of cases)
+        random_sample = random.random() < 0.10
+        if random_sample:
+            return True, "Random quality monitoring sample (10%)"
+        
+        # Default: Skip reflection if answer is valid and no errors
+        return False, "Answer is valid, no errors detected"
+    
+    def _perform_reflection(self) -> bool:
+        """
+        Perform smart reflection only when necessary.
+        
+        Reflection triggers:
+        - Final answer is empty/malformed
+        - Critical errors occurred during execution
+        - Random sampling (10% of cases for quality monitoring)
+        
+        Skip reflection when:
+        - Answer format is correct and complete
+        """
+        if not self.reflector:
+            return False  # No reflector available, don't continue reflecting
+        
+        # Check if reflection is necessary
+        should_reflect, skip_reason = self._should_perform_reflection()
+        
+        if not should_reflect:
+            logger.info(f"⏭️  Skipping reflection: {skip_reason}")
+            self.log(f"**Reflection Skipped:** {skip_reason}", agent=self.reflector)
+            return False
+        
+        logger.info(f"🔍 Performing reflection: {skip_reason}")
+        
+        # Build comprehensive scratchpad of ReWOO process
+        if hasattr(self, '_last_solution') and hasattr(self, '_last_final_answer'):
+            rewoo_process = self._build_rewoo_scratchpad(self._last_solution, self._last_final_answer)
+        else:
+            # Fallback if solution details not available
+            rewoo_process = self._build_basic_rewoo_scratchpad()
+        
+        # Add any previous reflection comments to provide context
+        if hasattr(self, 'planner_kwargs') and 'reflections' in self.planner_kwargs:
+            rewoo_process += f"\n\n=== Previous Reflection Comments ===\n{self.planner_kwargs['reflections']}"
+        
+        # Use reflector to analyze the complete ReWOO process
+        self.reflector(input=self.input, scratchpad=rewoo_process)
+        
+        if self.reflector.json_mode and self.reflector.reflections:
+            try:
+                reflection_json = json.loads(self.reflector.reflections[-1])
+                
+                if 'correctness' in reflection_json:
+                    correctness = reflection_json['correctness']
+                    reason = reflection_json.get('reason', 'No reason provided')
+                    
+                    if not correctness:
+                        logger.debug(f"ReWOO Reflection identified issues: {reason}")
+                        self.log(f"**ReWOO Reflection Issues Identified:**\n{reason}", agent=self.reflector)
+                        
+                        # Add reflection comment to planner_kwargs ONLY to prompt better planning
+                        if 'reflections' not in self.planner_kwargs:
+                            self.planner_kwargs['reflections'] = ""
+                        
+                        reflection_feedback = f"\n=== Planning Improvement Required ===\n"
+                        reflection_feedback += f"{reason}\n"
+                        reflection_feedback += f"CRITICAL: Revise your plan to address this specific issue.\n"
+                        
+                        self.planner_kwargs['reflections'] += reflection_feedback
+                        
+                        return True  # Continue reflecting (incorrect result)
+                    else:
+                        logger.debug(f"ReWOO Reflection confirms correctness: {reason}")
+                        self.log(f"**ReWOO Reflection Confirms Correctness:**\n{reason}", agent=self.reflector)
+                        return False  # Stop reflecting (correct result)
+                        
+            except Exception as e:
+                logger.error(f'Invalid reflection JSON output: {self.reflector.reflections[-1]}')
+                logger.error(f'JSON parsing error: {e}')
+                # Continue execution even if reflection parsing fails
+                return False
+        else:
+            # Non-JSON mode reflection - assume we should stop reflecting
+            if self.reflector.reflections:
+                self.log(f"**ReWOO Reflection:**\n{self.reflector.reflections[-1]}", agent=self.reflector)
+            return False
+        
+        return False  # Default to not continue reflecting
+
+    def _perform_reflection_logging_only(self) -> None:
+        """Perform reflection only for logging purposes without enabling reruns."""
+        if not self.reflector:
+            return  # No reflector available
+        
+        # Build comprehensive scratchpad of ReWOO process
+        if hasattr(self, '_last_solution') and hasattr(self, '_last_final_answer'):
+            rewoo_process = self._build_rewoo_scratchpad(self._last_solution, self._last_final_answer)
+        else:
+            # Fallback if solution details not available
+            rewoo_process = self._build_basic_rewoo_scratchpad()
+        
+        # Use reflector to analyze the complete ReWOO process
+        self.reflector(input=self.input, scratchpad=rewoo_process)
+        
+        if self.reflector.json_mode and self.reflector.reflections:
+            try:
+                reflection_json = json.loads(self.reflector.reflections[-1])
+                
+                if 'correctness' in reflection_json:
+                    correctness = reflection_json['correctness']
+                    reason = reflection_json.get('reason', 'No reason provided')
+                    
+                    if not correctness:
+                        logger.debug(f"ReWOO Reflection identified issues: {reason}")
+                        self.log(f"**ReWOO Reflection Issues Identified:**\n{reason}", agent=self.reflector)
+                        logger.info("Note: Reflection rerun is disabled. Use --enable-reflection-rerun to enable automatic reruns.")
+                    else:
+                        logger.debug(f"ReWOO Reflection confirms correctness: {reason}")
+                        self.log(f"**ReWOO Reflection Confirms Correctness:**\n{reason}", agent=self.reflector)
+                        
+            except Exception as e:
+                logger.error(f'Invalid reflection JSON output: {self.reflector.reflections[-1]}')
+                logger.error(f'JSON parsing error: {e}')
+        else:
+            # Non-JSON mode reflection
+            if self.reflector.reflections:
+                self.log(f"**ReWOO Reflection:**\n{self.reflector.reflections[-1]}", agent=self.reflector)
+
+    def _build_basic_rewoo_scratchpad(self) -> str:
+        """Build a basic scratchpad when detailed solution information is not available."""
+        scratchpad = f"\n=== ReWOO Process Summary ===\n"
+        scratchpad += f"Task: {self.task.upper()}\n"
+        scratchpad += f"Original Query: {getattr(self, 'input', 'No input')}\n"
+        scratchpad += f"Current Phase: {self.phase}\n"
+        
+        if hasattr(self, 'current_plan') and self.current_plan:
+            scratchpad += f"\nGenerated Plan:\n{self.current_plan}\n"
+        
+        if hasattr(self, 'execution_results') and self.execution_results:
+            scratchpad += "\nExecution Results:\n"
+            for step_var, result in self.execution_results.items():
+                scratchpad += f"{step_var}: {result}\n"
+        
+        return scratchpad
 
     def _planning_phase(self) -> str:
         """Phase 1: Planning - Decompose task into sub-problems."""
@@ -156,8 +463,9 @@ class ReWOOSystem(System):
         # Prepare query for planner
         query = self._prepare_planning_query()
         
-        # Generate plan - CRITICAL: Pass manager_kwargs like collaboration system
-        plan = self.planner.invoke(query, self.task, **self.manager_kwargs)
+        # Generate plan - CRITICAL: Pass manager_kwargs AND planner_kwargs (for reflection feedback)
+        combined_kwargs = {**self.manager_kwargs, **self.planner_kwargs}
+        plan = self.planner.invoke(query, self.task, **combined_kwargs)
         self.current_plan = plan
         self.plan_steps = self.planner.parse_plan(plan)
         
@@ -221,41 +529,9 @@ class ReWOOSystem(System):
         # Extract and return final answer
         final_answer = self.solver.extract_final_answer(solution, self.task)
         
-        # Add reflection capability if Reflector is available
-        if self.reflector:
-            logger.info("ReWOO Phase 3.1: Reflection")
-            
-            # Create a scratchpad-like summary of the entire ReWOO process for reflection
-            rewoo_process = self._build_rewoo_scratchpad(solution, final_answer)
-            
-            # Use reflector to analyze the complete ReWOO process
-            self.reflector(input=self.input, scratchpad=rewoo_process)
-            
-            if self.reflector.json_mode and self.reflector.reflections:
-                try:
-                    import json
-                    reflection_json = json.loads(self.reflector.reflections[-1])
-                    
-                    # Log reflection results
-                    if 'correctness' in reflection_json:
-                        correctness = reflection_json['correctness']
-                        reason = reflection_json.get('reason', 'No reason provided')
-                        
-                        if not correctness:
-                            logger.debug(f"ReWOO Reflection identified issues: {reason}")
-                            self.log(f"**ReWOO Reflection Issues Identified:**\n{reason}", agent=self.reflector)
-                        else:
-                            logger.debug(f"ReWOO Reflection confirms correctness: {reason}")
-                            self.log(f"**ReWOO Reflection Confirms Correctness:**\n{reason}", agent=self.reflector)
-                            
-                except Exception as e:
-                    logger.error(f'Invalid reflection JSON output: {self.reflector.reflections[-1]}')
-                    logger.error(f'JSON parsing error: {e}')
-                    # Continue execution even if reflection parsing fails
-            else:
-                # Non-JSON mode reflection
-                if self.reflector.reflections:
-                    self.log(f"**ReWOO Reflection:**\n{self.reflector.reflections[-1]}", agent=self.reflector)
+        # Store solution and final answer for reflection
+        self._last_solution = solution
+        self._last_final_answer = final_answer
         
         # Log the final solution
         logger.info(f"ReWOO Final Answer: {final_answer}")
@@ -348,9 +624,13 @@ class ReWOOSystem(System):
                 args = self._parse_analyst_arguments_from_context(task_desc)
                 logger.debug(f"Analyst args: {args}, type: {type(args)}")
                 
-                # Pass the full task description as analysis context
+                # Build execution context with cached data and previous results
+                execution_context = self._build_execution_context()
+                
+                # Pass the full task description as analysis context + execution context
                 kwargs = {
                     'task_context': task_desc,  # Pass the specific plan step description
+                    'execution_context': execution_context,  # Pass cached data and previous results
                     **self.manager_kwargs
                 }
                 
@@ -365,6 +645,9 @@ class ReWOOSystem(System):
                 else:
                     # Pass as-is
                     result = worker.invoke(argument=args, json_mode=json_mode, **kwargs)
+                
+                # Update entity cache with new data from this step
+                self._update_entity_cache(args, result)
                     
             elif worker_type.lower() == 'retriever':
                 # Use the same argument parsing as collaboration system  
@@ -389,9 +672,65 @@ class ReWOOSystem(System):
             return result
             
         except Exception as e:
-            logger.error(f"Error executing step with {worker_type}: {e}")
+            error_msg = f"Error executing step with {worker_type}: {e}"
+            logger.error(error_msg)
+            # Track error for smart reflection
+            if not hasattr(self, '_execution_errors'):
+                self._execution_errors = []
+            self._execution_errors.append({
+                'worker': worker_type,
+                'step': step.get('variable', 'unknown'),
+                'error': str(e)
+            })
             return f"Execution failed: {str(e)}"
 
+    def _build_execution_context(self) -> Dict[str, Any]:
+        """Build execution context with cached data and previous results for context sharing."""
+        context = {
+            'entity_cache': self.entity_cache,
+            'previous_results': dict(self.execution_results),
+            'analyzed_entities': {
+                'users': list(self.analyzed_users),
+                'items': list(self.analyzed_items)
+            },
+            'step_number': self.step_n,
+            'total_steps': len(self.plan_steps)
+        }
+        return context
+    
+    def _update_entity_cache(self, args: List[Any], result: str) -> None:
+        """Update entity cache with data from the current step result."""
+        if not isinstance(args, list) or len(args) < 2:
+            return
+        
+        entity_type = args[0]
+        entity_id = args[1]
+        
+        # Parse and cache entity information from result
+        if entity_type == 'user':
+            # Extract user info if present in result
+            if 'Age:' in result or 'Gender:' in result or 'Occupation:' in result:
+                if entity_id not in self.entity_cache['users']:
+                    self.entity_cache['users'][entity_id] = {}
+                self.entity_cache['users'][entity_id]['info'] = result
+            
+            # Extract user history if present in result
+            if 'interacted with' in result or 'Retrieved' in result:
+                if entity_id not in self.entity_cache['user_histories']:
+                    self.entity_cache['user_histories'][entity_id] = result
+                    
+        elif entity_type == 'item':
+            # Extract item info if present in result
+            if 'Title:' in result or 'Genres:' in result:
+                if entity_id not in self.entity_cache['items']:
+                    self.entity_cache['items'][entity_id] = {}
+                self.entity_cache['items'][entity_id]['info'] = result
+            
+            # Extract item history if present in result
+            if 'interacted with' in result or 'Retrieved' in result:
+                if entity_id not in self.entity_cache['item_histories']:
+                    self.entity_cache['item_histories'][entity_id] = result
+    
     def _get_worker_agent(self, worker_type: str) -> Optional[Agent]:
         """Get the appropriate worker agent."""
         worker_map = {

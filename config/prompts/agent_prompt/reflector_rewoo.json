@@ -5,11 +5,11 @@
     },
     "reflect_prompt_json": {
         "type": "template", 
-        "content": "Evaluate the ReWOO three-phase process (Planning → Working → Solving) and provide constructive feedback.\n\nAnalyze each phase carefully:\n- **Planning**: Did the plan address the query comprehensively? Were appropriate workers selected?\n- **Working**: Was the data gathering effective? Did workers provide relevant information?\n- **Solving**: Was the final synthesis logical? Did it utilize the working phase results well?\n\nConsider the candidate recommendations: Are they complete and appropriate for the user's preferences?\n\n{examples}\nReWOO Process:\n{input}{scratchpad}\n\nJSON Response:"
+        "content": "Analyze the ReWOO process and provide CONCISE, ACTIONABLE feedback specifically for improving the PLANNING phase.\n\nFocus on planning deficiencies:\n- **Missing Analysis Steps**: What key entities or preferences weren't analyzed?\n- **Planning Order**: Should user analysis come before or after item analysis?\n- **Genre Focus**: Did the plan explicitly request genre preference extraction?\n- **Specificity**: Were analysis tasks too vague or broad?\n\nProvide feedback in 2-3 sentences maximum. Be direct about what the PLANNER should do differently.\n\n{examples}\nReWOO Process:\n{input}{scratchpad}\n\nJSON Response:"
     },
     "reflect_examples_json": {
         "type": "raw",
-        "content": "EXAMPLES - Use this JSON format with your own analysis:\n{\"correctness\": false, \"reason\": \"Describe specific issues found in the three phases\"}\n{\"correctness\": true, \"reason\": \"Explain why the process was successful\"}\n{\"correctness\": false, \"reason\": \"Identify what went wrong and which phase had problems\"}"
+        "content": "EXAMPLES - Provide specific planning guidance:\n{\"correctness\": false, \"reason\": \"Plan lacks explicit genre preference analysis for user. Add step: Extract user's preferred genres from rating history.\"}\n{\"correctness\": true, \"reason\": \"Plan correctly prioritizes user genre analysis before item analysis.\"}\n{\"correctness\": false, \"reason\": \"Plan analyzes items generically. Specify: Analyze each item's genre alignment with user preferences.\"}"
     },
     "reflection_header": {
         "type": "raw",
