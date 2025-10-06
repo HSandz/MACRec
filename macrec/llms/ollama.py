@@ -92,6 +92,32 @@ class OllamaLLM(BaseLLM):
     def tokens_limit(self) -> int:
         """Get the token limit for the model."""
         return self.max_context_length
+    
+    def _make_api_request(
+        self,
+        payload: Dict[str, Any],
+        timeout: int = 300
+    ) -> requests.Response:
+        """Make a single API request without retry logic.
+        
+        This is the core request method that will be wrapped by execute_with_retry().
+        
+        Args:
+            payload: The request payload
+            timeout: Request timeout in seconds (default 5 minutes for local models)
+            
+        Returns:
+            Response object
+            
+        Raises:
+            requests.exceptions.RequestException: For any request errors
+        """
+        return requests.post(
+            self.generate_url,
+            headers=self.headers,
+            json=payload,
+            timeout=timeout
+        )
 
     def _check_ollama_server(self) -> bool:
         """Check if Ollama server is running and the model is available."""
@@ -168,12 +194,12 @@ class OllamaLLM(BaseLLM):
                 # The JSON instructions should come from the prompt templates, not hardcoded here
                 payload["prompt"] = final_prompt
             
-            # Make the API request with enhanced error handling
-            response = requests.post(
-                self.generate_url,
-                headers=self.headers,
-                json=payload,
-                timeout=300,  # 5 minute timeout for local models
+            # Make the API request with automatic retry for transient errors
+            # Using base class retry mechanism that works for all LLM implementations
+            response = self.execute_with_retry(
+                self._make_api_request,
+                payload=payload,
+                timeout=300  # 5 minute timeout for local models
             )
             
             # Log response summary for debugging
@@ -246,22 +272,17 @@ class OllamaLLM(BaseLLM):
                 
                 logger.error(error_msg)
                 return f"Error: {error_msg}"
-                
-        except requests.exceptions.Timeout:
-            error_msg = f"Ollama API request timed out after 5 minutes"
-            logger.error(error_msg)
-            return f"Error: {error_msg}"
-            
-        except requests.exceptions.ConnectionError as e:
-            error_msg = f"Failed to connect to Ollama server at {self.base_url}: {e}"
-            logger.error(error_msg)
-            logger.info("Make sure Ollama is installed and running. Visit https://ollama.ai for installation instructions.")
-            return f"Error: {error_msg}"
-            
+        
+        # Use base class error handling that works for all LLM implementations
+        except json.JSONDecodeError as e:
+            # JSON errors are specific to response parsing, not the base request
+            logger.error(f"❌ JSON decode error: {e}")
+            return f"Error: INVALID_JSON - Failed to parse API response"
+        
         except Exception as e:
-            error_msg = f"Unexpected error calling Ollama API: {str(e)}"
-            logger.error(error_msg)
-            return f"Error: {error_msg}"
+            # Use base class error handler for consistent error handling across all LLMs
+            # This handles connection errors, timeouts, etc.
+            return self.handle_api_error(e)
 
     def list_models(self) -> list:
         """List available models in Ollama."""

@@ -1,7 +1,8 @@
 import requests
 import json
+import time
 from loguru import logger
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from macrec.llms.basellm import BaseLLM
 
@@ -76,12 +77,43 @@ class OpenRouterLLM(BaseLLM):
         # Base URL for OpenRouter
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         
-        logger.info(f"Initialized OpenRouter LLM with model: {model_name}")
+        # Override retry configuration if provided
+        self.max_retries = kwargs.get('max_retries', 3)
+        self.retry_delay_base = kwargs.get('retry_delay_base', 1)
+        
+        logger.info(f"Initialized OpenRouter LLM with model: {model_name}, max_retries: {self.max_retries}")
 
     @property
     def tokens_limit(self) -> int:
         """Get the token limit for the model."""
         return self.max_context_length
+    
+    def _make_api_request(
+        self,
+        payload: Dict[str, Any],
+        timeout: int = 120
+    ) -> requests.Response:
+        """Make a single API request without retry logic.
+        
+        This is the core request method that will be wrapped by execute_with_retry().
+        
+        Args:
+            payload: The request payload
+            timeout: Request timeout in seconds
+            
+        Returns:
+            Response object
+            
+        Raises:
+            requests.exceptions.RequestException: For any request errors
+        """
+        return requests.post(
+            self.base_url,
+            headers=self.headers,
+            json=payload,
+            timeout=timeout,
+            stream=False
+        )
 
     def __call__(self, prompt: str, *args, **kwargs) -> str:
         """Forward pass of the OpenRouter LLM.
@@ -119,13 +151,12 @@ class OpenRouterLLM(BaseLLM):
                 # Add instruction to the prompt for JSON mode
                 messages[0]["content"] = f"{final_prompt}\n\nPlease respond with valid JSON only."
             
-            # Make the API request with enhanced error handling
-            response = requests.post(
-                self.base_url,
-                headers=self.headers,
-                json=payload,
-                timeout=120,  # 2 minute timeout
-                stream=False  # Ensure we get the full response, not streaming
+            # Make the API request with automatic retry for transient errors
+            # Using base class retry mechanism that works for all LLM implementations
+            response = self.execute_with_retry(
+                self._make_api_request,
+                payload=payload,
+                timeout=120
             )
             
             # Log response summary for debugging
@@ -234,16 +265,13 @@ class OpenRouterLLM(BaseLLM):
             else:
                 logger.error(f"OpenRouter API request failed with status {response.status_code}: {response.text}")
                 return f"Error: HTTP {response.status_code}"
-                
-        except requests.exceptions.Timeout:
-            logger.error("OpenRouter API request timed out")
-            return "Error: Request timed out"
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error making request to OpenRouter API: {e}")
-            return f"Error: {str(e)}"
+        
+        # Use base class error handling that works for all LLM implementations
         except json.JSONDecodeError as e:
-            logger.error(f"Error parsing OpenRouter API response: {e}")
-            return f"Error: Invalid JSON response"
+            # JSON errors are specific to response parsing, not the base request
+            logger.error(f"❌ JSON decode error: {e}")
+            return f"Error: INVALID_JSON - Failed to parse API response"
+        
         except Exception as e:
-            logger.error(f"Unexpected error calling OpenRouter API: {e}")
-            return f"Error: {str(e)}"
+            # Use base class error handler for consistent error handling across all LLMs
+            return self.handle_api_error(e)

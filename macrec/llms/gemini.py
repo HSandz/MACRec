@@ -52,6 +52,44 @@ class GeminiLLM(BaseLLM):
     def tokens_limit(self) -> int:
         """Get the token limit for the model."""
         return self.max_context_length
+    
+    def _make_api_request(self, prompt_text: str):
+        """Make a single API request without retry logic.
+        
+        This wraps the Google SDK call so it can be used with execute_with_retry().
+        
+        Args:
+            prompt_text: The prompt text to send
+            
+        Returns:
+            Response object from Gemini
+            
+        Raises:
+            Exception: For any API errors
+        """
+        return self.model.generate_content(prompt_text)
+    
+    def _get_retriable_errors(self) -> tuple:
+        """Override to include Google API specific errors.
+        
+        Returns:
+            Tuple of exception types that should trigger retry
+        """
+        # Get base retriable errors (connection, timeout, etc.)
+        base_errors = super()._get_retriable_errors()
+        
+        # Add Google API specific errors if available
+        try:
+            from google.api_core import exceptions as google_exceptions
+            return base_errors + (
+                google_exceptions.ServiceUnavailable,
+                google_exceptions.InternalServerError,
+                google_exceptions.TooManyRequests,
+                google_exceptions.DeadlineExceeded,
+            )
+        except ImportError:
+            # If google.api_core not available, just use base errors
+            return base_errors
 
     def __call__(self, prompt: str, *args, **kwargs) -> str:
         """Forward pass of the Gemini LLM.
@@ -72,14 +110,19 @@ class GeminiLLM(BaseLLM):
             estimated_prompt_tokens = self.estimate_tokens(final_prompt)
             logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_prompt_tokens} prompt tokens estimated")
             
+            # Prepare prompt based on JSON mode
             if self.json_mode:
                 # For JSON mode, add instruction to the prompt
-                json_prompt = f"{final_prompt}\n\nPlease respond with valid JSON only."
-                response = self.model.generate_content(json_prompt)
-                actual_prompt = json_prompt
+                actual_prompt = f"{final_prompt}\n\nPlease respond with valid JSON only."
             else:
-                response = self.model.generate_content(final_prompt)
                 actual_prompt = final_prompt
+            
+            # Make the API request with automatic retry for transient errors
+            # Using base class retry mechanism that works for all LLM implementations
+            response = self.execute_with_retry(
+                self._make_api_request,
+                prompt_text=actual_prompt
+            )
             
             # Extract text from response
             if response.text:
@@ -122,7 +165,9 @@ class GeminiLLM(BaseLLM):
             else:
                 logger.warning("Empty response from Gemini API")
                 return ""
-                
+        
+        # Use base class error handling that works for all LLM implementations
         except Exception as e:
-            logger.error(f"Error calling Gemini API: {e}")
-            return f"Error: {str(e)}"
+            # Use base class error handler for consistent error handling across all LLMs
+            # This handles connection errors, timeouts, Google API errors, etc.
+            return self.handle_api_error(e)

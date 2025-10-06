@@ -508,7 +508,7 @@ class CollaborationSystem(System):
         
         # Track reflection cycles to prevent infinite loops
         reflection_count = 0
-        max_reflections = 3
+        max_reflections = 1
         
         while not self.is_finished() and not self.is_halted():
             try:
