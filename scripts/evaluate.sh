@@ -1,45 +1,32 @@
 #! /bin/bash
 
-# Evaluate on MovieLens-1m
+# Quick test on 100 samples from MovieLens-100k dataset on Sequential Recommendation task
+## Evaluate on full dataset using --main Evaluate and without --samples
+## Evaluate on Rating Prediction task using --task rp
+## Evaluate with other datasets such as Amazon-Beauty by changing --data_file
 
-## Evaluate ReAct
-### rating prediction task
-python main.py --main Evaluate --data_file data/ml-100k/test.csv --system react --system_config config/systems/react/config.json --task rp
-### sequential recommendation task
-python main.py --main Evaluate --data_file data/ml-100k/test.csv --system react --system_config config/systems/react/config.json --task sr --max_his 5
+### config : collaboration = Manager + Analyst
+python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 100 --openrouter google/gemini-2.0-flash-001
+### config : collaboration = Manager + Analyst + Reflector
+python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/reflect_analyse.json --task sr --samples 100
+### config : collaboration = Manager + Analyst + Reflector + Searcher
+python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/reflect_analyse_search.json --task sr --samples 100
+### config : rewoo = Planner + Analyst + Solver
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 100
+### config : rewoo = Planner + Analyst + Solver + Reflector
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/reflector.json --task sr --samples 100
+### config : rewoo = Planner + Analyst + Solver  + Searcher
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/searcher.json --task sr --samples 100
+### config : rewoo = Planner + Analyst + Solver + Reflector + Searcher
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/full.json --task sr --samples 100
 
-## Evaluate Reflection
-### rating prediction task
-python main.py --main Evaluate --data_file data/ml-100k/test.csv --system reflection --system_config config/systems/reflection/config_api.json --task rp
-python main.py --main Evaluate --data_file data/ml-100k/test.csv --system reflection --system_config config/systems/reflection/config_open.json --task rp
-### sequential recommendation task
-python main.py --main Evaluate --data_file data/ml-100k/test.csv --system reflection --system_config config/systems/reflection/config_api.json --task sr --max_his 5
-python main.py --main Evaluate --data_file data/ml-100k/test.csv --system reflection --system_config config/systems/reflection/config_open.json --task sr --max_his 5
+### Other params
+# --max_his : max history length for sequential recommendation task
+# --steps : number of interaction steps between LLM agents
+# --topk : number of retrieved documents from the knowledge base
+# --samples : number of samples to evaluate, remove this option to evaluate on the full dataset
+# --verbose : print the detailed interaction process
 
-## Evaluate Manager + Analyst
-python main.py --main Evaluate --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task rp --steps 1 --max_his 3
-# Evaluate on Amazon-Beauty (1000 samples)
-
-## Evaluate ReAct
-### rating prediction task
-python main.py --main Evaluate --data_file data/Beauty/test_1000.csv --system react --system_config config/systems/react/config.json --task rp
-### sequential recommendation task
-python main.py --main Evaluate --data_file data/Beauty/test_1000.csv --system react --system_config config/systems/react/config.json --task sr --max_his 5
-
-## Evaluate Reflection
-### rating prediction task
-python main.py --main Evaluate --data_file data/Beauty/test_1000.csv --system reflection --system_config config/systems/reflection/config_api.json --task rp
-python main.py --main Evaluate --data_file data/Beauty/test_1000.csv --system reflection --system_config config/systems/reflection/config_open.json --task rp
-### sequential recommendation task
-python main.py --main Evaluate --data_file data/Beauty/test_sample1000.csv --system reflection --system_config config/systems/reflection/config_api.json --task sr --max_his 5
-python main.py --main Evaluate --data_file data/Beauty/test_sample1000.csv --system reflection --system_config config/systems/reflection/config_open.json --task sr --max_his 5
-
-## Evaluate Retrieval + Analysis
-### retrieval ranking task
-#### on MovieLens-100k (100 samples)
-python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/retrieve_analyse.json --task rr --samples 100
-#### on MovieLens full
-python main.py --main Evaluate --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/retrieve_analyse.json --task rr
 # Calculate the metrics directly from the run data file
 
 python main.py --main Calculate --task rp --run_data_file results/ml-100k/rp/gpt.jsonl
