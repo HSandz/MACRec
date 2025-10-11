@@ -17,8 +17,8 @@ def main():
     terminal_level = init_args.verbose if init_args.verbose in ['DEBUG', 'TRACE'] else 'SUCCESS'
     logger.add(sys.stderr, level=terminal_level)
     os.makedirs('logs', exist_ok=True)
-    # Log file: keep all detailed INFO level logging including prompts and token usage
-    logger.add('logs/{time:YYYY-MM-DD_HH-mm-ss}.log', level='INFO')
+    # Note: Log files are now created by tasks themselves with task-specific naming
+    # (e.g., sr_ml-100k_rewoo_100_20251012_143022.log for generation/chat tasks)
 
     try:
         task = eval(init_args.main + 'Task')()

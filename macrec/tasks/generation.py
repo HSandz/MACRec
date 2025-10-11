@@ -204,12 +204,6 @@ class GenerationTask(Task):
         # End token tracking and save stats
         final_stats = token_tracker.end_task()
         
-        # Save token tracking stats to file
-        stats_filename = f"token_stats_{task_id}.json"
-        stats_path = os.path.join("logs", stats_filename)
-        os.makedirs("logs", exist_ok=True)
-        token_tracker.save_stats(stats_path)
-        
         # Log summary
         logger.info("=== Token Usage Summary ===")
         logger.info(f"Task: {self.dataset} {self.task} ({len(data)} samples)")
@@ -219,7 +213,18 @@ class GenerationTask(Task):
         logger.info(f"Output tokens: {final_stats.get('total_output_tokens', 0)}")
         logger.info(f"Models used: {final_stats.get('models_used', [])}")
         logger.info(f"Duration: {final_stats.get('duration', 0):.2f}s")
-        logger.info(f"Stats saved to: {stats_path}")
+        
+        # Log per-agent statistics if available
+        agents = final_stats.get('agents', {})
+        if agents:
+            logger.info("=== Per-Agent Token Usage ===")
+            for agent_name, agent_stats in agents.items():
+                logger.info(f"Agent: {agent_name}")
+                logger.info(f"  API calls: {agent_stats.get('api_calls', 0)}")
+                logger.info(f"  Total tokens: {agent_stats.get('total_tokens', 0)}")
+                logger.info(f"  Input tokens: {agent_stats.get('total_input_tokens', 0)}")
+                logger.info(f"  Output tokens: {agent_stats.get('total_output_tokens', 0)}")
+                logger.info(f"  Model: {agent_stats.get('model_name', 'unknown')}")
         
         self.after_generate()
 
@@ -230,6 +235,10 @@ class GenerationTask(Task):
         self.task = task
         self.max_his = max_his
         
+        # Initialize API
+        init_api(read_json(api_config))
+        
+        # Initialize system_kwargs early (before get_data which may modify it)
         # Only apply model override if explicitly specified via CLI
         if openrouter or ollama:
             # Determine model provider and setup
@@ -261,10 +270,15 @@ class GenerationTask(Task):
             
             logger.info("🤖 Using individual agent configurations from config files")
         
-        init_api(read_json(api_config))
+        # Load data (this may add n_candidate to system_kwargs for SR tasks)
         data_df = self.get_data(data_file, max_his)
+        
         self.get_system(system, system_config)
         data = self.prompt_data(data_df)
+        
+        # Setup task-specific log file with actual sample count (after prompt_data which may filter samples)
+        self.setup_task_logger(task=task, dataset=dataset, system=system, num_samples=len(data))
+        
         self.generate(data, steps=self.running_steps)
     
     def _parse_provider_options(self, model: str, openrouter: str, ollama: str) -> dict:

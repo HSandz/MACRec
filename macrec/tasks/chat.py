@@ -26,6 +26,11 @@ class ChatTask(Task):
 
     def run(self, api_config: str, system: str, system_config: str, model: str = None, *args, **kwargs) -> None:
         init_api(read_json(api_config))
+        
+        # Setup task-specific log file for chat
+        # For chat, we use 1 as the sample count since it's interactive
+        self.setup_task_logger(task='chat', dataset='interactive', system=system, num_samples=1)
+        
         self.system = self.get_system(system, system_config, model)
         
         # Start token tracking for chat session
@@ -46,20 +51,24 @@ class ChatTask(Task):
             token_tracker.collect_system_stats(self.system)
             final_stats = token_tracker.end_task()
             
-            # Save token tracking stats
-            import os
-            stats_filename = f"token_stats_{task_id}.json"
-            stats_path = os.path.join("logs", stats_filename)
-            os.makedirs("logs", exist_ok=True)
-            token_tracker.save_stats(stats_path)
-            
             from loguru import logger
             logger.info("=== Chat Session Token Usage ===")
             logger.info(f"Total API calls: {final_stats.get('total_api_calls', 0)}")
             logger.info(f"Total tokens: {final_stats.get('total_tokens', 0)}")
             logger.info(f"Models used: {final_stats.get('models_used', [])}")
             logger.info(f"Duration: {final_stats.get('duration', 0):.2f}s")
-            logger.info(f"Stats saved to: {stats_path}")
+            
+            # Log per-agent statistics if available
+            agents = final_stats.get('agents', {})
+            if agents:
+                logger.info("=== Per-Agent Token Usage ===")
+                for agent_name, agent_stats in agents.items():
+                    logger.info(f"Agent: {agent_name}")
+                    logger.info(f"  API calls: {agent_stats.get('api_calls', 0)}")
+                    logger.info(f"  Total tokens: {agent_stats.get('total_tokens', 0)}")
+                    logger.info(f"  Input tokens: {agent_stats.get('total_input_tokens', 0)}")
+                    logger.info(f"  Output tokens: {agent_stats.get('total_output_tokens', 0)}")
+                    logger.info(f"  Model: {agent_stats.get('model_name', 'unknown')}")
 
 if __name__ == '__main__':
     ChatTask().launch()

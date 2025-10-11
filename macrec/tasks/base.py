@@ -2,12 +2,14 @@ from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from loguru import logger
 from typing import Any, Optional
+import os
+import datetime
 
 from macrec.rl.reward import Reward, RatingPredictionRewardV1, RatingPredictionRewardV2, RatingPredictionReflectionReward, SequentialRecommendationRewardV1, SequentialRecommendationReflectionReward
 
 class Task(ABC):
     def __init__(self):
-        pass
+        self.log_handler_id = None
         
     @staticmethod
     @abstractmethod
@@ -29,6 +31,26 @@ class Task(ABC):
             return None
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{__name}'")
     
+    def setup_task_logger(self, task: str, dataset: str, system: str, num_samples: int):
+        """Setup a task-specific log file with the naming convention:
+        {task}_{dataset}_{system}_{samples}_{datetime}.log
+        
+        Args:
+            task: Task type (e.g., 'sr', 'rp', 'rr', 'gen')
+            dataset: Dataset name (e.g., 'ml-100k', 'Beauty')
+            system: System name (e.g., 'rewoo', 'collaboration')
+            num_samples: Number of samples in the task
+        """
+        # Create task-specific log file
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        log_filename = f"{task}_{dataset}_{system}_{num_samples}_{timestamp}.log"
+        log_path = os.path.join("logs", log_filename)
+        
+        # Add a new file handler with the task-specific name
+        self.log_handler_id = logger.add(log_path, level='INFO')
+        logger.info(f"Task-specific log file: {log_path}")
+        
+        return log_path
 
     @abstractmethod
     def run(self, *args, **kwargs):
@@ -51,6 +73,17 @@ class Task(ABC):
         self.args = args
         # log the arguments
         logger.success(args)
+        
+        # Setup a default log file for tasks that don't create their own
+        # GenerationTask and ChatTask will override this with task-specific naming
+        if self.log_handler_id is None:
+            task_name = self.__class__.__name__.replace('Task', '').lower()
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            log_filename = f"{task_name}_{timestamp}.log"
+            log_path = os.path.join("logs", log_filename)
+            self.log_handler_id = logger.add(log_path, level='INFO')
+            logger.info(f"Log file: {log_path}")
+        
         return self.run(**vars(args))
 
 class RewardTask(Task):
