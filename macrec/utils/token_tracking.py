@@ -45,46 +45,45 @@ class TokenTracker:
     def reset_agent_stats(self, system) -> None:
         """Reset LLM usage stats for all agents in the system.
         
+        This method automatically discovers and resets all LLM instances in all agents
+        by using the agent's get_llm_instances() method.
+        
         Args:
             system: System instance containing agents
         """
-        # Reset all agent LLM usage stats to start fresh tracking
-        if hasattr(system, 'manager') and system.manager:
-            if hasattr(system.manager, 'thought_llm') and hasattr(system.manager.thought_llm, 'reset_usage_stats'):
-                system.manager.thought_llm.reset_usage_stats()
-            if hasattr(system.manager, 'action_llm') and hasattr(system.manager.action_llm, 'reset_usage_stats'):
-                system.manager.action_llm.reset_usage_stats()
-                
-        if hasattr(system, 'analyst') and system.analyst:
-            if hasattr(system.analyst, 'analyst') and hasattr(system.analyst.analyst, 'reset_usage_stats'):
-                system.analyst.analyst.reset_usage_stats()
-                
-        if hasattr(system, 'reflector') and system.reflector:
-            if hasattr(system.reflector, 'llm') and hasattr(system.reflector.llm, 'reset_usage_stats'):
-                system.reflector.llm.reset_usage_stats()
-                
-        if hasattr(system, 'searcher') and system.searcher:
-            if hasattr(system.searcher, 'searcher') and hasattr(system.searcher.searcher, 'reset_usage_stats'):
-                system.searcher.searcher.reset_usage_stats()
-                
-        if hasattr(system, 'interpreter') and system.interpreter:
-            if hasattr(system.interpreter, 'interpreter') and hasattr(system.interpreter.interpreter, 'reset_usage_stats'):
-                system.interpreter.interpreter.reset_usage_stats()
-                
-        if hasattr(system, 'retriever') and system.retriever:
-            if hasattr(system.retriever, 'retriever_llm') and hasattr(system.retriever.retriever_llm, 'reset_usage_stats'):
-                system.retriever.retriever_llm.reset_usage_stats()
-                
-        # Handle collaboration system with agents dict
+        # List of common agent property names to check
+        agent_properties = [
+            'manager', 'analyst', 'reflector', 'searcher', 'interpreter', 
+            'retriever', 'planner', 'solver'
+        ]
+        
+        # Reset individual agent properties
+        for prop_name in agent_properties:
+            if hasattr(system, prop_name):
+                agent = getattr(system, prop_name)
+                if agent and hasattr(agent, 'get_llm_instances'):
+                    llm_instances = agent.get_llm_instances()
+                    for llm_name, llm in llm_instances.items():
+                        if hasattr(llm, 'reset_usage_stats'):
+                            llm.reset_usage_stats()
+        
+        # Handle systems with agents dict (e.g., collaboration system)
         if hasattr(system, 'agents') and isinstance(system.agents, dict):
             for agent_name, agent in system.agents.items():
-                if hasattr(agent, 'llm') and hasattr(agent.llm, 'reset_usage_stats'):
-                    agent.llm.reset_usage_stats()
-                elif hasattr(agent, 'thought_llm') and hasattr(agent, 'action_llm'):
-                    if hasattr(agent.thought_llm, 'reset_usage_stats'):
-                        agent.thought_llm.reset_usage_stats()
-                    if hasattr(agent.action_llm, 'reset_usage_stats'):
-                        agent.action_llm.reset_usage_stats()
+                if agent and hasattr(agent, 'get_llm_instances'):
+                    llm_instances = agent.get_llm_instances()
+                    for llm_name, llm in llm_instances.items():
+                        if hasattr(llm, 'reset_usage_stats'):
+                            llm.reset_usage_stats()
+        
+        # Handle agent_coordinator for ReWOO systems
+        if hasattr(system, 'agent_coordinator') and hasattr(system.agent_coordinator, 'agents'):
+            for agent_name, agent in system.agent_coordinator.agents.items():
+                if agent and hasattr(agent, 'get_llm_instances'):
+                    llm_instances = agent.get_llm_instances()
+                    for llm_name, llm in llm_instances.items():
+                        if hasattr(llm, 'reset_usage_stats'):
+                            llm.reset_usage_stats()
         
         # Clear tracking since we reset the agents
         self.agent_last_counts = {}
@@ -162,48 +161,46 @@ class TokenTracker:
     def collect_system_stats(self, system) -> None:
         """Collect token usage stats from all agents in a system.
         
+        This method automatically discovers and tracks all LLM instances in all agents
+        by using the agent's get_llm_instances() method.
+        
         Args:
             system: System instance containing agents
         """
         if self.current_task_id is None:
             logger.warning("No active task for token tracking")
             return
-            
-        # Collect from different types of agents
-        if hasattr(system, 'manager') and system.manager:
-            if hasattr(system.manager, 'thought_llm'):
-                self.collect_agent_stats('manager_thought', system.manager.thought_llm)
-            if hasattr(system.manager, 'action_llm'):
-                self.collect_agent_stats('manager_action', system.manager.action_llm)
-                
-        if hasattr(system, 'analyst') and system.analyst:
-            if hasattr(system.analyst, 'analyst'):
-                self.collect_agent_stats('analyst', system.analyst.analyst)
-                
-        if hasattr(system, 'reflector') and system.reflector:
-            if hasattr(system.reflector, 'llm'):
-                self.collect_agent_stats('reflector', system.reflector.llm)
-                
-        if hasattr(system, 'searcher') and system.searcher:
-            if hasattr(system.searcher, 'searcher'):
-                self.collect_agent_stats('searcher', system.searcher.searcher)
-                
-        if hasattr(system, 'interpreter') and system.interpreter:
-            if hasattr(system.interpreter, 'interpreter'):
-                self.collect_agent_stats('interpreter', system.interpreter.interpreter)
-                
-        if hasattr(system, 'retriever') and system.retriever:
-            if hasattr(system.retriever, 'retriever_llm'):
-                self.collect_agent_stats('retriever', system.retriever.retriever_llm)
-                
-        # Handle collaboration system with agents dict
+        
+        # List of common agent property names to check
+        agent_properties = [
+            'manager', 'analyst', 'reflector', 'searcher', 'interpreter', 
+            'retriever', 'planner', 'solver'
+        ]
+        
+        # Collect from individual agent properties
+        for prop_name in agent_properties:
+            if hasattr(system, prop_name):
+                agent = getattr(system, prop_name)
+                if agent and hasattr(agent, 'get_llm_instances'):
+                    llm_instances = agent.get_llm_instances()
+                    for llm_name, llm in llm_instances.items():
+                        self.collect_agent_stats(llm_name, llm)
+        
+        # Handle systems with agents dict (e.g., collaboration system)
         if hasattr(system, 'agents') and isinstance(system.agents, dict):
             for agent_name, agent in system.agents.items():
-                if hasattr(agent, 'llm'):
-                    self.collect_agent_stats(agent_name.lower(), agent.llm)
-                elif hasattr(agent, 'thought_llm') and hasattr(agent, 'action_llm'):
-                    self.collect_agent_stats(f'{agent_name.lower()}_thought', agent.thought_llm)
-                    self.collect_agent_stats(f'{agent_name.lower()}_action', agent.action_llm)
+                if agent and hasattr(agent, 'get_llm_instances'):
+                    llm_instances = agent.get_llm_instances()
+                    for llm_name, llm in llm_instances.items():
+                        self.collect_agent_stats(llm_name, llm)
+        
+        # Handle agent_coordinator for ReWOO systems
+        if hasattr(system, 'agent_coordinator') and hasattr(system.agent_coordinator, 'agents'):
+            for agent_name, agent in system.agent_coordinator.agents.items():
+                if agent and hasattr(agent, 'get_llm_instances'):
+                    llm_instances = agent.get_llm_instances()
+                    for llm_name, llm in llm_instances.items():
+                        self.collect_agent_stats(llm_name, llm)
                     
     def end_task(self) -> Dict[str, Any]:
         """End the current task and return final stats.

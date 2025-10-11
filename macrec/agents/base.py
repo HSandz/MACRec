@@ -68,6 +68,63 @@ class Agent(ABC):
     def reset(self) -> None:
         """Reset the agent state. Override in subclasses if needed."""
         pass
+    
+    def get_llm_instances(self) -> dict[str, BaseLLM]:
+        """Get all LLM instances used by this agent.
+        
+        This method automatically discovers LLM instances by checking common attribute names.
+        It checks all attributes of the agent to find BaseLLM instances, making it
+        future-proof for new agent types without manual updates.
+        
+        Subclasses can override this method to provide custom LLM discovery logic.
+        
+        Returns:
+            dict[str, BaseLLM]: Dictionary mapping LLM names to LLM instances
+        """
+        llms = {}
+        agent_name = self.__class__.__name__.lower()
+        
+        # Common LLM attribute names to check (for performance)
+        common_llm_attrs = ['llm', 'analyst', 'thought_llm', 'action_llm', 
+                           'searcher', 'interpreter', 'retriever_llm', 
+                           'planner', 'solver', 'reflector']
+        
+        # First check common attributes for performance
+        for attr_name in common_llm_attrs:
+            if hasattr(self, attr_name):
+                attr = getattr(self, attr_name)
+                if isinstance(attr, BaseLLM):
+                    # Use agent name + attribute suffix for the key
+                    if attr_name == 'llm':
+                        key = agent_name
+                    else:
+                        # Remove 'llm' suffix if present to avoid duplication
+                        clean_attr = attr_name.replace('_llm', '')
+                        key = f"{agent_name}_{clean_attr}"
+                    llms[key] = attr
+        
+        # If no LLMs found in common attributes, scan all attributes
+        # This ensures new agent types are automatically supported
+        if not llms:
+            for attr_name in dir(self):
+                # Skip private/magic attributes and methods
+                if attr_name.startswith('_') or attr_name in ['get_LLM', 'get_llm_instances']:
+                    continue
+                try:
+                    attr = getattr(self, attr_name)
+                    if isinstance(attr, BaseLLM):
+                        # Use agent name + attribute suffix for the key
+                        if attr_name == 'llm':
+                            key = agent_name
+                        else:
+                            clean_attr = attr_name.replace('_llm', '')
+                            key = f"{agent_name}_{clean_attr}"
+                        llms[key] = attr
+                except (AttributeError, RuntimeError):
+                    # Skip attributes that can't be accessed
+                    continue
+        
+        return llms
 
     def get_LLM(self, config_path: Optional[str] = None, config: Optional[dict] = None) -> BaseLLM:
         """Get the base large language model for the agent.
