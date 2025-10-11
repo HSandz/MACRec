@@ -71,6 +71,75 @@ class Analyst(ToolAgent):
             return ''
         return self.prompts['analyst_hint']
 
+    def _enhance_item_history(self, raw_observation: str, item_id: int) -> str:
+        """
+        Enhance item history by analyzing top-rating users and summarizing their preferences.
+        
+        Args:
+            raw_observation: Raw string from item_retrieve like "Retrieved 10 users that interacted with item 633 before: 764, 416, 373... with ratings: 5, 4, 4..."
+            item_id: The item ID being queried
+            
+        Returns:
+            Enhanced observation with collaborative filtering insights, or None if enhancement fails
+        """
+        try:
+            # Parse the raw observation to extract user IDs and ratings
+            if "No history found" in raw_observation:
+                return raw_observation
+            
+            # Extract user IDs and ratings from the observation string
+            # Format: "Retrieved X users that interacted with item Y before: id1, id2, id3... with ratings: r1, r2, r3..."
+            parts = raw_observation.split(" with ratings: ")
+            if len(parts) != 2:
+                return None
+            
+            user_part = parts[0].split("before: ")
+            if len(user_part) != 2:
+                return None
+            
+            user_ids = [int(uid.strip()) for uid in user_part[1].split(",")]
+            ratings = [float(r.strip()) for r in parts[1].split(",")]
+            
+            if len(user_ids) != len(ratings) or len(user_ids) == 0:
+                return None
+            
+            # Find top 2-3 users with highest ratings
+            user_rating_pairs = list(zip(user_ids, ratings))
+            user_rating_pairs.sort(key=lambda x: x[1], reverse=True)
+            top_users = user_rating_pairs[:min(3, len(user_rating_pairs))]
+            
+            # Calculate average rating
+            avg_rating = sum(ratings) / len(ratings)
+            
+            # Fetch profiles for top users and summarize
+            user_summaries = []
+            for user_id, rating in top_users:
+                # Check cache first
+                user_profile = None
+                if (self.execution_context and 'entity_cache' in self.execution_context and
+                    user_id in self.execution_context['entity_cache'].get('users', {})):
+                    user_profile = self.execution_context['entity_cache']['users'][user_id].get('info', None)
+                
+                # Fetch if not cached
+                if not user_profile:
+                    user_profile = self.info_retriever.user_info(user_id)
+                
+                # Extract key preferences (keep concise)
+                if user_profile and "not found" not in user_profile.lower():
+                    user_summaries.append(f"(rated {rating}): {user_profile[:150]}")  # Limit to 150 chars per user
+            
+            # Build enhanced observation
+            if user_summaries:
+                summary = f"Item {item_id} has {len(user_ids)} interactions (avg rating: {avg_rating:.1f}). Top users: {' | '.join(user_summaries)}"
+            else:
+                summary = f"Item {item_id} has {len(user_ids)} interactions (avg rating: {avg_rating:.1f}) but user profiles unavailable."
+            
+            return summary
+            
+        except Exception as e:
+            logger.warning(f"Failed to enhance item history for item {item_id}: {e}")
+            return None
+
     def _build_analyst_prompt(self, **kwargs) -> str:
         # Add command count and repetition warning to the prompt
         command_count = len(self._history)
@@ -281,7 +350,12 @@ class Analyst(ToolAgent):
                     log_head = f':orange[Skipped duplicate ItemHistory query for item] :red[{query_item_id}]:orange[...]\n- '
                 else:
                     # Use default k=10 for history retrieval
-                    observation = self.interaction_retriever.item_retrieve(item_id=query_item_id, k=10)
+                    raw_observation = self.interaction_retriever.item_retrieve(item_id=query_item_id, k=10)
+                    
+                    # Enhance ItemHistory: analyze top-rating users and summarize their preferences
+                    enhanced_observation = self._enhance_item_history(raw_observation, query_item_id)
+                    observation = enhanced_observation if enhanced_observation else raw_observation
+                    
                     self.gathered_info[history_key] = observation
                     log_head = f':violet[Look up ItemHistory of item] :red[{query_item_id}]:violet[...]\n- '
             except (ValueError, TypeError):
