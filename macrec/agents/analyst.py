@@ -93,27 +93,8 @@ class Analyst(ToolAgent):
             command_summary = f"\n\nCOMMANDS ALREADY EXECUTED:\n" + "\n".join([f"- {cmd}" for cmd in unique_commands])
             command_summary += "\n\nDO NOT REPEAT ANY OF THE ABOVE COMMANDS. Choose a different action or use Finish."
         
-        # Add information about what has been queried already and what's cached
+        # Remove caching prompts - let analyst query naturally, backend will use cache automatically
         context_info = ""
-        if self.queried_users or self.queried_items:
-            context_info += "\nAlready queried information:"
-            if self.queried_users:
-                context_info += f"\n- Users: {sorted(list(self.queried_users))}"
-            if self.queried_items:
-                context_info += f"\n- Items: {sorted(list(self.queried_items))}"
-            context_info += "\nDo NOT query the same entities again unless absolutely necessary."
-        
-        # Add cached data information if execution context is available
-        if self.execution_context and 'entity_cache' in self.execution_context:
-            cache = self.execution_context['entity_cache']
-            cached_items = []
-            if cache.get('users'):
-                cached_items.append(f"Users: {sorted(cache['users'].keys())}")
-            if cache.get('items'):
-                cached_items.append(f"Items: {sorted(cache['items'].keys())}")
-            if cached_items:
-                context_info += f"\n\nCACHED DATA AVAILABLE (from previous steps):\n- " + "\n- ".join(cached_items)
-                context_info += "\nIMPORTANT: Use cached data instead of re-querying these entities."
         
         # Check if we have sufficient information to finish
         finish_hint = ""
@@ -367,20 +348,16 @@ class Analyst(ToolAgent):
         
         # Compile analysis sections
         if user_info_parts:
-            analysis_parts.append("User Information Analysis:")
+            analysis_parts.append("User Information:")
             analysis_parts.extend([f"  - {part}" for part in user_info_parts])
         
         if user_history_parts:
-            analysis_parts.append("User History Analysis:")
+            analysis_parts.append("User History:")
             analysis_parts.extend([f"  - {part}" for part in user_history_parts])
         
         if item_info_parts:
-            analysis_parts.append("Item Information Analysis:")
+            analysis_parts.append("Item Information:")
             analysis_parts.extend([f"  - {part}" for part in item_info_parts])
-        
-        # Add summary insights
-        if len(self.gathered_info) > 1:
-            analysis_parts.append(f"Summary: Analyzed {len(self.gathered_info)} data points including user profiles, interaction histories, and item details to provide comprehensive recommendation insights.")
         
         # Join all parts
         detailed_analysis = "\n".join(analysis_parts)

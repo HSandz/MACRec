@@ -5,7 +5,7 @@
     },
     "solver_sr_guidance": {
         "type": "raw",
-        "content": "\nFor Sequential Recommendation:\n- CRITICAL: Use ONLY the candidate items provided in the original query - do not generate new items\n- PRIORITIZE genre matching: Weight items by user's preferred genres from analysis\n- The original query contains specific candidate items with IDs - you must rank these exact items\n- Rank items by: 1) Genre preference strength, 2) Rating patterns, 3) User profile fit\n- Format: [item_id1, item_id2, item_id3, ...] - ALL items ranked\n- Example: [627, 1311, 258, 938, 700, 71, 1091, 858]\n- PRIORITY: Genre-weighted complete ranking"
+        "content": "\nFor Sequential Recommendation:\n- CRITICAL: Use ONLY the candidate items provided in the original query - do not generate new items\n- The original query contains specific candidate items with IDs - you must rank these exact items\n- Provide a ranked list of ALL candidate item IDs from the original query\n- MUST rank ALL items - never provide partial rankings\n- Keep explanations brief to ensure complete ranking\n- Format: Return either:\n  1. Concise numbered list: 1. [item_id] (brief reason) 2. [item_id] (brief reason) ...\n  2. Bracket format: [item_id1, item_id2, item_id3, ...]\n- Example: [627, 1311, 258, 938, 700, 71, 1091, 858]\n- DO NOT create new fictional items or generic recommendations\n- PRIORITY: Complete ranking over detailed explanations"
     },
     "solver_rp_guidance": {
         "type": "raw",

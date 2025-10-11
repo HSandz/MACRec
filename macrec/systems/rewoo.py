@@ -224,16 +224,9 @@ class ReWOOSystem(System):
 
     def _execute_rewoo_workflow(self) -> str:
         """Execute the complete ReWOO workflow (planning -> working -> solving)."""
-        if self.phase == 'planning':
-            result = self._planning_phase()
-        elif self.phase == 'working':
-            result = self._working_phase()
-        elif self.phase == 'solving':
-            result = self._solving_phase()
-        else:
-            result = self._planning_phase()  # Default to planning
+        result = None
         
-        # If we haven't finished all phases, continue to the next one
+        # Execute phases sequentially until completion
         while self.phase != 'completed' and not hasattr(self, '_finished'):
             if self.phase == 'planning':
                 result = self._planning_phase()
@@ -242,6 +235,9 @@ class ReWOOSystem(System):
             elif self.phase == 'solving':
                 result = self._solving_phase()
                 self.phase = 'completed'  # Mark as completed after solving
+            else:
+                # Default to planning if phase is unknown
+                result = self._planning_phase()
         
         return result
     
@@ -363,29 +359,48 @@ class ReWOOSystem(System):
             try:
                 reflection_json = json.loads(self.reflector.reflections[-1])
                 
-                if 'correctness' in reflection_json:
-                    correctness = reflection_json['correctness']
+                # Handle both single object and array of objects
+                if isinstance(reflection_json, list):
+                    logger.warning(f"Reflector returned array of {len(reflection_json)} objects. Evaluating all.")
+                    # If ANY object has correctness=false, treat overall as incorrect
+                    correctness = True
+                    reasons = []
+                    for item in reflection_json:
+                        if isinstance(item, dict) and 'correctness' in item:
+                            if not item['correctness']:
+                                correctness = False
+                                reasons.append(item.get('reason', 'No reason provided'))
+                            elif item['correctness'] and len(reflection_json) == 1:
+                                # Only use positive reason if it's the ONLY item
+                                reasons.append(item.get('reason', 'No reason provided'))
+                    reason = '\n'.join(f"- {r}" for r in reasons) if reasons else 'Multiple issues identified'
+                elif isinstance(reflection_json, dict):
+                    # Single object (expected format)
+                    correctness = reflection_json.get('correctness', False)
                     reason = reflection_json.get('reason', 'No reason provided')
+                else:
+                    logger.error(f"Unexpected reflection JSON type: {type(reflection_json)}")
+                    return False
+                
+                if not correctness:
+                    logger.debug(f"ReWOO Reflection identified issues: {reason}")
+                    self.log(f"**ReWOO Reflection Issues Identified:**\n{reason}", agent=self.reflector)
                     
-                    if not correctness:
-                        logger.debug(f"ReWOO Reflection identified issues: {reason}")
-                        self.log(f"**ReWOO Reflection Issues Identified:**\n{reason}", agent=self.reflector)
-                        
-                        # Add reflection comment to planner_kwargs ONLY to prompt better planning
-                        if 'reflections' not in self.planner_kwargs:
-                            self.planner_kwargs['reflections'] = ""
-                        
-                        reflection_feedback = f"\n=== Planning Improvement Required ===\n"
-                        reflection_feedback += f"{reason}\n"
-                        reflection_feedback += f"CRITICAL: Revise your plan to address this specific issue.\n"
-                        
-                        self.planner_kwargs['reflections'] += reflection_feedback
-                        
-                        return True  # Continue reflecting (incorrect result)
-                    else:
-                        logger.debug(f"ReWOO Reflection confirms correctness: {reason}")
-                        self.log(f"**ReWOO Reflection Confirms Correctness:**\n{reason}", agent=self.reflector)
-                        return False  # Stop reflecting (correct result)
+                    # Add reflection comment to planner_kwargs ONLY to prompt better planning
+                    if 'reflections' not in self.planner_kwargs:
+                        self.planner_kwargs['reflections'] = ""
+                    
+                    reflection_feedback = f"\n=== Planning Improvement Required ===\n"
+                    reflection_feedback += f"{reason}\n"
+                    reflection_feedback += f"CRITICAL: Revise your plan to address this specific issue.\n"
+                    
+                    self.planner_kwargs['reflections'] += reflection_feedback
+                    
+                    return True  # Continue reflecting (incorrect result)
+                else:
+                    logger.debug(f"ReWOO Reflection confirms correctness: {reason}")
+                    self.log(f"**ReWOO Reflection Confirms Correctness:**\n{reason}", agent=self.reflector)
+                    return False  # Stop reflecting (correct result)
                         
             except Exception as e:
                 logger.error(f'Invalid reflection JSON output: {self.reflector.reflections[-1]}')
@@ -419,17 +434,36 @@ class ReWOOSystem(System):
             try:
                 reflection_json = json.loads(self.reflector.reflections[-1])
                 
-                if 'correctness' in reflection_json:
-                    correctness = reflection_json['correctness']
+                # Handle both single object and array of objects
+                if isinstance(reflection_json, list):
+                    logger.warning(f"Reflector returned array of {len(reflection_json)} objects. Evaluating all.")
+                    # If ANY object has correctness=false, treat overall as incorrect
+                    correctness = True
+                    reasons = []
+                    for item in reflection_json:
+                        if isinstance(item, dict) and 'correctness' in item:
+                            if not item['correctness']:
+                                correctness = False
+                                reasons.append(item.get('reason', 'No reason provided'))
+                            elif item['correctness'] and len(reflection_json) == 1:
+                                # Only use positive reason if it's the ONLY item
+                                reasons.append(item.get('reason', 'No reason provided'))
+                    reason = '\n'.join(f"- {r}" for r in reasons) if reasons else 'Multiple issues identified'
+                elif isinstance(reflection_json, dict):
+                    # Single object (expected format)
+                    correctness = reflection_json.get('correctness', False)
                     reason = reflection_json.get('reason', 'No reason provided')
-                    
-                    if not correctness:
-                        logger.debug(f"ReWOO Reflection identified issues: {reason}")
-                        self.log(f"**ReWOO Reflection Issues Identified:**\n{reason}", agent=self.reflector)
-                        logger.info("Note: Reflection rerun is disabled. Use --enable-reflection-rerun to enable automatic reruns.")
-                    else:
-                        logger.debug(f"ReWOO Reflection confirms correctness: {reason}")
-                        self.log(f"**ReWOO Reflection Confirms Correctness:**\n{reason}", agent=self.reflector)
+                else:
+                    logger.error(f"Unexpected reflection JSON type: {type(reflection_json)}")
+                    return
+                
+                if not correctness:
+                    logger.debug(f"ReWOO Reflection identified issues: {reason}")
+                    self.log(f"**ReWOO Reflection Issues Identified:**\n{reason}", agent=self.reflector)
+                    logger.info("Note: Reflection rerun is disabled. Use --enable-reflection-rerun to enable automatic reruns.")
+                else:
+                    logger.debug(f"ReWOO Reflection confirms correctness: {reason}")
+                    self.log(f"**ReWOO Reflection Confirms Correctness:**\n{reason}", agent=self.reflector)
                         
             except Exception as e:
                 logger.error(f'Invalid reflection JSON output: {self.reflector.reflections[-1]}')
@@ -489,7 +523,7 @@ class ReWOOSystem(System):
         if self.step_n > len(self.plan_steps):
             # All steps completed, move to solving
             self.phase = 'solving'
-            return self._solving_phase()
+            return ''  # Return empty string, let the while loop call solving phase
         
         # Get current step
         current_step = self.plan_steps[self.step_n - 1]
@@ -513,7 +547,7 @@ class ReWOOSystem(System):
         # Continue with next step or move to solving
         if self.step_n > len(self.plan_steps):
             self.phase = 'solving'
-            return self._solving_phase()
+            return ''  # Return empty string, let the while loop call solving phase
         else:
             return self._working_phase()
 

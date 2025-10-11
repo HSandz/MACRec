@@ -1,7 +1,7 @@
 {
     "analyst_base_prompt": {
         "type": "template",
-        "content": "Analyze {analyse_type} {id} for {task_type}. FOCUS on genre preferences and patterns.\n\nCommands: UserInfo[id], ItemInfo[id], UserHistory[id], ItemHistory[id], Finish[result]\nGather 3-5 data points, extract genre insights, then Finish.\n\nTarget: {analyse_type} {id}\n{history}"
+        "content": "Analyze {analyse_type} {id} for {task_type}.\n\nCommands: UserInfo[id], ItemInfo[id], UserHistory[id], ItemHistory[id], Finish[result]\nGather 3-5 data points, avoid duplicates, then Finish.\n\nTarget: {analyse_type} {id}\n{history}"
     },
     "analyst_prompt": {
         "type": "template",
