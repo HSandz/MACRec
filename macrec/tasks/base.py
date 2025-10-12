@@ -61,6 +61,19 @@ class Task(ABC):
         """
         raise NotImplementedError
 
+    def _should_create_default_log(self) -> bool:
+        """Check if this task type should create a default log file.
+        
+        Tasks that create their own specific log files (GenerationTask, ChatTask)
+        should return False here.
+        
+        Returns:
+            bool: True if a default log should be created, False otherwise
+        """
+        # Tasks that create their own log files
+        task_with_custom_logs = ['GenerationTask', 'ChatTask', 'TestTask', 'EvaluateTask']
+        return self.__class__.__name__ not in task_with_custom_logs
+    
     def launch(self) -> Any:
         """Launch the task. Parse the arguments with `parse_task_args` and run the task with `run`. The parsed arguments are stored in `self.args` and passed to the `run` method.
 
@@ -75,8 +88,8 @@ class Task(ABC):
         logger.success(args)
         
         # Setup a default log file for tasks that don't create their own
-        # GenerationTask and ChatTask will override this with task-specific naming
-        if self.log_handler_id is None:
+        # GenerationTask, ChatTask, TestTask, and EvaluateTask create task-specific logs
+        if self._should_create_default_log() and self.log_handler_id is None:
             task_name = self.__class__.__name__.replace('Task', '').lower()
             timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
             log_filename = f"{task_name}_{timestamp}.log"
