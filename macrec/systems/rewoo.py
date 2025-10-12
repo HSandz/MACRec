@@ -567,8 +567,8 @@ class ReWOOSystem(System):
         self._last_solution = solution
         self._last_final_answer = final_answer
         
-        # Log the final solution
-        logger.info(f"ReWOO Final Answer: {final_answer}")
+        # Log the final solution with ground truth for comparison
+        logger.info(f"ReWOO Final Answer: {final_answer} | Ground Truth: {self.gt_answer}")
         
         return self.finish(final_answer)
 
