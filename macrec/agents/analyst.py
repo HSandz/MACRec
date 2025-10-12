@@ -71,6 +71,119 @@ class Analyst(ToolAgent):
             return ''
         return self.prompts['analyst_hint']
 
+    def _generate_summary_from_gathered_info(self) -> str:
+        """
+        Generate a formatted summary from gathered_info when force-finishing.
+        This ensures the Solver receives actual data instead of a generic message.
+        """
+        if not self.gathered_info:
+            return "No information gathered."
+        
+        summary_parts = []
+        
+        # Separate user info, item info, and histories
+        user_info = {}
+        item_info = {}
+        user_histories = {}
+        item_histories = {}
+        user_preferences = {}
+        
+        for key, value in self.gathered_info.items():
+            if key.startswith("user_history_"):
+                user_histories[key] = value
+                # Extract preference insights from history
+                user_id = key.replace("user_history_", "")
+                user_preferences[user_id] = self._analyze_user_preferences(user_id, value)
+            elif key.startswith("item_history_"):
+                item_histories[key] = value
+            elif key.startswith("user_"):
+                user_info[key] = value
+            elif key.startswith("item_"):
+                item_info[key] = value
+        
+        # Add user information section with preference insights
+        if user_info or user_preferences:
+            summary_parts.append("User Information:")
+            # Add basic user info
+            for key, value in user_info.items():
+                summary_parts.append(f"  - {key.replace('_', ' ').title()}: {value}")
+            # Add preference insights
+            for user_id, preference_text in user_preferences.items():
+                if preference_text:
+                    summary_parts.append(f"  - {preference_text}")
+        
+        # Add user history section
+        if user_histories:
+            summary_parts.append("User History:")
+            for key, value in user_histories.items():
+                summary_parts.append(f"  - {key.replace('_', ' ').title()}: {value}")
+        
+        # Add item information section
+        if item_info:
+            summary_parts.append("Item Information:")
+            for key, value in item_info.items():
+                summary_parts.append(f"  - {key.replace('_', ' ').title()}: {value}")
+        
+        # Add item history section
+        if item_histories:
+            summary_parts.append("Item History:")
+            for key, value in item_histories.items():
+                summary_parts.append(f"  - {key.replace('_', ' ').title()}: {value}")
+        
+        return "\n".join(summary_parts)
+
+    def _enhance_user_history(self, raw_observation: str, user_id: int) -> str:
+        """
+        Enhance user history by identifying and highlighting items with highest ratings.
+        Suggests the analyst should query those high-rated items first.
+        
+        Args:
+            raw_observation: Raw string from user_retrieve like "Retrieved 10 items that user 789 interacted with before: 284, 591, 294... with ratings: 3, 3, 3..."
+            user_id: The user ID being queried
+            
+        Returns:
+            Enhanced observation with priority guidance, or None if enhancement fails
+        """
+        try:
+            # Parse the raw observation to extract item IDs and ratings
+            if "No history found" in raw_observation:
+                return raw_observation
+            
+            # Extract item IDs and ratings from the observation string
+            # Format: "Retrieved X items that user Y interacted with before: id1, id2, id3... with ratings: r1, r2, r3..."
+            parts = raw_observation.split(" with ratings: ")
+            if len(parts) != 2:
+                return None
+            
+            item_part = parts[0].split("before: ")
+            if len(item_part) != 2:
+                return None
+            
+            item_ids = [int(iid.strip()) for iid in item_part[1].split(",")]
+            ratings = [float(r.strip()) for r in parts[1].split(",")]
+            
+            if len(item_ids) != len(ratings) or len(item_ids) == 0:
+                return None
+            
+            # Create item-rating pairs and sort by rating (descending)
+            item_rating_pairs = list(zip(item_ids, ratings))
+            item_rating_pairs.sort(key=lambda x: x[1], reverse=True)
+            
+            # Find items with highest ratings
+            max_rating = item_rating_pairs[0][1]
+            high_rated_items = [item_id for item_id, rating in item_rating_pairs if rating >= max_rating - 0.5]  # Within 0.5 of max
+            
+            # Build enhanced observation with priority guidance
+            if high_rated_items and max_rating >= 4.0:  # Only add guidance if there are good ratings
+                priority_guidance = f"\n[Priority: Analyze items {', '.join(map(str, high_rated_items[:3]))} first - highest rated items (rating: {max_rating})]"
+                return raw_observation + priority_guidance
+            else:
+                return raw_observation
+            
+        except Exception as e:
+            logger.warning(f"Failed to enhance user history for user {user_id}: {e}")
+            return None
+
     def _enhance_item_history(self, raw_observation: str, item_id: int) -> str:
         """
         Enhance item history by analyzing top-rating users and summarizing their preferences.
@@ -181,7 +294,7 @@ class Analyst(ToolAgent):
         # First format the base prompt with shared content
         if 'task_context' in kwargs and kwargs['task_context']:
             # Replace the generic template with specific task context for ReWOO
-            base_prompt_content = f"{kwargs['task_context']}\n\nCommands: UserInfo[id], ItemInfo[id], UserHistory[id], ItemHistory[id], Finish[result]\nGather 3-5 data points, avoid duplicates, then Finish.\n\nTarget: {kwargs.get('analyse_type', 'user')} {kwargs.get('id', '')}\n{self.history}"
+            base_prompt_content = f"{kwargs['task_context']}\n\nCommands: UserInfo[id], ItemInfo[id], UserHistory[id], ItemHistory[id], Finish[result]\nGather comprehensive information, avoid duplicates, then Finish.\n\nTarget: {kwargs.get('analyse_type', 'user')} {kwargs.get('id', '')}\n{self.history}"
             task_context_info = f"\n\nSPECIFIC FOCUS: {kwargs['task_context']}"
             logger.debug(f"Using task_context for base prompt: {kwargs['task_context']}")
         else:
@@ -222,7 +335,8 @@ class Analyst(ToolAgent):
             recent_commands = [turn['command'] for turn in self._history[-2:]]
             if all(cmd == command for cmd in recent_commands):
                 # logger.info(f'Detected repetitive command: {command}. Forcing finish.')
-                self.finish(f"Analysis completed. Detected repetitive pattern, ending analysis to prevent infinite loop.")
+                summary = self._generate_summary_from_gathered_info()
+                self.finish(summary)
                 return
             
             # Check for alternating pattern
@@ -230,7 +344,8 @@ class Analyst(ToolAgent):
                 last_4_commands = [turn['command'] for turn in self._history[-4:]]
                 if last_4_commands[0] == last_4_commands[2] and last_4_commands[1] == last_4_commands[3]:
                     # logger.info(f'Detected alternating repetitive commands: {last_4_commands}. Forcing finish.')
-                    self.finish(f"Analysis completed. Detected alternating repetitive pattern, ending analysis.")
+                    summary = self._generate_summary_from_gathered_info()
+                    self.finish(summary)
                     return
         
         # Only force finish if we have gathered too much information AND we're in a loop
@@ -240,7 +355,9 @@ class Analyst(ToolAgent):
             recent_actions = [parse_action(h['command'] if isinstance(h, dict) and 'command' in h else str(h), json_mode=self.json_mode)[0] 
                              for h in self._history[-4:] if h and (isinstance(h, dict) or str(h).strip())]
             if len(set(recent_actions)) <= 2:  # Only if stuck in repetitive pattern
-                self.finish(f"Analysis completed. Gathered sufficient information about {len(self.gathered_info)} entities.")
+                # Generate proper summary from gathered information instead of generic message
+                summary = self._generate_summary_from_gathered_info()
+                self.finish(summary)
                 return
         
         log_head = ''
@@ -323,7 +440,12 @@ class Analyst(ToolAgent):
                     log_head = f':orange[Skipped duplicate UserHistory query for user] :red[{query_user_id}]:orange[...]\n- '
                 else:
                     # Use default k=10 for history retrieval
-                    observation = self.interaction_retriever.user_retrieve(user_id=query_user_id, k=10)
+                    raw_observation = self.interaction_retriever.user_retrieve(user_id=query_user_id, k=10)
+                    
+                    # Enhance observation with priority guidance: highlight high-rating items
+                    enhanced_observation = self._enhance_user_history(raw_observation, query_user_id)
+                    observation = enhanced_observation if enhanced_observation else raw_observation
+                    
                     self.gathered_info[history_key] = observation
                     log_head = f':violet[Look up UserHistory of user] :red[{query_user_id}]:violet[...]\n- '
             except (ValueError, TypeError):
@@ -408,6 +530,7 @@ class Analyst(ToolAgent):
         user_info_parts = []
         user_history_parts = []
         item_info_parts = []
+        user_preferences = {}
         
         for key, value in self.gathered_info.items():
             if key.startswith('user_') and not key.startswith('user_history_'):
@@ -416,14 +539,21 @@ class Analyst(ToolAgent):
             elif key.startswith('user_history_'):
                 user_id = key.replace('user_history_', '')
                 user_history_parts.append(f"User {user_id} History: {value}")
+                # Extract preference insights from history
+                user_preferences[user_id] = self._analyze_user_preferences(user_id, value)
             elif key.startswith('item_'):
                 item_id = key.replace('item_', '')
                 item_info_parts.append(f"Item {item_id}: {value}")
         
-        # Compile analysis sections
-        if user_info_parts:
+        # Compile analysis sections with preference insights
+        if user_info_parts or user_preferences:
             analysis_parts.append("User Information:")
+            # Add basic user info
             analysis_parts.extend([f"  - {part}" for part in user_info_parts])
+            # Add preference insights
+            for user_id, preference_text in user_preferences.items():
+                if preference_text:
+                    analysis_parts.append(f"  - {preference_text}")
         
         if user_history_parts:
             analysis_parts.append("User History:")
@@ -441,6 +571,143 @@ class Analyst(ToolAgent):
             return original_finish_content
         
         return detailed_analysis
+    
+    def _analyze_user_preferences(self, user_id: str, history_observation: str) -> str:
+        """
+        Analyze user preferences from their interaction history.
+        Extracts genre preferences, rating patterns, and generates a preference summary.
+        
+        Args:
+            user_id: The user ID being analyzed
+            history_observation: The history observation string containing items and ratings
+            
+        Returns:
+            A natural language summary of user preferences
+        """
+        try:
+            # Parse history to extract item IDs and ratings
+            if "No history found" in history_observation or "Retrieved 0 items" in history_observation:
+                return ""
+            
+            # Extract the basic user info first
+            user_basic_info = self.gathered_info.get(f"user_{user_id}", "")
+            
+            # Parse age, gender, occupation from user info
+            age = gender = occupation = None
+            if user_basic_info:
+                import re
+                age_match = re.search(r'Age:\s*(\d+)', user_basic_info)
+                gender_match = re.search(r'Gender:\s*(\w+)', user_basic_info)
+                occupation_match = re.search(r'Occupation:\s*([\w\s]+?)(?:;|$)', user_basic_info)
+                
+                if age_match:
+                    age = age_match.group(1)
+                if gender_match:
+                    gender = gender_match.group(1)
+                if occupation_match:
+                    occupation = occupation_match.group(1).strip()
+            
+            # Extract item IDs and ratings from history
+            parts = history_observation.split(" with ratings: ")
+            if len(parts) != 2:
+                return ""
+            
+            item_part = parts[0].split("before: ")
+            if len(item_part) != 2:
+                return ""
+            
+            # Remove priority guidance if present (it's appended after ratings)
+            ratings_part = parts[1]
+            if "[Priority:" in ratings_part:
+                ratings_part = ratings_part.split("[Priority:")[0].strip()
+            
+            item_ids = [int(iid.strip()) for iid in item_part[1].split(",")]
+            ratings = [float(r.strip()) for r in ratings_part.split(",")]
+            
+            if len(item_ids) != len(ratings) or len(item_ids) == 0:
+                return ""
+            
+            # Collect genres from queried items in gathered_info
+            genres_with_ratings = []
+            for item_id in item_ids:
+                item_key = f"item_{item_id}"
+                if item_key in self.gathered_info:
+                    item_info = self.gathered_info[item_key]
+                    # Extract genres from item info
+                    import re
+                    genre_match = re.search(r'Genres:\s*([\w|]+)', item_info)
+                    if genre_match:
+                        genres_str = genre_match.group(1)
+                        item_genres = [g.strip() for g in genres_str.split('|')]
+                        # Get the rating for this item
+                        idx = item_ids.index(item_id)
+                        rating = ratings[idx]
+                        genres_with_ratings.append((item_genres, rating))
+            
+            # Analyze genre preferences (focus on high-rated items)
+            genre_counts = {}
+            high_rated_genres = []
+            
+            for genres, rating in genres_with_ratings:
+                if rating >= 4.0:  # High rating
+                    high_rated_genres.extend(genres)
+                for genre in genres:
+                    genre_counts[genre] = genre_counts.get(genre, 0) + 1
+            
+            # Find most common genres
+            if high_rated_genres:
+                # Count genres from high-rated items
+                high_genre_counts = {}
+                for genre in high_rated_genres:
+                    high_genre_counts[genre] = high_genre_counts.get(genre, 0) + 1
+                top_genres = sorted(high_genre_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+                top_genre_names = [g[0] for g in top_genres]
+            elif genre_counts:
+                # Fallback to overall most common genres
+                top_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+                top_genre_names = [g[0] for g in top_genres]
+            else:
+                top_genre_names = []
+            
+            # Analyze rating patterns
+            high_rated_count = sum(1 for r in ratings if r >= 4.0)
+            avg_rating = sum(ratings) / len(ratings) if ratings else 0
+            
+            # Generate preference summary
+            summary_parts = []
+            
+            # Add demographic info
+            if age and gender and occupation:
+                summary_parts.append(f"User {user_id} Preferences: {age}-year-old {gender} {occupation}")
+            elif user_id:
+                summary_parts.append(f"User {user_id} Preferences:")
+            
+            # Add genre preferences
+            if top_genre_names:
+                genre_text = ", ".join(top_genre_names[:-1]) + (" and " + top_genre_names[-1] if len(top_genre_names) > 1 else top_genre_names[0])
+                summary_parts.append(f"enjoys {genre_text.lower()} movies")
+            
+            # Add rating pattern insight
+            if high_rated_count > 0:
+                if high_rated_count == len(ratings):
+                    summary_parts.append(f"Rated all {len(ratings)} recent movies highly (4-5 stars)")
+                elif high_rated_count >= len(ratings) * 0.7:  # 70% or more
+                    summary_parts.append(f"Rated {high_rated_count}/{len(ratings)} recent movies highly (4-5 stars)")
+                else:
+                    summary_parts.append(f"Rated {high_rated_count} movies highly out of {len(ratings)} recent views")
+            elif avg_rating > 0:
+                summary_parts.append(f"Average rating: {avg_rating:.1f} stars")
+            
+            # Combine into natural sentence
+            if len(summary_parts) <= 1:
+                return ""
+            
+            result = summary_parts[0] + " " + ", ".join(summary_parts[1:]) + "."
+            return result
+            
+        except Exception as e:
+            logger.warning(f"Failed to analyze user preferences for user {user_id}: {e}")
+            return ""
 
     def forward(self, id: int, analyse_type: str, *args: Any, **kwargs: Any) -> str:
         assert self.system.data_sample is not None, "Data sample is not provided."
