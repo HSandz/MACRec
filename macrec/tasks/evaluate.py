@@ -63,6 +63,7 @@ class EvaluateTask(GenerationTask):
         self.valid_count = 0
         self.total_count = 0
         self.failed_samples = []  # Track which samples failed
+        self.gt_positions = []  # Track ground truth positions in ranked lists
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         dataset = os.path.basename(os.path.dirname(self.args.data_file))
         data_file = os.path.basename(self.args.data_file)
@@ -94,6 +95,24 @@ class EvaluateTask(GenerationTask):
         sample_id = record.get('sample_id', 'unknown')
         user_id = record.get('user_id', 'unknown')
         logger.info(f"Sample {sample_id} (User {user_id}): system.finished={self.system.finished}, answer_type={type(answer)}, answer={answer}")
+        
+        # Track ground truth position in ranked list for SR/RR tasks
+        if self.task in ['sr', 'rr'] and self.system.finished and isinstance(answer, list):
+            try:
+                if gt_answer in answer:
+                    gt_position = answer.index(gt_answer) + 1  # 1-indexed position
+                else:
+                    gt_position = -1  # Not found in ranked list
+                
+                self.gt_positions.append({
+                    'sample_id': sample_id,
+                    'user_id': user_id,
+                    'gt_item': gt_answer,
+                    'position': gt_position,
+                    'list_length': len(answer)
+                })
+            except Exception as e:
+                logger.warning(f"Failed to track GT position for sample {sample_id}: {e}")
         
         # Track failed samples
         if not self.system.finished:
@@ -128,6 +147,60 @@ class EvaluateTask(GenerationTask):
             logger.success("All samples completed successfully!")
         
         self.metrics.report()
+        
+        # Log ground truth position summary for SR/RR tasks (only to file)
+        if self.task in ['sr', 'rr'] and self.gt_positions:
+            # Get the log file path from the task logger
+            if hasattr(self, 'log_handler_id') and self.log_handler_id is not None:
+                # Get handler info to find the log file path
+                import sys
+                from loguru._handler import Handler
+                
+                # Find the log file path from logger handlers
+                log_file_path = None
+                for handler_id, handler in logger._core.handlers.items():
+                    if handler_id == self.log_handler_id:
+                        # Extract file path from the handler
+                        if hasattr(handler._sink, 'name'):
+                            log_file_path = handler._sink.name
+                        elif hasattr(handler._sink, '_file') and hasattr(handler._sink._file, 'name'):
+                            log_file_path = handler._sink._file.name
+                        break
+                
+                if log_file_path:
+                    # Write directly to the log file
+                    with open(log_file_path, 'a', encoding='utf-8') as log_file:
+                        # Sort by position (ascending), with not-found (-1) at the end
+                        sorted_positions = sorted(self.gt_positions, key=lambda x: (x['position'] == -1, x['position']))
+                        
+                        # Calculate statistics
+                        found_count = sum(1 for p in self.gt_positions if p['position'] > 0)
+                        not_found_count = sum(1 for p in self.gt_positions if p['position'] == -1)
+                        
+                        log_file.write("\n===================================Ground Truth Position Summary===================================\n")
+                        
+                        if found_count > 0:
+                            positions_list = [p['position'] for p in self.gt_positions if p['position'] > 0]
+                            avg_position = sum(positions_list) / len(positions_list)
+                            log_file.write(f"Ground Truth Found: {found_count}/{len(self.gt_positions)} samples ({found_count/len(self.gt_positions)*100:.1f}%)\n")
+                            log_file.write(f"Average Position (when found): {avg_position:.2f}\n")
+                        
+                        if not_found_count > 0:
+                            log_file.write(f"Ground Truth Not Found: {not_found_count}/{len(self.gt_positions)} samples\n")
+                        
+                        log_file.write("\nDetailed Ground Truth Positions (sorted by position):\n")
+                        log_file.write(f"{'Sample':<8} {'User':<8} {'GT Item':<10} {'Position':<10} {'List Length':<12}\n")
+                        log_file.write("-" * 60 + "\n")
+                        
+                        for pos_info in sorted_positions:
+                            position_str = str(pos_info['position']) if pos_info['position'] > 0 else "Not Found"
+                            log_file.write(
+                                f"{pos_info['sample_id']:<8} "
+                                f"{pos_info['user_id']:<8} "
+                                f"{pos_info['gt_item']:<10} "
+                                f"{position_str:<10} "
+                                f"{pos_info['list_length']:<12}\n"
+                            )
         
 
     def run(self, steps: int, topks: list[int], *args, **kwargs):

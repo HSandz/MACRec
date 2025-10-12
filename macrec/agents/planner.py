@@ -230,9 +230,6 @@ class Planner(Agent):
                     'raw_action': action
                 }
                 steps.append(current_step)
-                
-                # Debug logging
-                logger.info(f"Parsed step: {variable} -> deps: {dependencies}")
             
             # Parse detailed worker type specifications: "#E1 = Analyze User History" followed by "Worker Type: Analyst"
             elif line.startswith('#E') and '=' in line and 'Worker Type:' not in line:
