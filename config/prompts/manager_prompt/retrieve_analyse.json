@@ -1,0 +1,23 @@
+{
+    "manager_prompt": {
+        "type": "template",
+        "content": "Solve {task_type} task with Thought, Action, Observation steps. Actions:\n(1) Analyse[user/item, id] — analyze preferences/features\n(2) Retrieve[user_id, k] — fetch top-k candidates (default 6)\n(3) Finish[response] — complete task\n\nFor 'rr' tasks, follow this workflow:\n1. Analyse[user, user_id] — understand user preferences\n2. Retrieve[user_id, 6] — get candidate items\n3. Analyse[item, item_id] for ALL retrieved items\n4. Rank using genre preference scoring:\n   - 5★ genres: weight 1.0, 4★: 0.8, 3★: 0.6, 2★: 0.4, 1★: 0.2\n   - Score items by matching genre weights, rank highest first\n5. Finish[ranked_list]\n\nIMPORTANT: For rr tasks, you MUST analyze ALL 6 retrieved items before finishing. Each Analyse[item, id] should gather 3-5 data points about the item.\n\nMin steps for 'rr': 1 user analysis + 1 retrieve + 6 item analyses + 1 finish = 9 steps\nMax steps: {max_step}\n\nGenerate ONLY the next single step. {examples}\n\nInput: {input}\n{scratchpad}"
+    },
+    "manager_prompt_json": {
+        "type": "template",
+        "content": "Solve {task_type} task with Thought, Action, Observation steps. Actions (JSON):\n(1) {{\"type\": \"Analyse\", \"content\": [\"user\"|\"item\", id]}} — analyze preferences/features\n(2) {{\"type\": \"Retrieve\", \"content\": [user_id, k]}} — fetch top-k candidates (default 6)\n(3) {{\"type\": \"Finish\", \"content\": response}} — complete task\n\nFor 'rr' tasks, follow this workflow:\n1. {{\"type\": \"Analyse\", \"content\": [\"user\", user_id]}} — understand user preferences\n2. {{\"type\": \"Retrieve\", \"content\": [user_id, 6]}} — get candidate items\n3. {{\"type\": \"Analyse\", \"content\": [\"item\", item_id]}} for ALL retrieved items\n4. Rank using genre preference scoring:\n   - 5★ genres: weight 1.0, 4★: 0.8, 3★: 0.6, 2★: 0.4, 1★: 0.2\n   - Score items by matching genre weights, rank highest first\n5. {{\"type\": \"Finish\", \"content\": response}} with ranked list\n\nIMPORTANT: For rr tasks, you MUST analyze ALL 6 retrieved items before finishing. Each Analyse[item, id] should gather 3-5 data points about the item.\n\nMin steps for 'rr': 1 user analysis + 1 retrieve + 6 item analyses + 1 finish = 9 steps\nMax steps: {max_step}\n\nGenerate ONLY ONE JSON action. FORMAT: {{\"type\": \"Analyse\", \"content\": [\"user\", 821]}}, {{\"type\": \"Retrieve\", \"content\": [821, 6]}}, {{\"type\": \"Finish\", \"content\": [1063, 151, 274, 225, 609, 25]}}\n{examples}\n\nInput: {input}\n{scratchpad}"
+    },
+    "hint": {
+        "type": "raw",
+        "content": "Use Finish Action to complete the task."
+    },
+    "valid_action_example": {
+        "type": "raw",
+        "content": "Finish[{finish}]\nAnalyse[user, USER_ID]\nAnalyse[item, ITEM_ID]\nRetrieve[USER_ID, 10]"
+    },
+    "valid_action_example_json": {
+        "type": "raw",
+        "content": "{{\"type\": \"Finish\", \"content\": {finish}}}\n{{\"type\": \"Analyse\", \"content\": [\"user\", USER_ID]}}\n{{\"type\": \"Analyse\", \"content\": [\"item\", ITEM_ID]}}\n{{\"type\": \"Retrieve\", \"content\": [USER_ID, 6]}}"
+    }
+}
+    

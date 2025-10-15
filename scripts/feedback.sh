@@ -1,6 +1,6 @@
 #! /bin/bash
 
-# Feedback generation on MovieLens-100k (500 samples)
+# Feedback generation on MovieLens-1m (500 samples)
 
 ## rating prediction task
 ### reflection reward
