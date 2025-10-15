@@ -190,6 +190,66 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 9) -> tup
     
     return train_df, dev_df, test_df
 
+def process_interaction_data_with_retrieval(data_df: pd.DataFrame, n_retrieval_items: int = 20) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Process interaction data using retrieval-based sampling instead of negative sampling."""
+    data_df.columns = ['user_id', 'item_id', 'rating', 'timestamp']
+    # Sort data_df by timestamp
+    data_df = data_df.sort_values(by=['timestamp'])
+    data_df = filter_data(data_df)
+    
+    # Ensure mapping files exist for embedding retriever
+    from macrec.utils.mapping_utils import ensure_embedding_mappings
+    embeddings_dir = "data/ml-1m/embeddings"
+    if not ensure_embedding_mappings(embeddings_dir, "ml-1m"):
+        logger.warning("Failed to create mapping files for ml-1m embeddings")
+    
+    # Load embedding retriever
+    from macrec.tools.embedding_retriever import EmbeddingRetriever
+    embedding_retriever = EmbeddingRetriever(config_path="config/tools/embedding_retriever.json")
+    
+    def retrieval_sample(df):
+        """Use embedding-based retrieval to get top-K similar items for each user."""
+        candidate_items = []
+        for _, row in df.iterrows():
+            user_id = row['user_id']
+            target_item = row['item_id']
+            
+            try:
+                # Get top-K items from embedding retriever (pure similarity-based, no positive item added)
+                top_items, _ = embedding_retriever.retrieve(user_id=user_id, k=n_retrieval_items)
+                
+                # Use only the top-K similar items, do NOT add target item
+                candidate_items.append(top_items)
+            except Exception as e:
+                logger.warning(f"Failed to retrieve items for user {user_id}: {e}")
+                # Fallback to random items or empty list
+                candidate_items.append([])
+        
+        df['candidate_item_id'] = candidate_items
+        return df
+
+    def generate_dev_test(data_df: pd.DataFrame) -> tuple[list[pd.DataFrame], pd.DataFrame]:
+        result_dfs = []
+        for idx in range(2):
+            result_df = data_df.groupby('user_id').tail(1).copy()
+            data_df = data_df.drop(result_df.index)
+            result_dfs.append(result_df)
+        return result_dfs, data_df
+
+    # Split data into train/dev/test
+    leave_df = data_df.groupby('user_id').head(1)
+    left_df = data_df.drop(leave_df.index)
+
+    [test_df, dev_df], train_df = generate_dev_test(left_df)
+    train_df = pd.concat([leave_df, train_df]).sort_index()
+    
+    # Apply retrieval sampling to all splits
+    train_df = retrieval_sample(train_df)
+    dev_df = retrieval_sample(dev_df)
+    test_df = retrieval_sample(test_df)
+    
+    return train_df, dev_df, test_df
+
 def process_data(dir: str, n_neg_items: int = 9):
     """Process the ml-1m raw data and output the processed data to `dir`.
 
@@ -225,6 +285,69 @@ def process_data(dir: str, n_neg_items: int = 9):
             return x
 
         df['candidate_item_id'] = df['candidate_item_id'].apply(lambda x: shuffle_list(x))  # shuffle candidates id
+
+        # Add item attributes
+        def candidate_attr(x):
+            candidate_item_attributes = []
+            for item_id, item_attributes in zip(x, item_df.loc[x]['item_attributes']):
+                candidate_item_attributes.append(f'{item_id}: {item_attributes}')
+            return candidate_item_attributes
+
+        df['candidate_item_attributes'] = df['candidate_item_id'].apply(lambda x: candidate_attr(x))
+        df['candidate_item_attributes'] = df['candidate_item_attributes'].apply(lambda x: '\n'.join(x))
+        # Replace empty string with 'None'
+        for col in df.columns.to_list():
+            df[col] = df[col].apply(lambda x: 'None' if x == '' else x)
+
+    train_df = dfs[0]
+    dev_df = dfs[1]
+    test_df = dfs[2]
+    all_df = pd.concat([train_df, dev_df, test_df])
+    all_df = all_df.sort_values(by=['timestamp'], kind='mergesort')
+    all_df = all_df.reset_index(drop=True)
+    logger.info('Outputing data to csv files...')
+    user_df.to_csv(os.path.join(dir, 'user.csv'))
+    item_df.to_csv(os.path.join(dir, 'item.csv'))
+    train_df.to_csv(os.path.join(dir, 'train.csv'), index=False)
+    dev_df.to_csv(os.path.join(dir, 'dev.csv'), index=False)
+    test_df.to_csv(os.path.join(dir, 'test.csv'), index=False)
+    all_df.to_csv(os.path.join(dir, 'all.csv'), index=False)
+
+def process_data_with_retrieval(dir: str, n_retrieval_items: int = 20):
+    """Process the ml-1m raw data using retrieval-based sampling and output the processed data to `dir`.
+
+    Args:
+        `dir (str)`: the directory of the dataset. We suppose the raw data is in `dir/raw_data` and the processed data will be output to `dir`.
+        `n_retrieval_items (int)`: Number of retrieval items to get for each positive interaction.
+    """
+    download_data(dir)
+    data_df, item_df, user_df = read_data(os.path.join(dir, "raw_data"))
+    user_df = process_user_data(user_df)
+    logger.info(f'Number of users: {user_df.shape[0]}')
+    item_df = process_item_data(item_df)
+    logger.info(f'Number of items: {item_df.shape[0]}')
+    train_df, dev_df, test_df = process_interaction_data_with_retrieval(data_df, n_retrieval_items)
+    logger.info(f'Number of train interactions: {train_df.shape[0]}')
+    dfs = append_his_info([train_df, dev_df, test_df], neg=False)  # neg=False since we don't have neg_item_id
+    logger.info('Completed append history information to interactions')
+
+    for df in dfs:
+        # Format history by listing the historical item attributes
+        df['history'] = df['history_item_id'].apply(lambda x: item_df.loc[x]['item_attributes'].values.tolist())
+        # Concat the attributes with item's rating
+        df['history'] = df.apply(lambda x: [f'{item_attributes} (rating: {rating})' for item_attributes, rating in zip(x['history'], x['history_rating'])], axis=1)
+        # Separate each item attributes by a newline
+        df['history'] = df['history'].apply(lambda x: '\n'.join(x))
+        # Add user profile for this interaction
+        df['user_profile'] = df['user_id'].apply(lambda x: user_df.loc[x]['user_profile'])
+        df['target_item_attributes'] = df['item_id'].apply(lambda x: item_df.loc[x]['item_attributes'])
+        
+        # Shuffle candidate items in-place (candidate_item_id already set in retrieval_sample)
+        def shuffle_list(x):
+            random.shuffle(x)
+            return x
+
+        df['candidate_item_id'] = df['candidate_item_id'].apply(lambda x: shuffle_list(x) if len(x) > 0 else [])  # shuffle candidates id
 
         # Add item attributes
         def candidate_attr(x):
