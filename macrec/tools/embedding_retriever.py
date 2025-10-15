@@ -81,33 +81,19 @@ class EmbeddingRetriever(Tool):
 
     def _load_embeddings_from_csv(self, file_path: str) -> np.ndarray:
         try:
-            # Try to read with comma separator and header first (new format)
-            try:
-                df = pd.read_csv(file_path, sep=',', header=0)
-                if df.shape[1] < 2:
-                    raise ValueError(f"CSV file {file_path} must have at least 2 columns")
-                
-                # Skip the first column (ID column) and get embedding values
-                embedding_columns = df.columns[1:]  # All columns except the first (ID)
-                embeddings = df[embedding_columns].values.astype(np.float32)
-                return embeddings
-                
-            except Exception:
-                # Fallback to original tab-separated format without header
-                df = pd.read_csv(file_path, sep='\t', header=None)
-                if df.shape[1] < 2:
-                    raise ValueError(f"CSV file {file_path} must have at least 2 columns")
-                
-                # The second column contains space-separated embedding values
-                def _parse_embedding_values(x):
-                    try:
-                        return [float(v) for v in x]
-                    except ValueError as e:
-                        raise ValueError(f"Invalid embedding value in {file_path}: {e}")
-                
-                embeddings_series = df.iloc[:, 1].str.split().apply(_parse_embedding_values)
-                return np.array(embeddings_series.tolist(), dtype=np.float32)
-                
+            df = pd.read_csv(file_path, sep='\t', header=None)
+            if df.shape[1] < 2:
+                raise ValueError(f"CSV file {file_path} must have at least 2 columns")
+            
+            # The second column contains space-separated embedding values
+            def _parse_embedding_values(x):
+                try:
+                    return [float(v) for v in x]
+                except ValueError as e:
+                    raise ValueError(f"Invalid embedding value in {file_path}: {e}")
+            
+            embeddings_series = df.iloc[:, 1].str.split().apply(_parse_embedding_values)
+            return np.array(embeddings_series.tolist(), dtype=np.float32)
         except Exception as e:
             raise RuntimeError(f"Failed to load embeddings from {file_path}: {e}")
 
