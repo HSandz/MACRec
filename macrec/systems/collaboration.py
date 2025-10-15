@@ -10,7 +10,7 @@ from macrec.agents.base import Agent
 from macrec.utils import parse_answer, parse_action, format_chat_history
 
 if TYPE_CHECKING:
-    from macrec.agents import Manager, Analyst, Interpreter, Reflector, Searcher, Retriever
+    from macrec.agents import Manager, Analyst, Interpreter, Reflector, Searcher
 
 class CollaborationSystem(System):
     def __init__(self, task: str, config_path: str, leak: bool = False, web_demo: bool = False, dataset: Optional[str] = None, *args, **kwargs) -> None:
@@ -79,10 +79,6 @@ class CollaborationSystem(System):
     @property
     def searcher(self) -> Optional['Searcher']:
         return self.agent_coordinator.get_agent('Searcher')
-
-    @property
-    def retriever(self) -> Optional['Retriever']:
-        return self.agent_coordinator.get_agent('Retriever')
 
     def reset(self, clear: bool = False, preserve_progress: bool = False, *args, **kwargs) -> None:
         # Store progress state before reset if we're preserving progress
@@ -359,29 +355,7 @@ class CollaborationSystem(System):
                     observation = f"Searcher encountered an error: {str(e)}. Please try a different search query."
                     log_head = f':red[Error from] :red[Searcher] :red[with] :blue[{argument}]:red[:]\n- '
         elif action_type.lower() == 'retrieve':
-            if self.retriever is None:
-                observation = 'Retriever is not configured. Cannot execute the action "Retrieve".'
-            else:
-                self.log(f':violet[Calling] :red[Retriever] :violet[with] :blue[{argument}]:violet[...]', agent=self.manager, logging=False)
-                try:
-                    observation = self.retriever.invoke(argument=argument, json_mode=self.manager.json_mode)
-                    log_head = f':violet[Response from] :red[Retriever] :violet[with] :blue[{argument}]:violet[:]\n- '
-                    
-                    # For rr tasks, extract item IDs from retriever response to help with tracking
-                    if self.task == 'rr' and observation:
-                        # Parse the observation to extract item IDs and convert to integers for consistency
-                        item_id_strings = re.findall(r'^(\d+):', observation, re.MULTILINE)
-                        if item_id_strings:
-                            # Convert to integers for consistent tracking
-                            item_ids = [int(id_str) for id_str in item_id_strings]
-                            logger.debug(f'Retrieved items for analysis tracking: {item_ids}')
-                            # Add to manager kwargs for better context
-                            if 'retrieved_items' not in self.manager_kwargs:
-                                self.manager_kwargs['retrieved_items'] = item_ids
-                except Exception as e:
-                    logger.error(f"Error in Retriever invocation: {e}")
-                    observation = f"Retriever encountered an error: {str(e)}. Please try a different retrieval query."
-                    log_head = f':red[Error from] :red[Retriever] :red[with] :blue[{argument}]:red[:]\n- '
+            observation = 'Retriever agent has been removed from the system. Please use other available actions.'
         elif action_type.lower() == 'interpret':
             if self.interpreter is None:
                 observation = 'Interpreter is not configured. Cannot execute the action "Interpret".'

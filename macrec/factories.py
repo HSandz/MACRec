@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from macrec.agents.base import Agent
 from macrec.agents import (
     Manager, Analyst, Interpreter, Reflector, 
-    Searcher, Retriever, Planner, Solver
+    Searcher, Planner, Solver
 )
 
 
@@ -31,7 +31,6 @@ class DefaultAgentFactory(AgentFactory):
             'Interpreter': Interpreter,
             'Reflector': Reflector,
             'Searcher': Searcher,
-            'Retriever': Retriever,
             'Planner': Planner,
             'Solver': Solver,
         }

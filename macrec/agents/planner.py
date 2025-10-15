@@ -33,8 +33,6 @@ class Planner(Agent):
         if hasattr(self, 'system') and self.system:
             if hasattr(self.system, 'analyst') and self.system.analyst:
                 available_workers.append("Analyst")
-            if hasattr(self.system, 'retriever') and self.system.retriever:
-                available_workers.append("Retriever") 
             if hasattr(self.system, 'searcher') and self.system.searcher:
                 available_workers.append("Searcher")
             if hasattr(self.system, 'interpreter') and self.system.interpreter:
@@ -42,13 +40,11 @@ class Planner(Agent):
         
         # Default workers if system not available
         if not available_workers:
-            available_workers = ["Analyst", "Retriever", "Searcher", "Interpreter"]
+            available_workers = ["Analyst", "Searcher", "Interpreter"]
         
         workers_desc = ""
         if "Analyst" in available_workers:
             workers_desc += "- Analyst: Analyzes user preferences, item features, or user-item interactions\n"
-        if "Retriever" in available_workers:
-            workers_desc += "- Retriever: Retrieves candidate items or similar users/items\n"
         if "Searcher" in available_workers:
             workers_desc += "- Searcher: Searches for relevant information in knowledge bases\n"
         if "Interpreter" in available_workers:
@@ -253,7 +249,7 @@ class Planner(Agent):
                 if 'analyz' in task_desc or 'examine' in task_desc or 'pattern' in task_desc:
                     step['worker_type'] = 'Analyst'
                 elif 'retrieve' in task_desc or 'search' in task_desc or 'candidate' in task_desc:
-                    step['worker_type'] = 'Retriever'
+                    step['worker_type'] = 'Searcher'
                 elif 'rank' in task_desc or 'score' in task_desc or 'order' in task_desc:
                     step['worker_type'] = 'Searcher'  
                 elif 'interpret' in task_desc or 'generate' in task_desc or 'recommend' in task_desc:

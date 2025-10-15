@@ -10,10 +10,6 @@
         "Planner": {
             "config_path": "config/agents/planner.json"
         },
-        "Retriever": {
-            "config_path": "config/agents/retriever.json",
-            "prompt_config": "config/prompts/agent_prompt/retriever.json"
-        },
         "Analyst": {
             "config_path": "config/agents/analyst.json",
             "prompt_config": "config/prompts/agent_prompt/analyst.json"

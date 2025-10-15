@@ -10,7 +10,7 @@ from macrec.agents.base import Agent
 from macrec.utils import parse_answer, parse_action, format_chat_history
 
 if TYPE_CHECKING:
-    from macrec.agents import Manager, Analyst, Interpreter, Reflector, Searcher, Retriever, Planner, Solver
+    from macrec.agents import Manager, Analyst, Interpreter, Reflector, Searcher, Planner, Solver
 
 
 class ReWOOSystem(System):
@@ -93,10 +93,6 @@ class ReWOOSystem(System):
     @property
     def analyst(self) -> Optional['Analyst']:
         return self.agent_coordinator.get_agent('Analyst')
-
-    @property
-    def retriever(self) -> Optional['Retriever']:
-        return self.agent_coordinator.get_agent('Retriever')
 
     @property
     def searcher(self) -> Optional['Searcher']:
@@ -683,12 +679,6 @@ class ReWOOSystem(System):
                 # Update entity cache with new data from this step
                 self._update_entity_cache(args, result)
                     
-            elif worker_type.lower() == 'retriever':
-                # Use the same argument parsing as collaboration system  
-                args = self._parse_retriever_arguments_from_context(task_desc)
-                logger.debug(f"Retriever args: {args}, type: {type(args)}")
-                # Only pass argument and json_mode like collaboration system does
-                result = worker.invoke(argument=args, json_mode=json_mode)
             elif worker_type.lower() == 'searcher':
                 logger.debug(f"Searcher args: {task_desc}, type: {type(task_desc)}")
                 # Only pass argument and json_mode like collaboration system does
@@ -769,7 +759,6 @@ class ReWOOSystem(System):
         """Get the appropriate worker agent."""
         worker_map = {
             'analyst': self.analyst,
-            'retriever': self.retriever,
             'searcher': self.searcher,
             'interpreter': self.interpreter
         }
@@ -847,18 +836,6 @@ class ReWOOSystem(System):
             # Default case
             return ['item', str(self.kwargs.get('item_id', '1'))]
 
-    def _parse_retriever_arguments(self, task_desc: str) -> List[Any]:
-        """Parse retriever arguments from task description."""
-        import re
-        
-        # Extract user ID and number of candidates
-        user_match = re.search(r'user\s+(\d+)', task_desc, re.IGNORECASE)
-        num_match = re.search(r'(\d+)\s+(?:items?|candidates?)', task_desc, re.IGNORECASE)
-        
-        user_id = user_match.group(1) if user_match else str(self.kwargs.get('user_id', '1'))
-        num_candidates = int(num_match.group(1)) if num_match else self.kwargs.get('n_candidate', 10)
-        
-        return [user_id, num_candidates]
 
     def _track_analyzed_entities(self, worker_type: str, task_desc: str, result: str) -> None:
         """Track analyzed entities for compatibility with existing system."""
@@ -871,12 +848,6 @@ class ReWOOSystem(System):
                 self.analyzed_users.add(user_match.group(1))
             elif item_match:
                 self.analyzed_items.add(item_match.group(1))
-        elif worker_type.lower() == 'retriever' and self.task == 'rr':
-            # Extract item IDs from retriever response
-            item_ids = re.findall(r'^(\d+):', result, re.MULTILINE)
-            if item_ids:
-                # Store retrieved items in kwargs for compatibility
-                self.kwargs['retrieved_items'] = [int(id_str) for id_str in item_ids]
 
     def _fallback_collaboration_mode(self) -> str:
         """Fallback to collaboration system behavior using exact same execution pattern."""
