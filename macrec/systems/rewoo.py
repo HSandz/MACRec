@@ -559,6 +559,45 @@ class ReWOOSystem(System):
         # Extract and return final answer
         final_answer = self.solver.extract_final_answer(solution, self.task)
         
+        # CRITICAL: Filter out history items from the answer
+        if self.task in ['sr'] and isinstance(final_answer, list):
+            # Extract history item IDs from execution results
+            history_item_ids = set()
+            for step_var, result in self.execution_results.items():
+                # Look for user history results
+                if isinstance(result, str) and ('User History' in result or 'interacted with before:' in result):
+                    # Extract item IDs from history: "Retrieved 10 items that user X interacted with before: 56, 98, 97, ..."
+                    history_match = re.search(r'interacted with before:\s*([\d,\s]+)', result)
+                    if history_match:
+                        item_ids_str = history_match.group(1)
+                        # Parse comma-separated IDs
+                        item_ids = [int(x.strip()) for x in item_ids_str.split(',') if x.strip().isdigit()]
+                        history_item_ids.update(item_ids)
+            
+            # Extract candidate item IDs from input query
+            candidate_item_ids = set()
+            
+            # For SR/RP tasks: extract from input query  
+            if hasattr(self, 'input') and self.input:
+                # Support multiple dataset formats: "ID: Title:" (MovieLens) or "ID: Brand:" (Beauty)
+                candidate_matches = re.findall(r'(\d+):\s*(?:Title|Brand):', self.input)
+                candidate_item_ids = set(int(item_id) for item_id in candidate_matches)
+            
+            # Filter answer to keep only candidate items (not history items)
+            original_answer = final_answer.copy()
+            filtered_answer = [item_id for item_id in final_answer if item_id in candidate_item_ids]
+            
+            # Log if filtering occurred
+            if len(filtered_answer) != len(original_answer):
+                removed_items = [item_id for item_id in original_answer if item_id not in filtered_answer]
+                logger.warning(f"Solver included history items in answer! Removed: {removed_items}")
+                logger.info(f"Original answer: {original_answer}")
+                logger.info(f"Filtered answer: {filtered_answer}")
+                logger.info(f"History items: {sorted(history_item_ids)}")
+                logger.info(f"Candidate items: {sorted(candidate_item_ids)}")
+            
+            final_answer = filtered_answer
+        
         # Store solution and final answer for reflection
         self._last_solution = solution
         self._last_final_answer = final_answer
@@ -801,24 +840,6 @@ class ReWOOSystem(System):
                     # Default fallback
                     return ['user', 1]
 
-    def _parse_retriever_arguments_from_context(self, task_desc: str) -> List[Any]:
-        """Parse retriever arguments from task description using real context data like collaboration system."""
-        import re
-        
-        # Extract user ID and number of candidates from context
-        user_match = re.search(r'user\s+(\d+)', task_desc, re.IGNORECASE)
-        num_match = re.search(r'(\d+)\s+(?:items?|candidates?)', task_desc, re.IGNORECASE)
-        
-        # Fall back to actual input data like collaboration system
-        if not user_match:
-            input_text = getattr(self, 'input', '')
-            user_match = re.search(r'user[_\s:]*(\d+)', input_text, re.IGNORECASE)
-        
-        user_id = user_match.group(1) if user_match else str(self.kwargs.get('user_id', '1'))
-        num_candidates = int(num_match.group(1)) if num_match else self.kwargs.get('n_candidate', 10)
-        
-        return [user_id, num_candidates]
-
     def _parse_analyst_arguments(self, task_desc: str) -> List[str]:
         """Parse analyst arguments from task description."""
         # Extract entity type and ID from description
@@ -836,11 +857,11 @@ class ReWOOSystem(System):
             # Default case
             return ['item', str(self.kwargs.get('item_id', '1'))]
 
-
     def _track_analyzed_entities(self, worker_type: str, task_desc: str, result: str) -> None:
         """Track analyzed entities for compatibility with existing system."""
+        import re
+        
         if worker_type.lower() == 'analyst':
-            import re
             user_match = re.search(r'user\s+(\d+)', task_desc, re.IGNORECASE)
             item_match = re.search(r'item\s+(\d+)', task_desc, re.IGNORECASE)
             

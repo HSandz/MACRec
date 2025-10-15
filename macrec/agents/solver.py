@@ -56,6 +56,20 @@ Original Query Data:
 {kwargs['data']}
 """
         
+        # For SR/RR tasks, extract and explicitly list candidate item IDs
+        candidate_ids_list = ""
+        if task in ['sr', 'rr'] and kwargs.get('input'):
+            import re
+            # Extract candidate item IDs from the input query
+            # Support multiple dataset formats: "ID: Title:" (MovieLens) or "ID: Brand:" (Beauty)
+            candidate_matches = re.findall(r'(\d+):\s*(?:Title|Brand):', kwargs['input'])
+            if candidate_matches:
+                candidate_ids = [int(item_id) for item_id in candidate_matches]
+                candidate_ids_list = f"""
+MANDATORY: You MUST rank ONLY these {len(candidate_ids)} candidate item IDs (in any order): {candidate_ids}
+DO NOT include any other item IDs in your ranking.
+"""
+        
         # Use config template (required)
         if 'solver_user_prompt' not in self.prompts:
             raise ValueError("solver_user_prompt not found in prompts config.")
@@ -63,7 +77,7 @@ Original Query Data:
         return self.prompts['solver_user_prompt'].format(
             plan=plan,
             worker_results=worker_results_text,
-            original_query=original_query,
+            original_query=original_query + candidate_ids_list,
             task=task.upper()
         )
 
@@ -117,72 +131,28 @@ Original Query Data:
         """Extract the final answer from the solution based on task type."""
         try:
             if task == 'sr' or task == 'rr':
-                # Extract ranked list of items
-                import re
+                # Extract ranked list of items from JSON response
+                import json
                 
-                # First, look for explicit lists in brackets like [1311, 858, 627, ...]
-                bracket_matches = re.findall(r'\[([^\]]+)\]', solution)
-                for match in bracket_matches:
-                    items_str = match.split(',')
-                    items = []
-                    for item in items_str:
-                        item = item.strip()
-                        # Check if it's a reasonable candidate item ID
-                        if item.isdigit():
-                            item_id = int(item)
-                            # Accept any positive integer as a valid item ID (remove restrictive filtering)
-                            if item_id > 0:
-                                items.append(item_id)
-                    if items and len(items) >= 2:  # Ensure we have at least 2 candidate items
-                        return items[:10]  # Top 10
+                try:
+                    # Parse JSON response
+                    data = json.loads(solution)
+                    if isinstance(data, dict) and 'ranked_items' in data:
+                        items = data['ranked_items']
+                        if isinstance(items, list) and all(isinstance(x, int) for x in items):
+                            logger.info(f"Extracted {len(items)} items from JSON response")
+                            return items[:10]  # Top 10
+                        else:
+                            logger.error(f"Invalid ranked_items format: {items}")
+                    else:
+                        logger.error(f"JSON response missing 'ranked_items' key: {data}")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse JSON response: {e}")
+                    logger.error(f"Solution was: {solution[:200]}...")
                 
-                # Second, look for explicit ranking mentions like "1. Item 1311" or "Item 1311:"
-                ranking_patterns = [
-                    r'\d+\.\s*\*?\*?(\d+)\s*\(',  # "1. **627 (" or "1. 627 (" format
-                    r'(?:Item|item)\s*(\d+)',  # "Item 1311" or "item 1311"
-                    r'(\d+):\s*(?:Title|title)',  # "1311: Title" format
-                    r'#(\d+)',  # "#1311" format
-                    r'\b(\d+)\b(?=\s*[,\]])',  # Standalone numbers before comma or bracket
-                ]
-                
-                for pattern in ranking_patterns:
-                    matches = re.findall(pattern, solution)
-                    if matches:
-                        items = []
-                        for match in matches:
-                            item_id = int(match)
-                            # Accept any positive integer as valid item ID
-                            if item_id > 0:
-                                items.append(item_id)
-                        if items and len(items) >= 2:
-                            return items[:10]
-                
-                # Third, extract from candidate item analysis sections
-                candidate_matches = re.findall(r'candidate\s+item\s+(\d+)', solution, re.IGNORECASE)
-                if candidate_matches:
-                    items = [int(match) for match in candidate_matches[:10]]
-                    if items:
-                        return items
-                
-                # Fallback: if we can't find a proper ranking, extract known candidate IDs from the solution
-                # Look for any sequence of numbers that could be item IDs
-                all_numbers = re.findall(r'\b(\d+)\b', solution)
-                found_candidates = []
-                for num_str in all_numbers:
-                    num = int(num_str)
-                    # Accept reasonable item IDs (exclude obvious user IDs like single digits)
-                    if num > 10 and num not in found_candidates:  # Avoid very small numbers and duplicates
-                        found_candidates.append(num)
-                        if len(found_candidates) >= 8:  # Stop when we have enough candidates
-                            break
-                            
-                if found_candidates and len(found_candidates) >= 2:
-                    logger.warning(f"Using fallback number extraction: {found_candidates}")
-                    return found_candidates[:10]
-                
-                # Final fallback: return a reasonable default for testing
-                logger.warning(f"Could not extract valid candidate items from solution: {solution[:200]}...")
-                return [1311, 627, 71, 700, 938, 258, 858, 1091]  # Default candidate order
+                # If we reach here, extraction failed
+                logger.warning("Could not extract items from solution, returning empty list")
+                return []
                     
             elif task == 'rp':
                 # Extract rating prediction

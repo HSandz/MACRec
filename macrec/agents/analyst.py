@@ -83,10 +83,22 @@ class Analyst(ToolAgent):
         
         # Separate user info, item info, and histories
         user_info = {}
-        item_info = {}
+        history_item_info = {}  # Items from user's history
+        candidate_item_info = {}  # Candidate items being evaluated
         user_histories = {}
         item_histories = {}
         user_preferences = {}
+        
+        # Track which items are from history
+        history_item_ids = set()
+        for key, value in self.gathered_info.items():
+            if key.startswith("user_history_"):
+                # Extract item IDs from history
+                import re
+                item_ids_match = re.search(r'before:\s*([\d,\s]+)', value)
+                if item_ids_match:
+                    item_ids_str = item_ids_match.group(1)
+                    history_item_ids.update(int(iid.strip()) for iid in item_ids_str.split(',') if iid.strip())
         
         for key, value in self.gathered_info.items():
             if key.startswith("user_history_"):
@@ -98,8 +110,13 @@ class Analyst(ToolAgent):
                 item_histories[key] = value
             elif key.startswith("user_"):
                 user_info[key] = value
-            elif key.startswith("item_"):
-                item_info[key] = value
+            elif key.startswith("item_") and not key.startswith("item_history_"):
+                # Separate history items from candidate items
+                item_id = int(key.replace("item_", ""))
+                if item_id in history_item_ids:
+                    history_item_info[key] = value
+                else:
+                    candidate_item_info[key] = value
         
         # Add user information section with preference insights
         if user_info or user_preferences:
@@ -118,10 +135,16 @@ class Analyst(ToolAgent):
             for key, value in user_histories.items():
                 summary_parts.append(f"  - {key.replace('_', ' ').title()}: {value}")
         
-        # Add item information section
-        if item_info:
-            summary_parts.append("Item Information:")
-            for key, value in item_info.items():
+        # Add history items with clear labeling
+        if history_item_info:
+            summary_parts.append("User's Historical Items (for context only - DO NOT rank):")
+            for key, value in history_item_info.items():
+                summary_parts.append(f"  - {key.replace('_', ' ').title()}: {value}")
+        
+        # Add candidate items with clear labeling
+        if candidate_item_info:
+            summary_parts.append("Candidate Items (RANK):")
+            for key, value in candidate_item_info.items():
                 summary_parts.append(f"  - {key.replace('_', ' ').title()}: {value}")
         
         # Add item history section
@@ -529,8 +552,20 @@ class Analyst(ToolAgent):
         # Analyze gathered user information
         user_info_parts = []
         user_history_parts = []
-        item_info_parts = []
+        history_item_info_parts = []  # Items from user's history
+        candidate_item_info_parts = []  # Candidate items being evaluated
         user_preferences = {}
+        
+        # Track which items are from history
+        history_item_ids = set()
+        for key, value in self.gathered_info.items():
+            if key.startswith('user_history_'):
+                # Extract item IDs from history
+                import re
+                item_ids_match = re.search(r'before:\s*([\d,\s]+)', value)
+                if item_ids_match:
+                    item_ids_str = item_ids_match.group(1)
+                    history_item_ids.update(int(iid.strip()) for iid in item_ids_str.split(',') if iid.strip())
         
         for key, value in self.gathered_info.items():
             if key.startswith('user_') and not key.startswith('user_history_'):
@@ -541,9 +576,13 @@ class Analyst(ToolAgent):
                 user_history_parts.append(f"User {user_id} History: {value}")
                 # Extract preference insights from history
                 user_preferences[user_id] = self._analyze_user_preferences(user_id, value)
-            elif key.startswith('item_'):
-                item_id = key.replace('item_', '')
-                item_info_parts.append(f"Item {item_id}: {value}")
+            elif key.startswith('item_') and not key.startswith('item_history_'):
+                item_id = int(key.replace('item_', ''))
+                # Separate history items from candidate items
+                if item_id in history_item_ids:
+                    history_item_info_parts.append(f"Item {item_id}: {value}")
+                else:
+                    candidate_item_info_parts.append(f"Item {item_id}: {value}")
         
         # Compile analysis sections with preference insights
         if user_info_parts or user_preferences:
@@ -559,9 +598,15 @@ class Analyst(ToolAgent):
             analysis_parts.append("User History:")
             analysis_parts.extend([f"  - {part}" for part in user_history_parts])
         
-        if item_info_parts:
-            analysis_parts.append("Item Information:")
-            analysis_parts.extend([f"  - {part}" for part in item_info_parts])
+        # Add history items with clear labeling
+        if history_item_info_parts:
+            analysis_parts.append("User's Historical Items (for context only - DO NOT rank):")
+            analysis_parts.extend([f"  - {part}" for part in history_item_info_parts])
+        
+        # Add candidate items with clear labeling
+        if candidate_item_info_parts:
+            analysis_parts.append("Candidate Items (RANK):")
+            analysis_parts.extend([f"  - {part}" for part in candidate_item_info_parts])
         
         # Join all parts
         detailed_analysis = "\n".join(analysis_parts)
