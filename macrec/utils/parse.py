@@ -20,7 +20,8 @@ def parse_action(action: str, json_mode: bool = False) -> tuple[str, Any]:
             
             # Clean up common LLM escaping mistakes before parsing
             # LLMs sometimes incorrectly escape $ and other characters that don't need escaping in JSON
-            action_cleaned = action.replace(r'\$', '$').replace(r'\#', '#').replace(r'\%', '%')
+            # Use regular strings (not raw strings) to match actual escape sequences
+            action_cleaned = action.replace('\\$', '$').replace('\\#', '#').replace('\\%', '%').replace('\\&', '&')
             
             # Try to parse the action directly first (handles most cases)
             try:
@@ -125,7 +126,7 @@ def parse_action(action: str, json_mode: bool = False) -> tuple[str, Any]:
                     pass
             
             # Apply same cleaning to extracted JSON
-            action_cleaned = action.replace(r'\$', '$').replace(r'\#', '#').replace(r'\%', '%')
+            action_cleaned = action.replace('\\$', '$').replace('\\#', '#').replace('\\%', '%').replace('\\&', '&')
             json_action = json.loads(action_cleaned)
             # Handle case where action is wrapped in an array (common LLM mistake)
             if isinstance(json_action, list) and len(json_action) == 1:

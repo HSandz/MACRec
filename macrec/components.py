@@ -62,11 +62,14 @@ class AgentCoordinator:
     def initialize_agents(self, agent_configs: Dict[str, Dict[str, Any]], **kwargs):
         """Initialize agents from configuration with support for model overrides."""
         import json
+        import os
+        from loguru import logger
         
         self.agents.clear()
         
         # Extract system reference and model override info from kwargs
         system = kwargs.get('system')
+        logger.debug(f"🔍 initialize_agents: system={system is not None}")
         model_override = getattr(system, 'model_override', None) if system else None
         
         for agent_name, config in agent_configs.items():

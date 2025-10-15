@@ -184,7 +184,6 @@ class Planner(Agent):
             
             # Parse basic plan format: #E1 = Worker[task]
             if '=' in line and line.startswith('#E'):
-                logger.info(f"Found step line: '{line}'")
                 # Extract step variable and action
                 var_part, action_part = line.split('=', 1)
                 variable = var_part.strip()

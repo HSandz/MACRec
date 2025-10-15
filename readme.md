@@ -344,18 +344,6 @@ The ReWOO system implements a structured 3-phase reasoning approach:
 - **Quality Assurance**: Optional Reflector validates completeness and format compliance
 - **Scalable**: Can handle complex tasks by breaking them into manageable steps
 
-#### Usage Examples
-```bash
-# Use basic ReWOO (Planner + Analyst + Solver)
-python main.py --main Test --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 1
-
-# ReWOO with reflection and automatic reruns enabled
-python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/reflector.json --task sr --samples 1 --enable-reflection-rerun --openrouter google/gemini-2.0-flash-001
-
-# Use ReWOO with Reflection (Planner + Analyst + Solver → Reflector)
-python main.py --main Test --system rewoo --system_config config/systems/rewoo/reflector.json --task sr --samples 1
-```
-
 ### LightGCN Integration
 Train embedding models for the Retriever agent:
 ```bash
