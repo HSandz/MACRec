@@ -15,11 +15,6 @@
         "interaction_retriever": {
             "type": "interaction",
             "config_path": "config/tools/interaction/{dataset}.json"
-        },
-        "retriever": {
-            "type": "retriever",
-            "config_path": "config/tools/retriever.json",
-            "dataset": "{dataset}"
         }
     }
 }

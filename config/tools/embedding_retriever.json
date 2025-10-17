@@ -1,0 +1,12 @@
+{
+    "base_dir": "lightgcn",
+    "run_dir": "ml-100k",
+    "user_embeddings_file": "user_embeddings.csv",
+    "item_embeddings_file": "item_embeddings.csv",
+    "user_id_map_file": "user_id_mapping.json",
+    "item_id_map_file": "item_id_mapping.json",
+    "user_history_path": "data/ml-100k/test.csv",
+    "top_k": 10,
+    "normalize": true,
+    "exclude_seen": true
+}
