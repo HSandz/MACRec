@@ -2,7 +2,7 @@ from typing import Any, Dict
 from loguru import logger
 
 from macrec.agents.base import ToolAgent
-from macrec.tools import InfoDatabase, InteractionRetriever
+from macrec.tools import InfoDatabase, InteractionRetriever, Retriever
 from macrec.utils import read_json, get_rm, parse_action
 
 class Analyst(ToolAgent):
@@ -34,6 +34,7 @@ class Analyst(ToolAgent):
         return {
             'info_retriever': InfoDatabase,
             'interaction_retriever': InteractionRetriever,
+            'retriever': Retriever,
         }
 
     @property
@@ -43,6 +44,10 @@ class Analyst(ToolAgent):
     @property
     def interaction_retriever(self) -> InteractionRetriever:
         return self.tools['interaction_retriever']
+
+    @property
+    def retriever(self) -> Retriever:
+        return self.tools['retriever']
 
     @property
     def analyst_prompt(self) -> str:
@@ -506,6 +511,25 @@ class Analyst(ToolAgent):
             except (ValueError, TypeError):
                 observation = f"Invalid item id: {argument}. Please provide a valid item ID number."
                 log_head = ':red[Invalid ItemHistory command]:red[...]\n- '
+        elif action_type.lower() == 'similarityitems':
+            try:
+                if argument is None:
+                    raise ValueError("Argument cannot be None")
+                query_user_id = int(argument)
+                similarity_key = f"similarity_items_{query_user_id}"
+                
+                # Check if already queried in current session
+                if similarity_key in self.gathered_info:
+                    observation = f"User {query_user_id} similarity items already retrieved. Use gathered information instead."
+                    log_head = f':orange[Skipped duplicate SimilarityItems query for user] :red[{query_user_id}]:orange[...]\n- '
+                else:
+                    # Get top similarity items for the user
+                    observation = self.retriever.get_str_for_analysis(query_user_id)
+                    self.gathered_info[similarity_key] = observation
+                    log_head = f':violet[Look up SimilarityItems for user] :red[{query_user_id}]:violet[...]\n- '
+            except (ValueError, TypeError):
+                observation = f"Invalid user id: {argument}. Please provide a valid user ID number."
+                log_head = ':red[Invalid SimilarityItems command]:red[...]\n- '
         elif action_type.lower() == 'finish':
             # Handle various types of finish content
             if isinstance(argument, dict):
