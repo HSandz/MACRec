@@ -6,7 +6,7 @@ from typing import Any, Dict
 from macrec.llms.basellm import BaseLLM
 
 class OllamaLLM(BaseLLM):
-    def __init__(self, model_name: str = 'llama3.2', base_url: str = 'http://localhost:11434', json_mode: bool = False, agent_context: str = None, *args, **kwargs):
+    def __init__(self, model_name: str = 'llama3.2:1b', base_url: str = 'http://localhost:11434', json_mode: bool = False, agent_context: str = None, *args, **kwargs):
         """Initialize the Ollama LLM.
 
         Args:
@@ -25,6 +25,7 @@ class OllamaLLM(BaseLLM):
         self.temperature: float = kwargs.get('temperature', 0.7)
         self.top_p: float = kwargs.get('top_p', 0.9)
         self.top_k: int = kwargs.get('top_k', 40)
+        self.timeout: int = kwargs.get('timeout', 300)  # 5 minutes for local models
         
         # Set up Ollama configuration
         # Try to get base_url from config file if not explicitly provided
@@ -191,7 +192,8 @@ class OllamaLLM(BaseLLM):
             # Add JSON mode if enabled
             if self.json_mode:
                 payload["format"] = "json"
-                # The JSON instructions should come from the prompt templates, not hardcoded here
+                # Add explicit JSON instruction to prompt
+                final_prompt = f"{final_prompt}\n\nPlease respond with valid JSON only."
                 payload["prompt"] = final_prompt
             
             # Make the API request with automatic retry for transient errors
@@ -199,21 +201,55 @@ class OllamaLLM(BaseLLM):
             response = self.execute_with_retry(
                 self._make_api_request,
                 payload=payload,
-                timeout=300  # 5 minute timeout for local models
+                timeout=self.timeout  # Use configurable timeout
             )
             
             # Log response summary for debugging
             logger.debug(f"Ollama API response: status={response.status_code}, length={len(response.text)} chars")
             
+            # Check response size - if too large, it might be malformed
+            if len(response.text) > 500000:  # 500KB limit
+                logger.warning(f"Very large response from Ollama: {len(response.text)} chars")
+            
             # Check if request was successful
             if response.status_code == 200:
+                # Check content type before parsing JSON
+                content_type = response.headers.get('content-type', '')
+                if 'application/json' not in content_type:
+                    logger.warning(f"Unexpected content-type from Ollama: {content_type}")
+                
                 # Enhanced JSON parsing with better error handling
                 try:
                     result = response.json()
                 except json.JSONDecodeError as json_err:
-                    logger.error(f"Failed to parse JSON response from Ollama: {json_err}")
-                    logger.debug(f"Raw response: {response.text[:1000]}...")
-                    return f"Error: Invalid JSON response from Ollama"
+                    # Log the response details for debugging
+                    response_text = response.text
+                    logger.error(f"JSON decode error in Ollama response:")
+                    logger.error(f"  Error: {json_err}")
+                    logger.error(f"  Response length: {len(response_text)} chars")
+                    logger.error(f"  Response preview (first 500 chars): {response_text[:500]}")
+                    logger.error(f"  Response preview (last 500 chars): {response_text[-500:]}")
+                    
+                    # Try to extract content manually if possible
+                    import re
+                    content_match = re.search(r'"response":\s*"([^"]*)"', response_text)
+                    if content_match:
+                        logger.warning("Attempting to extract content manually from malformed JSON")
+                        content = content_match.group(1)
+                        
+                        # Track usage with estimates since we can't parse the JSON
+                        self.track_usage(
+                            final_prompt, 
+                            content, 
+                            None,  # Will use estimation
+                            None,  # Will use estimation
+                            compression_info=compression_info
+                        )
+                        
+                        logger.info(f"LLM Response ({self.agent_context} → {self.model_name}):\n{content}")
+                        return content
+                    
+                    return f"Error: INVALID_JSON - Failed to parse Ollama response"
                 
                 # Extract the response text
                 if 'response' in result:
@@ -261,7 +297,7 @@ class OllamaLLM(BaseLLM):
                     return "Error: Invalid response format from Ollama"
                     
             else:
-                # Handle HTTP errors
+                # Handle HTTP errors using base class method for consistency
                 error_msg = f"Ollama API request failed with status {response.status_code}"
                 try:
                     error_detail = response.json()
@@ -271,7 +307,8 @@ class OllamaLLM(BaseLLM):
                     error_msg += f": {response.text[:200]}"
                 
                 logger.error(error_msg)
-                return f"Error: {error_msg}"
+                # Use base class error handler for consistent error classification
+                return self.handle_api_error(Exception(error_msg))
         
         # Use base class error handling that works for all LLM implementations
         except json.JSONDecodeError as e:

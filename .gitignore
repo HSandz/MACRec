@@ -23,6 +23,7 @@ __pycache__/
 .DS_Store
 
 # Others
+.github
 data/
 run/
 saved/
