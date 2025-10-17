@@ -5,7 +5,7 @@
     },
     "planner_sr_guidance": {
         "type": "raw",
-        "content": "\nFor Sequential Recommendation:\n- CRITICAL: Do NOT assign ranking tasks to Analyst - that is the Solver's job\n- Create ONE comprehensive user analysis step (combining profile + history + genre extraction)\n- Create individual analysis steps for each candidate item\n- Analyst analyzes entities and provide insights, Solver will use all Analyst results to generate final ranking"
+        "content": "\nFor Sequential Recommendation:\n- CRITICAL: Do NOT assign ranking tasks to Analyst - that is the Solver's job\n- Create ONE comprehensive user analysis step (combining profile + history + genre extraction)\n- Create individual analysis steps for each candidate item\n- Item analysis format: \"Analyze candidate item [id]: [Brand], [Price], [Categories]\" (do NOT add \"and determine relevance\" or similar phrases)\n- Analyst only gathers data, Solver determines relevance and ranking"
     },
     "planner_rp_guidance": {
         "type": "raw",
@@ -25,6 +25,6 @@
     },
     "planner_sr_structure": {
         "type": "template",
-        "content": "\nDETECTED ENTITIES:\n- Target User: {user_id}\n- Candidate Items: {candidate_items}\n\nRECOMMENDED PLAN STRUCTURE:\n#E1 = Analyst[Analyze user {user_id}'s profile, interaction history, and extract genre preferences with rating patterns]\n{candidate_steps}\n\nIMPORTANT:\n- Each step should analyze ONE specific entity (user profile, user history, or individual item)\n- Do NOT create steps for ranking - the Solver will handle final ranking\n- Focus on gathering detailed analysis of each entity"
+        "content": "\nDETECTED ENTITIES:\n- Target User: {user_id}\n- Candidate Items: {candidate_items}\n\nRECOMMENDED PLAN STRUCTURE:\n#E1 = Analyst[Analyze user {user_id}'s profile, interaction history, and extract genre preferences with rating patterns]\n{candidate_steps}\n\nIMPORTANT:\n- Each step should analyze ONE specific entity\n- Item steps must only list item attributes without relevance phrases\n- Solver will handle relevance matching and ranking"
     }
 }
