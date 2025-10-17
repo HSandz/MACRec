@@ -13,7 +13,7 @@ def read_prompts(config_file: str) -> dict[str, PromptTemplate | str]:
         `dict[str, PromptTemplate | str]`: A dictionary of prompt templates. The value can be either a `PromptTemplate` object or a raw string.
     """
     assert os.path.exists(config_file), f'config file {config_file} does not exist'
-    with open(config_file, 'r') as f:
+    with open(config_file, 'r', encoding='utf-8') as f:
         config = json.load(f)
     ret = {}
     for prompt_name, prompt_config in config.items():

@@ -1,0 +1,20 @@
+{
+  "supported_tasks": ["rp", "sr", "rr", "gen", "chat"],
+  "agents": {
+    "Planner": {
+      "config_path": "config/agents/planner.json",
+      "prompt_config": "config/prompts/agent_prompt/planner.json"
+    },
+    "Analyst": {
+      "config_path": "config/agents/analyst_small_llm.json",
+      "prompt_config": "config/prompts/agent_prompt/analyst_small_llm.json"
+    },
+    "Solver": {
+      "config_path": "config/agents/solver.json",
+      "prompt_config": "config/prompts/agent_prompt/solver.json"
+    }
+  },
+  "agent_prompt": "config/prompts/manager_prompt/rewoo.json",
+  "data_prompt": "config/prompts/data_prompt/{task}.json",
+  "max_step": 15
+}

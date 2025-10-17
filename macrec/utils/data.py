@@ -25,7 +25,7 @@ def read_json(path: str) -> dict:
     Returns:
         `dict`: The json data.
     """
-    with open(path, 'r') as f:
+    with open(path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
 def append_his_info(dfs: list[pd.DataFrame], summary: bool = False, neg: bool = False) -> list[pd.DataFrame]:

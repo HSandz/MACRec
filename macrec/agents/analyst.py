@@ -375,8 +375,12 @@ class Analyst(ToolAgent):
         # This prevents premature termination while allowing natural LLM-driven completion
         if len(self.gathered_info) >= 7 and len(self._history) >= 8:
             # Check if we've been stuck without progress for several turns
-            recent_actions = [parse_action(h['command'] if isinstance(h, dict) and 'command' in h else str(h), json_mode=self.json_mode)[0] 
-                             for h in self._history[-4:] if h and (isinstance(h, dict) or str(h).strip())]
+            try:
+                recent_actions = [parse_action(h['command'] if isinstance(h, dict) and 'command' in h else str(h), json_mode=self.json_mode)[0] 
+                                 for h in self._history[-4:] if h and (isinstance(h, dict) or str(h).strip())]
+            except Exception as e:
+                logger.debug(f"Error parsing recent actions: {e}")
+                recent_actions = []
             if len(set(recent_actions)) <= 2:  # Only if stuck in repetitive pattern
                 # Generate proper summary from gathered information instead of generic message
                 summary = self._generate_summary_from_gathered_info()
@@ -384,7 +388,12 @@ class Analyst(ToolAgent):
                 return
         
         log_head = ''
-        action_type, argument = parse_action(command, json_mode=self.json_mode)
+        try:
+            action_type, argument = parse_action(command, json_mode=self.json_mode)
+        except Exception as e:
+            logger.error(f"parse_action failed for command '{command}': {type(e).__name__}: {e}")
+            action_type = 'Invalid'
+            argument = None
         
         if action_type.lower() == 'userinfo':
             try:
@@ -843,7 +852,8 @@ class Analyst(ToolAgent):
                 
                 self.command(command)
             except Exception as e:
-                logger.error(f"Error in analyst forward: {e}")
+                import traceback
+                logger.error(f"Error in analyst forward: {type(e).__name__}: {e}\nTraceback: {traceback.format_exc()}")
                 self.finish(f"Analysis terminated due to error: {str(e)}")
                 break
                 

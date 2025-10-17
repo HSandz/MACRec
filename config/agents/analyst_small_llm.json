@@ -1,0 +1,20 @@
+{
+  "model_type": "ollama",
+  "model_name": "llama3.2:3b",
+  "json_mode": true,
+  "prompt_config": "config/prompts/agent_prompt/analyst_small_llm.json",
+  "max_turns": 10,
+  "temperature": 0.4,
+  "top_p": 0.85,
+  "timeout": 300,
+  "tool_config": {
+    "info_retriever": {
+      "type": "info",
+      "config_path": "config/tools/info_database/{dataset}.json"
+    },
+    "interaction_retriever": {
+      "type": "interaction",
+      "config_path": "config/tools/interaction/{dataset}.json"
+    }
+  }
+}

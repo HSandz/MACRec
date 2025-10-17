@@ -1,0 +1,34 @@
+{
+    "analyst_base_prompt": {
+        "type": "template",
+        "content": "TASK: Analyze {analyse_type} {id} for {task_type}.\n\nAvailable Commands:\n1. UserInfo[id] - Get user profile\n2. ItemInfo[id] - Get item details\n3. UserHistory[id] - Get user's watch history\n4. ItemHistory[id] - Get item's user interactions\n5. Finish[text] - Submit your analysis\n\nTarget to analyze: {analyse_type} {id}\n\nInstructions:\n- Execute commands ONE AT A TIME\n- Always use the correct ID from the task\n- Do NOT repeat commands\n- After gathering info, use Finish to submit\n- Finish text should be 1-2 sentences only\n\n{history}"
+    },
+    "analyst_prompt": {
+        "type": "template",
+        "content": "{analyst_base_prompt}\n\nCommands use format: CommandName[id]\nExample correct commands:\n  UserInfo[821]\n  ItemInfo[1311]\n  UserHistory[821]\n  Finish[User 821 likes drama and action films]\n\nNow generate ONE command:\n"
+    },
+    "analyst_prompt_json": {
+        "type": "template", 
+        "content": "{analyst_base_prompt}\n\nYou MUST respond with ONLY valid JSON in this exact format:\n{{\"type\":\"CommandName\",\"content\":id}}\n\nREQUIREMENTS:\n- \"type\" must be: UserInfo, ItemInfo, UserHistory, ItemHistory, or Finish\n- \"content\" must be ONLY a number or text string (no objects)\n- Generate ONE JSON line only\n- NO other text\n\nCORRECT EXAMPLES:\n{{\"type\":\"UserInfo\",\"content\":821}}\n{{\"type\":\"ItemInfo\",\"content\":1311}}\n{{\"type\":\"UserHistory\",\"content\":821}}\n{{\"type\":\"Finish\",\"content\":\"User likes drama and adventure\"}}\n\nINCORRECT EXAMPLES (DO NOT USE):\n{{\"type\":\"ItemInfo\",\"content\":{{\"id\":1311}}}} ← TOO COMPLEX\n{{\"type\":\"UserInfo\",\"content\":\"821\"}} ← USE NUMBER NOT STRING\n[{{\"type\":\"UserInfo\",\"content\":821}}] ← DO NOT USE ARRAY\n\nGenerate your ONE JSON command now:\n"
+    },
+    "analyst_examples": {
+        "type": "raw",
+        "content": "Step 1: UserInfo[821]\nStep 2: UserHistory[821]\nStep 3: ItemInfo[1311]\nStep 4: Finish[User 821 prefers drama and adventure films]"
+    },
+    "analyst_examples_json": {
+        "type": "raw",
+        "content": "Step 1: {{\"type\":\"UserInfo\",\"content\":821}}\nStep 2: {{\"type\":\"UserHistory\",\"content\":821}}\nStep 3: {{\"type\":\"ItemInfo\",\"content\":1311}}\nStep 4: {{\"type\":\"Finish\",\"content\":\"User 821 likes drama and adventure\"}}"
+    },
+    "analyst_fewshot": {
+        "type": "raw",
+        "content": "Question: Analyze user 821\nSolution: UserInfo[821] → UserHistory[821] → Finish[User 821 is an engineer who likes drama]\n\nQuestion: Analyze item 1311\nSolution: ItemInfo[1311] → Finish[Item 1311 is a comedy-drama from 1995]"
+    },
+    "analyst_fewshot_json": {
+        "type": "raw",
+        "content": "Question: Analyze user 821\nStep 1: {{\"type\":\"UserInfo\",\"content\":821}}\nStep 2: {{\"type\":\"UserHistory\",\"content\":821}}\nStep 3: {{\"type\":\"Finish\",\"content\":\"User 821 is an engineer, prefers drama\"}}\n\nQuestion: Analyze item 1311\nStep 1: {{\"type\":\"ItemInfo\",\"content\":1311}}\nStep 2: {{\"type\":\"Finish\",\"content\":\"Item 1311 is a 1995 comedy-drama film\"}}"
+    },
+    "analyst_hint": {
+        "type": "raw",
+        "content": "Small tip: After gathering 2-3 commands worth of information, use Finish. Do not over-gather."
+    }
+}

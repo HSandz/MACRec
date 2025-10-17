@@ -56,7 +56,7 @@ def parse_action(action: str, json_mode: bool = False) -> tuple[str, Any]:
                 
                 return valid_action, content
                 
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
                 # If direct parsing fails, try to extract JSON from mixed content
                 pass
             
