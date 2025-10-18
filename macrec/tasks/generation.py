@@ -20,7 +20,7 @@ class GenerationTask(Task):
         parser.add_argument('--system', type=str, default='react', choices=['react', 'reflection', 'analyse', 'collaboration', 'rewoo'], help='System name')
         parser.add_argument('--system_config', type=str, required=True, help='System configuration file')
         parser.add_argument('--model', type=str, default='google/gemini-2.0-flash-001', help='Model name for all agents')
-        parser.add_argument('--task', type=str, default='rp', choices=['rp', 'sr', 'rr', 'gen'], help='Task name')
+        parser.add_argument('--task', type=str, default='rp', choices=['rp', 'sr', 'gen'], help='Task name')
         parser.add_argument('--max_his', type=int, default=10, help='Max history length')
         
         parser.add_argument('--openrouter', type=str, help='Use OpenRouter with specified model (e.g., --openrouter google/gemini-2.0-flash-001)')
@@ -44,10 +44,58 @@ class GenerationTask(Task):
             df['user_profile'] = 'None'
         
         if self.task == 'sr':
-            candidate_example: str = df['candidate_item_attributes'][0]
-            self.n_candidate = len(candidate_example.split('\n'))
+            # Try to load ranked_20.csv for top-k retrieval
+            ranked_path = os.path.join(os.path.dirname(data_file), 'ranked_20.csv')
+            if os.path.exists(ranked_path):
+                self._use_ranked_items(df, ranked_path)
+                self.n_candidate = 20
+            else:
+                candidate_example: str = df['candidate_item_attributes'][0]
+                self.n_candidate = len(candidate_example.split('\n'))
             self.system_kwargs['n_candidate'] = self.n_candidate  # Add n_candidate to system_kwargs by data sample
         return df
+    
+    def _use_ranked_items(self, df: pd.DataFrame, ranked_path: str) -> None:
+        """Replace candidate items with top 20 from ranked_20.csv."""
+        try:
+            from macrec.tools.info_database import InfoDatabase
+            
+            ranked_df = pd.read_csv(ranked_path)
+            item_info_path = os.path.join(os.path.dirname(ranked_path), 'item.csv')
+            
+            if not os.path.exists(item_info_path):
+                logger.warning(f"Item info file not found: {item_info_path}. Using ranked items without attributes.")
+                return
+            
+            item_df = pd.read_csv(item_info_path)
+            item_df = item_df.set_index('item_id')
+            
+            def get_top_items_for_user(user_id):
+                user_row = ranked_df[ranked_df['user_id'] == user_id]
+                if user_row.empty:
+                    return None
+                # Get top 20 items
+                top_items = user_row.iloc[0, 1:21].values.tolist()
+                top_items = [int(item) for item in top_items if pd.notna(item)]
+                return top_items
+            
+            def format_candidate_attributes(top_items):
+                if not top_items:
+                    return ''
+                attrs = []
+                for item_id in top_items:
+                    if item_id in item_df.index:
+                        item_attr = item_df.loc[item_id]['item_attributes']
+                        attrs.append(f'{item_id}: {item_attr}')
+                return '\n'.join(attrs)
+            
+            df['candidate_item_id'] = df['user_id'].apply(get_top_items_for_user)
+            df['candidate_item_attributes'] = df['candidate_item_id'].apply(format_candidate_attributes)
+            
+            logger.info(f"Loaded top 20 items from {ranked_path} for SR task")
+        except Exception as e:
+            logger.error(f"Error loading ranked items: {e}")
+            logger.warning("Falling back to original candidate items")
 
     def prompt_data(self, df: pd.DataFrame) -> list[tuple[str, int | float | str, pd.Series]]:
         data_prompt = self.system.prompts['data_prompt']
@@ -67,15 +115,6 @@ class GenerationTask(Task):
                 user_profile=df['user_profile'][i],
                 history=df['history'][i],
                 candidate_item_attributes=df['candidate_item_attributes'][i]
-            ), df['item_id'][i], df.iloc[i]) for i in tqdm(range(len(df)), desc="Loading data") if df['rating'][i] >= 4]
-        elif self.task == 'rr':
-            # Retrieve & Rank: no candidate list in CSV; candidates will be fetched by other means
-            # Set a default n_candidate for validation purposes
-            self.system_kwargs['n_candidate'] = 6  # Default to 6 candidates for rr tasks
-            return [(data_prompt.format(
-                user_id=df['user_id'][i],
-                user_profile=df['user_profile'][i],
-                history=df['history'][i]
             ), df['item_id'][i], df.iloc[i]) for i in tqdm(range(len(df)), desc="Loading data") if df['rating'][i] >= 4]
         elif self.task == 'gen':
             return [(data_prompt.format(

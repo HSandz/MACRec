@@ -14,9 +14,8 @@ if TYPE_CHECKING:
 
 class CollaborationSystem(System):
     def __init__(self, task: str, config_path: str, leak: bool = False, web_demo: bool = False, dataset: Optional[str] = None, *args, **kwargs) -> None:
-        # Initialize state tracking for rr tasks first
-        self.analyzed_items = set()  # Track which items have been analyzed
-        self.analyzed_users = set()  # Track which users have been analyzed
+        # Initialize tracking BEFORE super().__init__() because reset() needs it
+        self.analyzed_items = set()  # Track analyzed items for SR task
         
         # Initialize factory and orchestrator components
         self.agent_factory = DefaultAgentFactory()
@@ -30,7 +29,7 @@ class CollaborationSystem(System):
 
     @staticmethod
     def supported_tasks() -> list[str]:
-        return ['rp', 'sr', 'rr', 'gen', 'chat']
+        return ['rp', 'sr', 'gen', 'chat']
 
     def init(self, *args, **kwargs) -> None:
         """
@@ -55,10 +54,6 @@ class CollaborationSystem(System):
             self.manager_kwargs['reflections'] = ''
         if self.agent_coordinator.get_agent('Interpreter') is not None:
             self.manager_kwargs['task_prompt'] = ''
-            
-        # Initialize tracking sets for rr tasks
-        self.analyzed_items = set()
-        self.analyzed_users = set()
 
     @property
     def manager(self) -> Optional['Manager']:
@@ -83,17 +78,13 @@ class CollaborationSystem(System):
     def reset(self, clear: bool = False, preserve_progress: bool = False, *args, **kwargs) -> None:
         # Store progress state before reset if we're preserving progress
         preserved_scratchpad = ""
-        preserved_analyzed_items = set()
-        preserved_analyzed_users = set()
         preserved_kwargs = {}
         
         if preserve_progress:
             preserved_scratchpad = getattr(self, 'scratchpad', '')
-            preserved_analyzed_items = getattr(self, 'analyzed_items', set()).copy()
-            preserved_analyzed_users = getattr(self, 'analyzed_users', set()).copy()
-            # Preserve important kwargs like n_candidate
-            preserved_kwargs = {k: v for k, v in self.kwargs.items() if k in ['n_candidate']}
-            logger.debug(f'Preserving progress: analyzed_items={preserved_analyzed_items}, analyzed_users={preserved_analyzed_users}')
+            # Preserve important kwargs
+            preserved_kwargs = {k: v for k, v in self.kwargs.items() if k in ['n_candidate', 'candidate_items']}
+            logger.debug(f'Preserving progress')
         
         super().reset(*args, **kwargs)
         self.action_history = []  # Reset action history
@@ -105,23 +96,15 @@ class CollaborationSystem(System):
         if preserve_progress:
             # Restore preserved state
             self.scratchpad = preserved_scratchpad
-            self.analyzed_items = preserved_analyzed_items
-            self.analyzed_users = preserved_analyzed_users
             # Restore preserved kwargs
             self.kwargs.update(preserved_kwargs)
-            logger.debug(f'Restored progress: analyzed_items={self.analyzed_items}, analyzed_users={self.analyzed_users}')
+            logger.debug(f'Restored progress')
         else:
-            # Normal reset - ensure sets exist and clear manager_kwargs from previous samples
-            if not hasattr(self, 'analyzed_items'):
-                self.analyzed_items = set()
-            if not hasattr(self, 'analyzed_users'):
-                self.analyzed_users = set()
+            # Reset analyzed items tracking
             self.analyzed_items.clear()
-            self.analyzed_users.clear()
             
             # Clear fields from manager_kwargs to prevent carryover between samples
-            # Only clear fields that accumulate across samples, not ones set fresh each time
-            fields_to_clear = ['retrieved_items', 'reflections', 'task_prompt']
+            fields_to_clear = ['reflections', 'task_prompt', 'candidate_items']
             cleared_fields = []
             for field in fields_to_clear:
                 if field in self.manager_kwargs:
@@ -184,20 +167,18 @@ class CollaborationSystem(System):
         if self.max_step == self.step_n:
             self.scratchpad += f'\nHint: {self.manager.hint}'
         
-        # Add progress reminder for rr tasks
-        if self.task == 'rr' and hasattr(self, 'analyzed_items'):
-            analyzed_count = len(self.analyzed_items)
-            if 'retrieved_items' in self.manager_kwargs:
-                remaining = [item for item in self.manager_kwargs['retrieved_items'] if item not in self.analyzed_items]
-                if remaining:
-                    progress_reminder = f'\nProgress: {analyzed_count}/10 items analyzed. Remaining: {sorted(remaining)}'
-                else:
-                    progress_reminder = f'\nProgress: {analyzed_count}/10 items analyzed.'
-            else:
-                progress_reminder = f'\nProgress: {analyzed_count}/10 items analyzed.'
-            self.scratchpad += progress_reminder
+        # Add progress reminder for SR task
+        if self.task == 'sr' and 'candidate_items' in self.manager_kwargs:
+            total = len(self.manager_kwargs['candidate_items'])
+            analyzed = len(self.analyzed_items)
+            if analyzed < total:
+                remaining = [item for item in self.manager_kwargs['candidate_items'] if item not in self.analyzed_items]
+                # Show first 5 remaining items
+                show_items = remaining[:5]
+                more = f' (+{len(remaining)-5} more)' if len(remaining) > 5 else ''
+                progress = f'\nProgress: {analyzed}/{total} items analyzed. Next: {show_items}{more}'
+                self.scratchpad += progress
         
-        # Removed confusing action examples that were causing hallucinations
         self.scratchpad += f'\nAction {self.step_n}:'
         logger.debug(f'Action step - Manager kwargs: {self.manager_kwargs}')
         action = self.manager(scratchpad=self.scratchpad, stage='action', **self.manager_kwargs)
@@ -246,11 +227,6 @@ class CollaborationSystem(System):
                 # Only warn if it's not a finish action that might be retrying due to validation
                 if action_type.lower() != 'finish':
                     observation = f'Warning: Repeated action "{action_type}" detected. Try a different approach.'
-                    if self.task == 'rr':
-                        # Convert all to strings to ensure consistent sorting
-                        analyzed_items_str = sorted([str(x) for x in self.analyzed_items])
-                        analyzed_users_str = sorted([str(x) for x in self.analyzed_users])
-                        observation += f' For rr tasks, analyze each item only once. Analyzed: {analyzed_items_str}, Users: {analyzed_users_str}.'
                     log_head = ':red[Loop Detection]: '
                     self.scratchpad += f'\nObservation: {observation}'
                     logger.debug(f'Observation: {observation}')
@@ -258,36 +234,25 @@ class CollaborationSystem(System):
                     return
         
         if action_type.lower() == 'finish':
-            # For rr tasks, check if candidates have been retrieved
-            if self.task == 'rr':
-                if 'n_candidate' not in self.kwargs:
-                    logger.debug(f'rr task: n_candidate not found in kwargs. Current kwargs: {self.kwargs}')
-                    observation = 'For rr tasks, use Retrieve[user_id, 10] to get candidates before finishing.'
-                    log_head = ':red[Error]: '
+            # Validate SR task before finishing
+            if self.task == 'sr' and 'candidate_items' in self.manager_kwargs:
+                expected = len(self.manager_kwargs['candidate_items'])
+                analyzed = len(self.analyzed_items)
+                if analyzed < expected:
+                    remaining = [item for item in self.manager_kwargs['candidate_items'] if item not in self.analyzed_items]
+                    show_remaining = remaining[:5]
+                    more = f' (+{len(remaining)-5} more)' if len(remaining) > 5 else ''
+                    observation = f'You must analyze all {expected} candidate items before finishing. Analyzed: {analyzed}/{expected}. Remaining items: {show_remaining}{more}'
+                    log_head = ':red[Validation Error]: '
                 else:
-                    # Check if all retrieved items have been analyzed
-                    expected_items = self.kwargs.get('n_candidate', 10)
-                    if len(self.analyzed_items) < expected_items:
-                        missing_items = expected_items - len(self.analyzed_items)
-                        # Add detailed debugging information
-                        debug_info = f' Analyzed items: {sorted(self.analyzed_items)}'
-                        if 'retrieved_items' in self.manager_kwargs:
-                            retrieved_items = self.manager_kwargs['retrieved_items']
-                            remaining_items = [item for item in retrieved_items if item not in self.analyzed_items]
-                            debug_info += f'. Remaining items to analyze: {sorted(remaining_items)}'
-                        observation = f'For rr tasks, analyze ALL {expected_items} items before finishing. You have {len(self.analyzed_items)}/{expected_items}. Missing: {missing_items} items.{debug_info}'
-                        log_head = ':red[Error]: '
+                    parse_result = self._parse_answer(argument)
+                    if parse_result['valid']:
+                        observation = self.finish(parse_result['answer'])
+                        log_head = ':violet[Finish with answer]:\n- '
                     else:
-                        # All items analyzed, proceed with normal finish validation
-                        parse_result = self._parse_answer(argument)
-                        if parse_result['valid']:
-                            observation = self.finish(parse_result['answer'])
-                            log_head = ':violet[Finish with answer]:\n- '
-                        else:
-                            assert "message" in parse_result, "Invalid parse result."
-                            observation = f'{parse_result["message"]} Valid Action examples are {self.manager.valid_action_example}.'
+                        assert "message" in parse_result, "Invalid parse result."
+                        observation = f'{parse_result["message"]} Valid Action examples are {self.manager.valid_action_example}.'
             else:
-                # For non-rr tasks, proceed with normal finish validation
                 parse_result = self._parse_answer(argument)
                 if parse_result['valid']:
                     observation = self.finish(parse_result['answer'])
@@ -299,35 +264,17 @@ class CollaborationSystem(System):
             if self.analyst is None:
                 observation = 'Analyst is not configured. Cannot execute the action "Analyse".'
             else:
-                # Track analyzed entities for rr tasks
-                if self.task == 'rr':
-                    if len(argument) >= 2:
-                        entity_type, entity_id = argument[0], argument[1]
-                        # Ensure consistent data types - always use string for tracking to avoid mixed types
-                        entity_id = str(entity_id)
-                        
-                        if entity_type.lower() == 'item':
-                            if entity_id in self.analyzed_items:
-                                observation = f'Item {entity_id} has already been analyzed. Please analyze a different item or proceed to ranking.'
-                                log_head = ':red[Warning]: '
-                                self.scratchpad += f'\nObservation: {observation}'
-                                logger.debug(f'Observation: {observation}')
-                                self.log(f'{log_head}{observation}', agent=self.manager, logging=False)
-                                return
-                            else:
-                                self.analyzed_items.add(entity_id)
-                                logger.debug(f'Added item {entity_id} to analyzed_items. Total analyzed: {len(self.analyzed_items)}')
-                        elif entity_type.lower() == 'user':
-                            if entity_id in self.analyzed_users:
-                                observation = f'User {entity_id} has already been analyzed. Please analyze a different user or proceed to ranking.'
-                                log_head = ':red[Warning]: '
-                                self.scratchpad += f'\nObservation: {observation}'
-                                logger.debug(f'Observation: {observation}')
-                                self.log(f'{log_head}{observation}', agent=self.manager, logging=False)
-                                return
-                            else:
-                                self.analyzed_users.add(entity_id)
-                                logger.debug(f'Added user {entity_id} to analyzed_users. Total analyzed: {len(self.analyzed_users)}')
+                # Track analyzed items for SR task
+                if self.task == 'sr' and len(argument) >= 2:
+                    entity_type, entity_id = argument[0], str(argument[1])
+                    if entity_type.lower() == 'item':
+                        if entity_id in self.analyzed_items:
+                            observation = f'Item {entity_id} already analyzed. Analyze a different item.'
+                            log_head = ':orange[Warning]: '
+                            self.scratchpad += f'\nObservation: {observation}'
+                            self.log(f'{log_head}{observation}', agent=self.manager, logging=False)
+                            return
+                        self.analyzed_items.add(entity_id)
                 
                 self.log(f':violet[Calling] :red[Analyst] :violet[with] :blue[{argument}]:violet[...]', agent=self.manager, logging=False)
                 try:
@@ -411,40 +358,9 @@ class CollaborationSystem(System):
                 self.manager_kwargs['reflections'] = ''
             return False
         
-        # Store current progress before reflection
-        current_progress = {
-            'analyzed_items': self.analyzed_items.copy(),
-            'analyzed_users': self.analyzed_users.copy(),
-            'n_candidate': self.kwargs.get('n_candidate'),
-            'step_n': self.step_n
-        }
-        
         self.reflector(self.input, self.scratchpad)
         self.reflected = True
         self.manager_kwargs['reflections'] = self.reflector.reflections_str
-        
-        # Add progress context to reflections for the manager
-        if current_progress['analyzed_items'] or current_progress['analyzed_users'] or current_progress['n_candidate']:
-            progress_summary = f"\n\nPROGRESS SO FAR:\n"
-            if current_progress['analyzed_users']:
-                progress_summary += f"- Analyzed users: {sorted(current_progress['analyzed_users'])}\n"
-            if current_progress['n_candidate']:
-                progress_summary += f"- Retrieved {current_progress['n_candidate']} candidate items\n"
-                # Show which items have been analyzed and which remain
-                if 'retrieved_items' in self.manager_kwargs:
-                    retrieved_items = self.manager_kwargs['retrieved_items']
-                    analyzed_items = list(current_progress['analyzed_items'])  # Keep as integers
-                    remaining_items = [item for item in retrieved_items if item not in analyzed_items]
-                    if analyzed_items:
-                        progress_summary += f"- Analyzed items: {sorted(analyzed_items)}\n"
-                    if remaining_items:
-                        progress_summary += f"- REMAINING items to analyze: {sorted(remaining_items)}\n"
-                        progress_summary += f"- Next action should be: Analyse[item, {remaining_items[0]}]\n"
-            elif current_progress['analyzed_items']:
-                progress_summary += f"- Analyzed items: {sorted(current_progress['analyzed_items'])}\n"
-            progress_summary += f"- Completed {current_progress['step_n']} steps\n"
-            progress_summary += "IMPORTANT: Do not repeat the above analyses. Continue from where you left off.\n"
-            self.manager_kwargs['reflections'] += progress_summary
         
         if self.reflector.json_mode:
             try:
@@ -473,6 +389,12 @@ class CollaborationSystem(System):
             self.manager_kwargs['history'] = self.chat_history
         else:
             self.manager_kwargs['input'] = self.input
+        
+        # Pass candidate_items to manager for SR task
+        if self.task == 'sr' and 'candidate_items' in self.kwargs:
+            self.manager_kwargs['candidate_items'] = self.kwargs['candidate_items']
+            logger.debug(f'Passed {len(self.kwargs["candidate_items"])} candidate items to Manager')
+        
         if reset:
             self.reset()
         if self.task == 'chat':

@@ -1,5 +1,5 @@
 {
-  "supported_tasks": ["rp", "sr", "rr", "gen", "chat"],
+  "supported_tasks": ["rp", "sr", "gen", "chat"],
   "agents": {
     "Planner": {
       "config_path": "config/agents/planner.json",
