@@ -1,34 +1,34 @@
 {
     "analyst_base_prompt": {
         "type": "template",
-        "content": "TASK: Analyze {analyse_type} {id} for {task_type}.\n\nAvailable Commands:\n1. UserInfo[id] - Get user profile\n2. ItemInfo[id] - Get item details\n3. UserHistory[id] - Get user's watch history\n4. ItemHistory[id] - Get item's user interactions\n5. Finish[text] - Submit your analysis\n\nTarget to analyze: {analyse_type} {id}\n\nInstructions:\n- Execute commands ONE AT A TIME\n- Always use the correct ID from the task\n- Do NOT repeat commands\n- After gathering info, use Finish to submit\n- Finish text should be 1-2 sentences only\n\n{history}"
+        "content": "TASK: Analyze {analyse_type} {id} for {task_type}.\n\n=== AVAILABLE COMMANDS ===\n1. UserInfo[id] - Get complete user profile and demographics\n2. ItemInfo[id] - Get complete item attributes\n3. UserHistory[id] - Get user's past interactions and ratings\n4. ItemHistory[id] - Get item's user interactions\n5. Finish[text] - Submit your analysis result\n\n=== INSTRUCTIONS ===\nYou MUST follow these rules:\n- You are at step {step}/{max_step}. {remaining_steps} steps remain.\n- ALWAYS execute 2-3 commands before calling Finish\n- For user analysis: Get UserInfo + UserHistory\n- For item analysis: Get ItemInfo (and optionally ItemHistory)\n- Extract SPECIFIC details (genres, ratings, attributes)\n- NEVER call Finish on the first step unless explicitly instructed\n- DO NOT repeat commands from previous steps\n\n=== YOUR HISTORY ===\n{history}\n\n=== TARGET ===\nAnalyze: {analyse_type} {id}"
     },
     "analyst_prompt": {
-        "type": "template",
-        "content": "{analyst_base_prompt}\n\nCommands use format: CommandName[id]\nExample correct commands:\n  UserInfo[821]\n  ItemInfo[1311]\n  UserHistory[821]\n  Finish[User 821 likes drama and action films]\n\nNow generate ONE command:\n"
+        "type": "template", 
+        "content": "{analyst_base_prompt}\n\n=== COMMAND FORMAT ===\nGenerate ONE command using: CommandName[id]\nExamples: UserInfo[821], ItemInfo[1311], UserHistory[821], Finish[analysis result]\n\n=== REQUIREMENTS ===\n- If this is your first step, use an information gathering command (UserInfo, ItemInfo, or UserHistory)\n- Do NOT use Finish for the first step\n- Include specific extracted details in Finish (genres, ratings, preferences)\n\nNow generate your command:\n"
     },
     "analyst_prompt_json": {
         "type": "template", 
-        "content": "{analyst_base_prompt}\n\nYou MUST respond with ONLY valid JSON in this exact format:\n{{\"type\":\"CommandName\",\"content\":id}}\n\nREQUIREMENTS:\n- \"type\" must be: UserInfo, ItemInfo, UserHistory, ItemHistory, or Finish\n- \"content\" must be ONLY a number or text string (no objects)\n- Generate ONE JSON line only\n- NO other text\n\nCORRECT EXAMPLES:\n{{\"type\":\"UserInfo\",\"content\":821}}\n{{\"type\":\"ItemInfo\",\"content\":1311}}\n{{\"type\":\"UserHistory\",\"content\":821}}\n{{\"type\":\"Finish\",\"content\":\"User likes drama and adventure\"}}\n\nINCORRECT EXAMPLES (DO NOT USE):\n{{\"type\":\"ItemInfo\",\"content\":{{\"id\":1311}}}} ← TOO COMPLEX\n{{\"type\":\"UserInfo\",\"content\":\"821\"}} ← USE NUMBER NOT STRING\n[{{\"type\":\"UserInfo\",\"content\":821}}] ← DO NOT USE ARRAY\n\nGenerate your ONE JSON command now:\n"
+        "content": "{analyst_base_prompt}\n\n=== JSON COMMAND FORMAT ===\nYou MUST respond with ONLY valid JSON:\n{{\"type\":\"CommandName\",\"content\":id_or_text}}\n\nREQUIREMENTS:\n- \"type\" field: UserInfo, ItemInfo, UserHistory, ItemHistory, or Finish\n- \"content\" field: ONLY number (for queries) or summary text (for Finish)\n- Generate exactly ONE command per response\n- NO arrays, NO nested objects, NO extra text\n\n=== EXECUTION RULES ===\n1. FIRST step (step=1): MUST use UserInfo, ItemInfo, or UserHistory - NOT Finish\n2. SECOND+ steps: Gather data with queries OR submit Finish with findings\n3. Finish requirement: Must provide 2-3 sentences of specific analysis\n\nCORRECT EXAMPLES:\n{{\"type\":\"UserInfo\",\"content\":821}}\n{{\"type\":\"ItemInfo\",\"content\":1311}}\n{{\"type\":\"UserHistory\",\"content\":821}}\n{{\"type\":\"Finish\",\"content\":\"User prefers drama films with 4-5 star ratings. Items: Drama (4/5★), Action (4★)\"}}\n\nINCORRECT EXAMPLES (NEVER USE):\n[{{\"type\":\"UserInfo\",\"content\":821}}] - WRONG: Array format\n{{\"type\":\"UserInfo\",\"content\":\"821\"}} - WRONG: ID should be number\n{{\"type\":\"Finish\",\"content\":\"done\"}} - WRONG: Too vague\n{{\"type\":\"UserInfo\",\"id\":821}} - WRONG: Field should be 'content'\n\nGenerate your command:\n"
     },
     "analyst_examples": {
         "type": "raw",
-        "content": "Step 1: UserInfo[821]\nStep 2: UserHistory[821]\nStep 3: ItemInfo[1311]\nStep 4: Finish[User 821 prefers drama and adventure films]"
+        "content": "EXAMPLE EXECUTION SEQUENCE:\nStep 1: UserInfo[821] → Get user profile\nStep 2: UserHistory[821] → Get user's movie watch history\nStep 3: Finish[User 821 is a 37-year-old engineer who prefers Drama and Crime films with ratings 4-5 stars]"
     },
     "analyst_examples_json": {
         "type": "raw",
-        "content": "Step 1: {{\"type\":\"UserInfo\",\"content\":821}}\nStep 2: {{\"type\":\"UserHistory\",\"content\":821}}\nStep 3: {{\"type\":\"ItemInfo\",\"content\":1311}}\nStep 4: {{\"type\":\"Finish\",\"content\":\"User 821 likes drama and adventure\"}}"
+        "content": "EXAMPLE EXECUTION SEQUENCE (JSON mode):\nStep 1: {{\"type\":\"UserInfo\",\"content\":821}} → Retrieve user demographics and profile\nStep 2: {{\"type\":\"UserHistory\",\"content\":821}} → Get interaction history with ratings\nStep 3: {{\"type\":\"Finish\",\"content\":\"User 821: age 37, engineer; prefers Drama(★★★★★), Crime(★★★★); dislikes Horror films\"}}"
     },
     "analyst_fewshot": {
         "type": "raw",
-        "content": "Question: Analyze user 821\nSolution: UserInfo[821] → UserHistory[821] → Finish[User 821 is an engineer who likes drama]\n\nQuestion: Analyze item 1311\nSolution: ItemInfo[1311] → Finish[Item 1311 is a comedy-drama from 1995]"
+        "content": "Task: Analyze user 821\nExecution:\n  Query: UserInfo[821] → Found: Age 37, occupation: engineer\n  Query: UserHistory[821] → Found: Pulp Fiction (5★), Silence of Lambs (5★), Enchanted April (5★)\n  Result: User 821 strongly prefers Drama, Crime, Thriller genres (mostly 5-star ratings)\n\nTask: Analyze item 1311\nExecution:\n  Query: ItemInfo[1311] → Found: Waiting to Exhale, Comedy|Drama, 1995\n  Result: Item 1311 is a Drama-Comedy from 1995"
     },
     "analyst_fewshot_json": {
         "type": "raw",
-        "content": "Question: Analyze user 821\nStep 1: {{\"type\":\"UserInfo\",\"content\":821}}\nStep 2: {{\"type\":\"UserHistory\",\"content\":821}}\nStep 3: {{\"type\":\"Finish\",\"content\":\"User 821 is an engineer, prefers drama\"}}\n\nQuestion: Analyze item 1311\nStep 1: {{\"type\":\"ItemInfo\",\"content\":1311}}\nStep 2: {{\"type\":\"Finish\",\"content\":\"Item 1311 is a 1995 comedy-drama film\"}}"
+        "content": "Task: Analyze user 821\nExecution:\n  Step 1: {{\"type\":\"UserInfo\",\"content\":821}}\n  Step 2: {{\"type\":\"UserHistory\",\"content\":821}}\n  Step 3: {{\"type\":\"Finish\",\"content\":\"User 821: 37yo engineer; watched Pulp Fiction(5★), Silence of Lambs(5★); prefers Drama/Crime genres\"}}\n\nTask: Analyze item 1311\nExecution:\n  Step 1: {{\"type\":\"ItemInfo\",\"content\":1311}}\n  Step 2: {{\"type\":\"Finish\",\"content\":\"Item 1311: Waiting to Exhale(1995), Comedy|Drama genre\"}}"
     },
     "analyst_hint": {
         "type": "raw",
-        "content": "Small tip: After gathering 2-3 commands worth of information, use Finish. Do not over-gather."
+        "content": "Key Tip: Always use 2-3 information gathering commands before Finish. Extract specific genre, rating, and user preference details."
     }
 }

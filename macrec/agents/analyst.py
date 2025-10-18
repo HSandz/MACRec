@@ -327,6 +327,8 @@ class Analyst(ToolAgent):
                 fewshot=self.analyst_fewshot,
                 history=self.history,
                 max_step=self.max_turns,
+                step=command_count + 1,
+                remaining_steps=remaining_steps,
                 hint=self.hint if len(self._history) + 1 >= self.max_turns else '',
                 **kwargs
             )
