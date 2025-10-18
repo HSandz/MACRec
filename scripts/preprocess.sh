@@ -18,4 +18,7 @@ python main.py --main Preprocess --data_dir data --dataset amazon --amazon_categ
 # echo Preprocessing Amazon Movies and TV dataset...
 # python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Movies_and_TV --n_neg_items 7
 
+echo Generating ranked_20.csv for ml-100k dataset...
+python -m macrec.tools.retrieval --dataset ml-100k
+
 echo Preprocessing completed!

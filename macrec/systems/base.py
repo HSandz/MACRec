@@ -169,6 +169,14 @@ class System(ABC):
         self.context: str = context
         self.gt_answer = gt_answer
         self.data_sample = data_sample
+        
+        # For SR task, extract candidate_item_id if available
+        if self.task == 'sr' and data_sample is not None and 'candidate_item_id' in data_sample:
+            candidate_ids = data_sample['candidate_item_id']
+            if isinstance(candidate_ids, list):
+                # Convert all to string for consistent tracking
+                self.kwargs['candidate_items'] = [str(id) for id in candidate_ids]
+                logger.debug(f'Set candidate_items for SR task: {len(candidate_ids)} items')
 
     @abstractmethod
     def forward(self, *args, **kwargs) -> Any:

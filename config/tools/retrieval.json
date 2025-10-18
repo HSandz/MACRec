@@ -1,0 +1,9 @@
+{
+    "base_dir": "data/{dataset}/embeddings",
+    "user_embeddings_file": "user_embeddings.csv",
+    "item_embeddings_file": "item_embeddings.csv",
+    "user_history_path": "data/{dataset}/test.csv",
+    "top_k": 20,
+    "normalize": true,
+    "exclude_seen": true
+}
