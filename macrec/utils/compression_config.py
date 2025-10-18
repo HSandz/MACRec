@@ -73,7 +73,7 @@ def enable_compression_for_system(
                 apply_compression_to_llm(system.manager.action_llm, compression_config)
     
     # Handle other agents
-    agent_attributes = ['analyst', 'reflector', 'searcher', 'interpreter', 'retriever']
+    agent_attributes = ['analyst', 'reflector', 'searcher', 'interpreter']
     
     for attr_name in agent_attributes:
         if hasattr(system, attr_name):
@@ -142,7 +142,7 @@ def get_compression_stats(system) -> Dict[str, Any]:
             collect_from_llm(system.manager.action_llm, 'manager_action')
     
     # Collect from other agents
-    agent_attributes = ['analyst', 'reflector', 'searcher', 'interpreter', 'retriever']
+    agent_attributes = ['analyst', 'reflector', 'searcher', 'interpreter']
     
     for attr_name in agent_attributes:
         if hasattr(system, attr_name):

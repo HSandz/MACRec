@@ -54,7 +54,7 @@ class TokenTracker:
         # List of common agent property names to check
         agent_properties = [
             'manager', 'analyst', 'reflector', 'searcher', 'interpreter', 
-            'retriever', 'planner', 'solver'
+            'planner', 'solver'
         ]
         
         # Reset individual agent properties
@@ -174,7 +174,7 @@ class TokenTracker:
         # List of common agent property names to check
         agent_properties = [
             'manager', 'analyst', 'reflector', 'searcher', 'interpreter', 
-            'retriever', 'planner', 'solver'
+            'planner', 'solver'
         ]
         
         # Collect from individual agent properties
