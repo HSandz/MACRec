@@ -141,7 +141,7 @@ DO NOT include any other item IDs in your ranking.
                         items = data['ranked_items']
                         if isinstance(items, list) and all(isinstance(x, int) for x in items):
                             logger.info(f"Extracted {len(items)} items from JSON response")
-                            return items[:10]  # Top 10
+                            return items
                         else:
                             logger.error(f"Invalid ranked_items format: {items}")
                     else:
