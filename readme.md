@@ -18,7 +18,7 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
 - ☁️ **Cloud LLM Support**: Access to 200+ models via OpenRouter (GPT, Claude, Gemini, Llama, etc.)
 - 🏠 **Local LLM Support**: Privacy-focused local inference via Ollama
 - 🔧 **Flexible Configuration**: Mix and match different models for different agents
-- 🎯 **Multiple Tasks**: Rating Prediction (RP), Sequential Recommendation (SR), Retrieve & Rank (RR), Generation (GEN)
+- 🎯 **Multiple Tasks**: Rating Prediction (RP), Sequential Recommendation (SR), Generation (GEN)
 - 📊 **Comprehensive Evaluation**: Built-in metrics and token usage tracking
 
 ## Quick Start
@@ -239,7 +239,6 @@ python main.py --main Test --data_file data/ml-100k/test.csv --system collaborat
 |------|-------------|-----------------|
 | **sr** | Sequential Recommendation | `--task sr` |
 | **rp** | Rating Prediction | `--task rp` |
-| **rr** | Retrieve & Rank | `--task rr` |
 | **gen** | Review Generation | `--task gen` |
 
 ### System Configurations

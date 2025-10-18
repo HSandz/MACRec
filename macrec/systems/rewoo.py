@@ -76,7 +76,7 @@ class ReWOOSystem(System):
 
     @staticmethod
     def supported_tasks() -> list[str]:
-        return ['rp', 'sr', 'rr', 'gen', 'chat']
+        return ['rp', 'sr', 'gen', 'chat']
 
     @property
     def planner(self) -> Optional['Planner']:
@@ -255,7 +255,7 @@ class ReWOOSystem(System):
                 return True, "Final answer is empty"
             
             # Check for malformed answers based on task type
-            if self.task == 'sr' or self.task == 'rr':
+            if self.task == 'sr':
                 # Sequential recommendation should return a list
                 if not isinstance(answer, list):
                     return True, f"Expected list for {self.task} task, got {type(answer).__name__}"
@@ -644,9 +644,7 @@ class ReWOOSystem(System):
         if self.task == 'sr':
             return f"Sequential recommendation task: {base_query}"
         elif self.task == 'rp':
-            return f"Rating prediction task: {base_query}" 
-        elif self.task == 'rr':
-            return f"Retrieve and rank task: {base_query}"
+            return f"Rating prediction task: {base_query}"
         elif self.task == 'gen':
             return f"Review generation task: {base_query}"
         else:
@@ -925,8 +923,8 @@ class ReWOOSystem(System):
         if self.max_step == self.step_n:
             self.scratchpad += f'\nHint: {self.manager.hint}'
         
-        # Add progress reminder for rr tasks (same as collaboration)
-        if self.task == 'rr' and hasattr(self, 'analyzed_items'):
+        # Add progress reminder for tasks (same as collaboration)
+        if hasattr(self, 'analyzed_items'):
             analyzed_count = len(self.analyzed_items)
             if 'retrieved_items' in self.manager_kwargs:
                 remaining = [item for item in self.manager_kwargs['retrieved_items'] if item not in self.analyzed_items]

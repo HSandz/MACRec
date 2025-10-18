@@ -30,8 +30,6 @@ def task2name(task: str) -> str:
         return 'Rating Prediction'
     elif task == 'sr':
         return 'Sequential Recommendation'
-    elif task == 'rr':
-        return 'Retrieve & Rank'
     elif task == 'gen':
         return 'Explanation Generation'
     elif task == 'chat':

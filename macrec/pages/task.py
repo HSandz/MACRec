@@ -190,7 +190,7 @@ def task_config(task: str, system_type: type[System], config_path: str, model_ov
     assert isinstance(st.session_state.chat_history, list)
     if task == 'chat':
         chat_page(system)
-    elif task in ['rp', 'sr', 'rr', 'gen']:
+    elif task in ['rp', 'sr', 'gen']:
         gen_page(system, task, dataset)
     else:
         raise NotImplementedError

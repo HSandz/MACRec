@@ -5,7 +5,7 @@
     },
     "reflect_prompt_json": {
         "type": "template",
-        "content": "You are a reasoning agent that improves through self-reflection. Analyze the previous trial and determine if the answer is correct. For 'rr' tasks, check:\n1. Genre preference accuracy based on user ratings\n2. Systematic ranking methodology\n3. User preference alignment\n\nIdentify problems and provide specific guidance for improvement. Focus on:\n- Genre preference weighting based on ratings\n- Systematic scoring methodology\n- Action format correctness\n\nDevise a concise plan to improve. Use JSON format.\n\n{examples}\nPrevious trial:\nInput: {input}{scratchpad}\n\nReflection:"
+        "content": "You are a reasoning agent that improves through self-reflection. Analyze the previous trial and determine if the answer is correct. Identify problems and provide specific guidance for improvement. Focus on:\n- Correct answer format and completion\n- Proper action sequence\n- Logical reasoning flow\n\nDevise a concise plan to improve. Use JSON format.\n\n{examples}\nPrevious trial:\nInput: {input}{scratchpad}\n\nReflection:"
     },
     "reflect_examples_json": {
         "type": "raw",

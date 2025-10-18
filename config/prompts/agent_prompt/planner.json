@@ -11,10 +11,6 @@
         "type": "raw",
         "content": "\nFor Rating Prediction:\n- Plan should include analyzing user preferences, item characteristics, and predicting ratings\n- Consider user-item interaction patterns"
     },
-    "planner_rr_guidance": {
-        "type": "raw",
-        "content": "\nFor Retrieve & Rank:\n- Plan should include retrieving candidate items, analyzing each candidate, and ranking them\n- Must analyze all retrieved candidates before ranking"
-    },
     "planner_gen_guidance": {
         "type": "raw",
         "content": "\nFor Review Generation:\n- Plan should include analyzing item features, user preferences, and generating coherent reviews\n- Consider review style and content requirements"

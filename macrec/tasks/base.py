@@ -36,7 +36,7 @@ class Task(ABC):
         {task}_{dataset}_{system}_{samples}_{datetime}.log
         
         Args:
-            task: Task type (e.g., 'sr', 'rp', 'rr', 'gen')
+            task: Task type (e.g., 'sr', 'rp', 'gen')
             dataset: Dataset name (e.g., 'ml-100k', 'Beauty')
             system: System name (e.g., 'rewoo', 'collaboration')
             num_samples: Number of samples in the task

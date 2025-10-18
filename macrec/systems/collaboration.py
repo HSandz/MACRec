@@ -92,7 +92,7 @@ class CollaborationSystem(System):
             self._chat_history = []
         self._reset_action_history()
         
-        # Reset state tracking for rr tasks, but preserve if requested
+        # Reset state tracking, but preserve if requested
         if preserve_progress:
             # Restore preserved state
             self.scratchpad = preserved_scratchpad

@@ -11,10 +11,6 @@
         "type": "raw",
         "content": "\nFor Rating Prediction:\n- Provide predicted ratings for user-item pairs\n- Consider user preferences and item characteristics\n- Format: Return numerical rating predictions"
     },
-    "solver_rr_guidance": {
-        "type": "raw",
-        "content": "\nFor Retrieve & Rank:\n- Provide a ranked list of the retrieved candidate items\n- Consider analysis results from all candidates\n\nJSON format: {\"ranked_items\": [item_id1, item_id2, ...], \"reasoning\": \"brief explanation\"}\nExample: {\"ranked_items\": [939, 1188, 866, 959, 971, 1129], \"reasoning\": \"Ranked by genre match to user preferences\"}\n- The ranked_items array must contain ALL retrieved item IDs in ranked order"
-    },
     "solver_gen_guidance": {
         "type": "raw",
         "content": "\nFor Review Generation:\n- Generate a coherent review based on analysis results\n- Consider user preferences and item characteristics\n- Format: Return a natural language review"

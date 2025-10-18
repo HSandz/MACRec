@@ -48,8 +48,6 @@ class System(ABC):
             return 'rating prediction'
         elif self.task == 'sr':
             return 'ranking'
-        elif self.task == 'rr':
-            return 'ranking'
         elif self.task == 'chat':
             return 'conversation'
         elif self.task == 'gen':

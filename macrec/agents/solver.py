@@ -56,9 +56,9 @@ Original Query Data:
 {kwargs['data']}
 """
         
-        # For SR/RR tasks, extract and explicitly list candidate item IDs
+        # For SR tasks, extract and explicitly list candidate item IDs
         candidate_ids_list = ""
-        if task in ['sr', 'rr'] and kwargs.get('input'):
+        if task == 'sr' and kwargs.get('input'):
             import re
             # Extract candidate item IDs from the input query
             # Support multiple dataset formats: "ID: Title:" (MovieLens) or "ID: Brand:" (Beauty)
@@ -130,7 +130,7 @@ DO NOT include any other item IDs in your ranking.
     def extract_final_answer(self, solution: str, task: str) -> Any:
         """Extract the final answer from the solution based on task type."""
         try:
-            if task == 'sr' or task == 'rr':
+            if task == 'sr':
                 # Extract ranked list of items from JSON response
                 import json
                 
@@ -177,7 +177,7 @@ DO NOT include any other item IDs in your ranking.
             logger.error(f"Error extracting final answer: {e}")
             
         # Fallback based on task type
-        if task in ['sr', 'rr']:
+        if task == 'sr':
             return [1311, 627, 71, 700, 938, 258, 858, 1091]  # Default candidate order
         elif task == 'rp':
             return 3.0  # Default rating
