@@ -139,11 +139,25 @@ DO NOT include any other item IDs in your ranking.
                     data = json.loads(solution)
                     if isinstance(data, dict) and 'ranked_items' in data:
                         items = data['ranked_items']
-                        if isinstance(items, list) and all(isinstance(x, int) for x in items):
-                            logger.info(f"Extracted {len(items)} items from JSON response")
-                            return items
+                        if isinstance(items, list):
+                            # Convert all items to integers (handle both int and string formats)
+                            try:
+                                converted_items = []
+                                for item in items:
+                                    if isinstance(item, int):
+                                        converted_items.append(item)
+                                    elif isinstance(item, str) and item.isdigit():
+                                        converted_items.append(int(item))
+                                    else:
+                                        # Invalid item format
+                                        raise ValueError(f"Invalid item format: {item}")
+                                logger.info(f"Extracted {len(converted_items)} items from JSON response")
+                                return converted_items
+                            except (ValueError, TypeError) as e:
+                                logger.error(f"Failed to convert ranked_items to integers: {e}")
+                                logger.error(f"Original items: {items}")
                         else:
-                            logger.error(f"Invalid ranked_items format: {items}")
+                            logger.error(f"Invalid ranked_items format (not a list): {items}")
                     else:
                         logger.error(f"JSON response missing 'ranked_items' key: {data}")
                 except json.JSONDecodeError as e:

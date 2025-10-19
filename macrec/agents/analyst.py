@@ -834,7 +834,9 @@ class Analyst(ToolAgent):
                 
                 if action_type.lower() == 'invalid':
                     consecutive_invalid_commands += 1
-                    logger.warning(f"Invalid command generated: {command} (attempt {consecutive_invalid_commands})")
+                    # Truncate very long commands in log to prevent log spam
+                    command_display = command[:200] + "..." if len(command) > 200 else command
+                    logger.warning(f"Invalid command generated: {command_display} (attempt {consecutive_invalid_commands})")
                     
                     if consecutive_invalid_commands >= max_invalid_commands:
                         logger.error(f"Too many consecutive invalid commands. Forcing finish.")
