@@ -180,30 +180,53 @@ DO NOT include any other item IDs in your ranking.
                         logger.error(f"JSON response missing 'ranked_items' key: {data}")
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to parse JSON response: {e}")
-                    logger.error(f"Solution (raw, first 1000 chars): {solution[:1000]}")
-                    logger.error(f"Cleaned solution (first 1000 chars): {cleaned_solution[:1000]}")
-                    logger.error(f"Solution length: {len(solution)} chars")
-                    logger.error(f"Has markdown fences: {'```' in solution}")
+                    logger.debug(f"Solution (raw, first 1000 chars): {solution[:1000]}")
                     
-                    # Try to recover by extracting JSON from incomplete response
+                    # Try to recover by extracting ranked_items from incomplete response
                     try:
-                        logger.info("Attempting JSON recovery by finding and closing incomplete JSON...")
-                        # Look for the start of JSON
-                        json_start = cleaned_solution.find('{')
-                        if json_start != -1:
-                            # Try to find and repair the JSON structure
-                            potential_json = cleaned_solution[json_start:]
-                            
-                            # Try to find the ranked_items array
-                            items_match = re.search(r'"ranked_items"\s*:\s*\[([^\]]+)\]', potential_json)
-                            if items_match:
-                                items_str = items_match.group(1)
-                                # Extract all numbers from the array
-                                item_numbers = re.findall(r'\d+', items_str)
-                                if item_numbers:
-                                    converted_items = [int(num) for num in item_numbers]
-                                    logger.info(f"Recovered {len(converted_items)} items from incomplete JSON response")
-                                    return converted_items
+                        logger.info("Attempting JSON recovery from truncated response...")
+                        # First, try to close the incomplete JSON by adding missing closing braces/quotes
+                        fixed_solution = cleaned_solution
+                        
+                        # Count unclosed braces and quotes
+                        open_braces = fixed_solution.count('{') - fixed_solution.count('}')
+                        open_quotes_count = fixed_solution.count('"') % 2  # Odd number means unclosed
+                        
+                        # Close any unclosed quotes and braces
+                        if open_quotes_count == 1:
+                            fixed_solution += '"'
+                        if open_braces > 0:
+                            fixed_solution += '}' * open_braces
+                        
+                        # Try to parse the fixed JSON
+                        try:
+                            data = json.loads(fixed_solution)
+                            if isinstance(data, dict) and 'ranked_items' in data:
+                                items = data['ranked_items']
+                                if isinstance(items, list):
+                                    converted_items = []
+                                    for item in items:
+                                        if isinstance(item, int):
+                                            converted_items.append(item)
+                                        elif isinstance(item, str) and item.isdigit():
+                                            converted_items.append(int(item))
+                                    if converted_items:
+                                        logger.info(f"Recovered {len(converted_items)} items by closing incomplete JSON")
+                                        return converted_items
+                        except json.JSONDecodeError:
+                            # If closing braces didn't work, fall back to regex extraction
+                            pass
+                        
+                        # Fallback: Extract ranked_items array using regex (most robust for truncated JSON)
+                        items_match = re.search(r'"ranked_items"\s*:\s*\[([^\]]+)\]', solution)
+                        if items_match:
+                            items_str = items_match.group(1)
+                            # Extract all numbers from the array
+                            item_numbers = re.findall(r'\d+', items_str)
+                            if item_numbers:
+                                converted_items = [int(num) for num in item_numbers]
+                                logger.info(f"Recovered {len(converted_items)} items from incomplete JSON via regex extraction")
+                                return converted_items
                     except Exception as recovery_e:
                         logger.error(f"JSON recovery failed: {recovery_e}")
                 
