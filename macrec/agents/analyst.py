@@ -286,7 +286,8 @@ class Analyst(ToolAgent):
         if len(self._history) >= 2:
             recent_commands = [turn['command'] for turn in self._history[-2:]]
             if len(set(recent_commands)) == 1:  # All commands are the same
-                repetition_warning = f"\nWARNING: You have been repeating the same command '{recent_commands[0]}'. This is wasteful and prohibited. You MUST try a different action or use Finish to complete the analysis."
+                command_name = recent_commands[0].split('"')[3] if '"' in recent_commands[0] else "command"
+                repetition_warning = f"\nSTOP REPEATING: You queried '{command_name}' twice. This wastes tokens. Pick a DIFFERENT command or FINISH your analysis now."
         
         # Add explicit command history to show what was done
         command_summary = ""
@@ -295,16 +296,31 @@ class Analyst(ToolAgent):
             for turn in self._history:
                 if turn['command'] not in unique_commands:
                     unique_commands.append(turn['command'])
-            command_summary = f"\n\nCOMMANDS ALREADY EXECUTED:\n" + "\n".join([f"- {cmd}" for cmd in unique_commands])
-            command_summary += "\n\nDO NOT REPEAT ANY OF THE ABOVE COMMANDS. Choose a different action or use Finish."
+            
+            # Extract just the command types for clarity
+            command_types = set()
+            for cmd in unique_commands:
+                try:
+                    if '"type":"' in cmd:
+                        cmd_type = cmd.split('"type":"')[1].split('"')[0]
+                        command_types.add(cmd_type)
+                except:
+                    pass
+            
+            if command_types:
+                command_summary = f"\n\nCOMMAND HISTORY: You've already used: {', '.join(sorted(command_types))}"
+                command_summary += f"\n\nDO NOT repeat these. Use a DIFFERENT command or Finish."
+            else:
+                command_summary = f"\n\nCOMMANDS EXECUTED: {len(unique_commands)} different commands"
+                command_summary += "\n\nDO NOT repeat. Try something different."
         
         # Remove caching prompts - let analyst query naturally, backend will use cache automatically
         context_info = ""
         
         # Check if we have sufficient information to finish
         finish_hint = ""
-        if len(self.gathered_info) >= 3:  # If we have info about 3+ entities
-            finish_hint = f"\nYou have gathered information about {len(self.gathered_info)} entities. Consider if you have enough information to provide a meaningful analysis and use Finish command."
+        if len(self.gathered_info) >= 2:  # If we have info about 2+ entities
+            finish_hint = f"\nREMEMBER: You have information about {len(self.gathered_info)} entities. If you believe you have enough information for analysis, STOP and use Finish command instead of querying more."
         
         # Add task context if provided (for ReWOO-specific analysis)
         task_context_info = ""
@@ -840,11 +856,17 @@ class Analyst(ToolAgent):
                     
                     if consecutive_invalid_commands >= max_invalid_commands:
                         logger.error(f"Too many consecutive invalid commands. Forcing finish.")
-                        self.finish("Analysis terminated due to repeated invalid responses.")
+                        # Generate summary from gathered info instead of generic message
+                        summary = self._generate_summary_from_gathered_info()
+                        self.finish(summary)
                         break
                     
                     # Add error feedback to history to help the model learn
-                    error_observation = f"Invalid command format: '{command}'. Please use the correct JSON format with valid values."
+                    # For invalid commands, suggest using Finish if they have enough info
+                    if len(self.gathered_info) >= 2:
+                        error_observation = f"Invalid format: '{command}'. You have gathered enough information. Try: {{\"type\":\"Finish\",\"content\":\"Your analysis in 2-3 sentences\"}}"
+                    else:
+                        error_observation = f"Invalid command format: '{command}'. Use: {{\"type\":\"COMMAND\",\"content\":ID}} where COMMAND is UserInfo, ItemInfo, UserHistory, ItemHistory, or Finish."
                     turn = {
                         'command': command,
                         'observation': error_observation,
