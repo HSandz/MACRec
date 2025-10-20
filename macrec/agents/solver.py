@@ -133,10 +133,28 @@ DO NOT include any other item IDs in your ranking.
             if task == 'sr' or task == 'rr':
                 # Extract ranked list of items from JSON response
                 import json
+                import re
+                
+                # First, clean up markdown code fences (Gemini 2.5 Pro wraps JSON in ```json ... ```)
+                cleaned_solution = solution.strip()
+                if '```' in cleaned_solution:
+                    # Extract JSON from code blocks
+                    parts = cleaned_solution.split('```')
+                    for part in parts:
+                        part_stripped = part.strip()
+                        # Skip the 'json' language identifier if present
+                        if part_stripped.startswith('json'):
+                            part_stripped = part_stripped[4:].strip()
+                        
+                        # Look for JSON object patterns
+                        if part_stripped.startswith('{') and part_stripped.endswith('}'):
+                            cleaned_solution = part_stripped
+                            break
                 
                 try:
                     # Parse JSON response
-                    data = json.loads(solution)
+                    logger.debug(f"Attempting to parse cleaned_solution: {cleaned_solution[:500]}")
+                    data = json.loads(cleaned_solution)
                     if isinstance(data, dict) and 'ranked_items' in data:
                         items = data['ranked_items']
                         if isinstance(items, list):
@@ -162,7 +180,32 @@ DO NOT include any other item IDs in your ranking.
                         logger.error(f"JSON response missing 'ranked_items' key: {data}")
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to parse JSON response: {e}")
-                    logger.error(f"Solution was: {solution[:200]}...")
+                    logger.error(f"Solution (raw, first 1000 chars): {solution[:1000]}")
+                    logger.error(f"Cleaned solution (first 1000 chars): {cleaned_solution[:1000]}")
+                    logger.error(f"Solution length: {len(solution)} chars")
+                    logger.error(f"Has markdown fences: {'```' in solution}")
+                    
+                    # Try to recover by extracting JSON from incomplete response
+                    try:
+                        logger.info("Attempting JSON recovery by finding and closing incomplete JSON...")
+                        # Look for the start of JSON
+                        json_start = cleaned_solution.find('{')
+                        if json_start != -1:
+                            # Try to find and repair the JSON structure
+                            potential_json = cleaned_solution[json_start:]
+                            
+                            # Try to find the ranked_items array
+                            items_match = re.search(r'"ranked_items"\s*:\s*\[([^\]]+)\]', potential_json)
+                            if items_match:
+                                items_str = items_match.group(1)
+                                # Extract all numbers from the array
+                                item_numbers = re.findall(r'\d+', items_str)
+                                if item_numbers:
+                                    converted_items = [int(num) for num in item_numbers]
+                                    logger.info(f"Recovered {len(converted_items)} items from incomplete JSON response")
+                                    return converted_items
+                    except Exception as recovery_e:
+                        logger.error(f"JSON recovery failed: {recovery_e}")
                 
                 # If we reach here, extraction failed
                 logger.warning("Could not extract items from solution, returning empty list")
