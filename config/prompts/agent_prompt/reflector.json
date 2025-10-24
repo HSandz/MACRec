@@ -5,11 +5,11 @@
     },
     "reflect_prompt_json": {
         "type": "template",
-        "content": "You are a reasoning agent that improves through self-reflection. Analyze the previous trial and determine if the answer is correct. For 'rr' tasks, check:\n1. Genre preference accuracy based on user ratings\n2. Systematic ranking methodology\n3. User preference alignment\n\nIdentify problems and provide specific guidance for improvement. Focus on:\n- Genre preference weighting based on ratings\n- Systematic scoring methodology\n- Action format correctness\n\nDevise a concise plan to improve. Use JSON format.\n\n{examples}\nPrevious trial:\nInput: {input}{scratchpad}\n\nReflection:"
+        "content": "You are a reasoning agent that improves through self-reflection. Analyze the previous trial and provide a SINGLE overall assessment.\n\nFor 'rr' tasks, check:\n1. Genre preference accuracy based on user ratings\n2. Systematic ranking methodology\n3. User preference alignment\n\nIdentify problems and provide specific guidance for improvement. Focus on:\n- Genre preference weighting based on ratings\n- Systematic scoring methodology\n- Action format correctness\n\nReturn ONLY ONE JSON object with your overall assessment. If ANY critical issues exist, set correctness to false.\n\n{examples}\nPrevious trial:\nInput: {input}{scratchpad}\n\nReflection (return ONLY ONE JSON object):"
     },
     "reflect_examples_json": {
         "type": "raw",
-        "content": "`{\"correctness\": false, \"reason\": \"The potential problem ...\"}`\n`{\"correctness\": true, \"reason\": \"There is no problem with the agent's plan ...\"}`"
+        "content": "Example 1: `{\"correctness\": false, \"reason\": \"The plan lacks specific analysis of user preferences before item comparison. Should first extract user's preferred brands and categories, then match items accordingly.\"}`\n\nExample 2: `{\"correctness\": true, \"reason\": \"The plan systematically analyzes user preferences first, then evaluates items based on those preferences. Methodology is sound.\"}`\n\nIMPORTANT: Return ONLY ONE JSON object, not an array."
     },
     "reflection_header": {
         "type": "raw",

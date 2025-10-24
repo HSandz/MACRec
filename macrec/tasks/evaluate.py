@@ -202,6 +202,47 @@ class EvaluateTask(GenerationTask):
                                 f"{pos_info['list_length']:<12}\n"
                             )
         
+        # Log reflection improvements if available
+        if hasattr(self.system, 'reflection_improvements') and self.system.reflection_improvements:
+            if hasattr(self, 'log_handler_id') and self.log_handler_id is not None:
+                log_file_path = None
+                for handler_id, handler in logger._core.handlers.items():
+                    if handler_id == self.log_handler_id:
+                        if hasattr(handler._sink, 'name'):
+                            log_file_path = handler._sink.name
+                        elif hasattr(handler._sink, '_file') and hasattr(handler._sink._file, 'name'):
+                            log_file_path = handler._sink._file.name
+                        break
+                
+                if log_file_path:
+                    with open(log_file_path, 'a', encoding='utf-8') as log_file:
+                        improvements = self.system.reflection_improvements
+                        log_file.write("\n===================================Reflection Improvements Summary===================================\n")
+                        log_file.write(f"Samples where reflector improved ground truth position: {len(improvements)}/{len(self.gt_positions)}\n")
+                        
+                        # **CRITICAL NOTE**: Scores have been updated for these samples
+                        log_file.write("Note: Scores in the metrics above INCLUDE the improved answers from reflection reruns.\n")
+                        log_file.write("The system returned the IMPROVED answer (better GT position) for scoring calculation.\n\n")
+                        
+                        if improvements:
+                            log_file.write("Samples with Improved GT Ranking (sorted by improvement):\n")
+                            log_file.write(f"{'Sample':<8} {'User':<8} {'GT Item':<10} {'Before':<10} {'After':<10} {'Improvement':<12}\n")
+                            log_file.write("-" * 68 + "\n")
+                            
+                            # Sort by improvement (most improved first)
+                            sorted_improvements = sorted(improvements, key=lambda x: x['position_before'] - x['position_after'], reverse=True)
+                            
+                            for imp_info in sorted_improvements:
+                                improvement = imp_info['position_before'] - imp_info['position_after']
+                                log_file.write(
+                                    f"{imp_info['sample_idx']:<8} "
+                                    f"{imp_info['user_id']:<8} "
+                                    f"{imp_info['gt_item']:<10} "
+                                    f"{imp_info['position_before']:<10} "
+                                    f"{imp_info['position_after']:<10} "
+                                    f"{improvement:<12}\n"
+                                )
+        
 
     def run(self, steps: int, topks: list[int], *args, **kwargs):
         assert kwargs['task'] in ['rp', 'sr', 'rr'], "Only support rating (rp) and ranking (sr/rr) tasks."
