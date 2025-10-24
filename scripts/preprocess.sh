@@ -11,6 +11,7 @@ python main.py --main Preprocess --data_dir data --dataset amazon --amazon_categ
 
 echo Preprocessing Gowalla dataset...
 python main.py --main Preprocess --data_dir data/Gowalla --dataset gowalla --n_neg_items 7
+
 # echo Preprocessing Amazon Video Games dataset...
 # python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Video_Games --n_neg_items 7
 
