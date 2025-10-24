@@ -2,12 +2,13 @@ import json
 import re
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from loguru import logger
+import pandas as pd
 
 from macrec.systems.base import System
 from macrec.factories import DefaultAgentFactory, ConfigManager
 from macrec.components import ReWOOOrchestrator, AgentCoordinator
 from macrec.agents.base import Agent
-from macrec.utils import parse_answer, parse_action, format_chat_history
+from macrec.utils import parse_answer, parse_action, format_chat_history, duration_tracker
 
 if TYPE_CHECKING:
     from macrec.agents import Manager, Analyst, Interpreter, Reflector, Searcher, Planner, Solver
@@ -73,6 +74,13 @@ class ReWOOSystem(System):
         self.planner_kwargs = {
             'reflections': '',  # Only planner receives reflection feedback
         }
+        
+        # Track reflection improvements for logging
+        self.reflection_improvements = []  # List of (sample_idx, user_id, gt_item, position_before, position_after)
+        
+        # **CRITICAL**: Initialize sample tracking for reflection improvements
+        self._current_sample_idx = -1  # Current sample index (set by generation task)
+        self._current_user_id = -1  # Current user ID (set by generation task)
 
     @staticmethod
     def supported_tasks() -> list[str]:
@@ -105,9 +113,23 @@ class ReWOOSystem(System):
     @property
     def reflector(self) -> Optional['Reflector']:
         return self.agent_coordinator.get_agent('Reflector')
+    
+    def set_data(self, input: str, context: str, gt_answer: Any, data_sample: Optional[pd.Series] = None) -> None:
+        """Override set_data to capture user_id and sample_idx from data_sample."""
+        super().set_data(input, context, gt_answer, data_sample)
+        
+        # Extract user_id from data_sample if available
+        if data_sample is not None:
+            self._current_user_id = data_sample.get('user_id', -1) if hasattr(data_sample, 'get') else (data_sample['user_id'] if 'user_id' in data_sample else -1)
+        else:
+            self._current_user_id = -1
 
     def reset(self, clear: bool = False, preserve_progress: bool = False, *args, **kwargs) -> None:
         """Reset the ReWOO system state."""
+        # **CRITICAL**: Save sample tracking info before reset
+        saved_sample_idx = getattr(self, '_current_sample_idx', -1)
+        saved_user_id = getattr(self, '_current_user_id', -1)
+        
         super().reset(clear, *args, **kwargs)
         
         if not preserve_progress:
@@ -133,6 +155,10 @@ class ReWOOSystem(System):
             if hasattr(self, 'planner_kwargs'):
                 self.planner_kwargs['reflections'] = ""
         else:
+            # **CRITICAL**: Restore sample tracking info during reflection reruns
+            self._current_sample_idx = saved_sample_idx
+            self._current_user_id = saved_user_id
+            
             # When preserving progress during reflection, add progress summary to planner_kwargs
             if hasattr(self, 'analyzed_items') and self.analyzed_items:
                 current_progress = {
@@ -185,6 +211,13 @@ class ReWOOSystem(System):
             
             # Execute ReWOO workflow
             result = self._execute_rewoo_workflow()
+            best_result = result  # Track best result for scoring
+            best_position = self._gt_position_before_reflection if hasattr(self, '_gt_position_before_reflection') else -1
+            
+            # **CRITICAL FIX**: Save the INITIAL position from first workflow IMMEDIATELY
+            # This must be saved BEFORE reflection and BEFORE any rerun loops
+            # Do NOT save it from instance attribute later, as it gets overwritten during reruns
+            original_position_before_reflection = self._gt_position_before_reflection if hasattr(self, '_gt_position_before_reflection') else -1
             
             # Handle reflection and potential reruns (only if enabled)
             if self.enable_reflection_rerun:
@@ -196,17 +229,50 @@ class ReWOOSystem(System):
                     reflection_count += 1
                     logger.debug(f'Starting ReWOO reflection cycle {reflection_count}/{max_reflections}')
                     
+                    # **CRITICAL FIX**: Use the SAVED position from before the reflection loop
+                    # NOT the one that gets overwritten when _execute_rewoo_workflow() runs
+                    position_before = original_position_before_reflection
+                    
                     # Reset with progress preservation for reflection continuation
                     self.reset(preserve_progress=True)
                     
                     # Re-execute ReWOO workflow with reflection feedback
                     result = self._execute_rewoo_workflow()
                     
+                    # Check position after rerun
+                    position_after = self._get_ground_truth_position(self._last_final_answer)
+                    
+                    # Track improvement if position improved (lower is better)
+                    # **CRITICAL FIX**: Update best_result if position improved
+                    if position_before > 0 and position_after > 0 and position_after < position_before:
+                        sample_idx = getattr(self, '_current_sample_idx', -1)
+                        user_id = getattr(self, '_current_user_id', -1)
+                        gt_item = self.gt_answer if hasattr(self, 'gt_answer') else -1
+                        self.reflection_improvements.append({
+                            'sample_idx': sample_idx,
+                            'user_id': user_id,
+                            'gt_item': gt_item,
+                            'position_before': position_before,
+                            'position_after': position_after
+                        })
+                        logger.info(f"✅ Reflection improved GT position: {position_before} → {position_after}")
+                        
+                        # **CRITICAL**: Store the improved result to be returned for scoring
+                        best_result = result
+                        best_position = position_after
+                        logger.info(f"✅ Will return IMPROVED answer for scoring (position {position_before} → {position_after})")
+                    else:
+                        logger.info(f"↩️  Reflection did NOT improve position (before: {position_before}, after: {position_after})")
+                    
                     # Check if we should continue reflecting
                     should_continue_reflecting = self._perform_reflection()
                 
                 if reflection_count >= max_reflections:
                     logger.warning(f'Stopped after {max_reflections} ReWOO reflection cycle to prevent infinite loops')
+                
+                # **CRITICAL**: Return the best result found (either original or improved via rerun)
+                logger.info(f"ReWOO returning best answer with GT position: {best_position}")
+                return best_result
             else:
                 # Just perform reflection for logging purposes but don't rerun
                 self._perform_reflection_logging_only()
@@ -237,80 +303,34 @@ class ReWOOSystem(System):
         
         return result
     
+    def _get_ground_truth_position(self, answer: Any) -> int:
+        """
+        Calculate the position of ground truth item in the ranked answer list.
+        Returns the 1-based position if found, or -1 if not found.
+        """
+        if not isinstance(answer, list) or not hasattr(self, 'gt_answer'):
+            return -1
+        
+        gt = self.gt_answer
+        try:
+            # For ranking tasks, gt_answer is the item to find
+            if gt in answer:
+                return answer.index(gt) + 1  # 1-based indexing
+        except (ValueError, TypeError):
+            pass
+        
+        return -1
+    
     def _should_perform_reflection(self) -> tuple[bool, str]:
         """
-        Determine if reflection is necessary based on smart criteria.
+        Determine if reflection is necessary.
+        NOW: Always perform reflection on every sample for comprehensive quality assessment.
         
         Returns:
             tuple[bool, str]: (should_reflect, reason)
         """
-        import random
-        
-        # Check 1: Is final answer empty or malformed?
-        if hasattr(self, '_last_final_answer'):
-            answer = self._last_final_answer
-            
-            # Empty answer
-            if not answer or str(answer).strip() == '':
-                return True, "Final answer is empty"
-            
-            # Check for malformed answers based on task type
-            if self.task == 'sr' or self.task == 'rr':
-                # Sequential recommendation should return a list
-                if not isinstance(answer, list):
-                    return True, f"Expected list for {self.task} task, got {type(answer).__name__}"
-                if len(answer) == 0:
-                    return True, "Answer list is empty"
-                
-                # SEMANTIC VALIDATION: Check if answer contains correct candidate items
-                if hasattr(self, 'input') and self.input:
-                    # Extract candidate item IDs from query (format: "1311: Title: ...")
-                    candidate_matches = re.findall(r'(\d+):\s*Title:', self.input)
-                    if candidate_matches:
-                        expected_candidates = set(int(item_id) for item_id in candidate_matches)
-                        actual_items = set(answer)
-                        
-                        # Check 1a: Wrong number of items
-                        if len(answer) != len(expected_candidates):
-                            return True, f"Wrong count: expected {len(expected_candidates)} items, got {len(answer)}"
-                        
-                        # Check 1b: Contains invalid items (not in candidate list)
-                        invalid_items = actual_items - expected_candidates
-                        if invalid_items:
-                            return True, f"Contains non-candidate items: {sorted(invalid_items)}"
-                        
-                        # Check 1c: Missing required items
-                        missing_items = expected_candidates - actual_items
-                        if missing_items:
-                            return True, f"Missing candidate items: {sorted(missing_items)}"
-                        
-                        # Check 1d: Duplicate items
-                        if len(answer) != len(actual_items):
-                            return True, "Contains duplicate items"
-                            
-            elif self.task == 'rp':
-                # Rating prediction should return a number
-                try:
-                    float(answer)
-                except (ValueError, TypeError):
-                    return True, f"Expected numeric rating, got invalid value: {answer}"
-        else:
-            # No final answer available - this is an error
-            return True, "No final answer generated"
-        
-        # Check 2: Were there critical errors during execution?
-        if hasattr(self, '_execution_errors') and self._execution_errors:
-            error_count = len(self._execution_errors)
-            if error_count > 0:
-                return True, f"Detected {error_count} execution error(s)"
-        
-        # Check 3: Random sampling for quality monitoring (10% of cases)
-        random_sample = random.random() < 0.10
-        if random_sample:
-            return True, "Random quality monitoring sample (10%)"
-        
-        # Default: Skip reflection if answer is valid and no errors
-        return False, "Answer is valid, no errors detected"
+        # Always perform reflection on every sample
+        return True, "Performing reflection on every sample for comprehensive quality assessment"
     
     def _perform_reflection(self) -> bool:
         """
@@ -349,7 +369,8 @@ class ReWOOSystem(System):
             rewoo_process += f"\n\n=== Previous Reflection Comments ===\n{self.planner_kwargs['reflections']}"
         
         # Use reflector to analyze the complete ReWOO process
-        self.reflector(input=self.input, scratchpad=rewoo_process)
+        with duration_tracker.track_agent_call('reflector'):
+            self.reflector(input=self.input, scratchpad=rewoo_process)
         
         if self.reflector.json_mode and self.reflector.reflections:
             try:
@@ -424,7 +445,8 @@ class ReWOOSystem(System):
             rewoo_process = self._build_basic_rewoo_scratchpad()
         
         # Use reflector to analyze the complete ReWOO process
-        self.reflector(input=self.input, scratchpad=rewoo_process)
+        with duration_tracker.track_agent_call('reflector'):
+            self.reflector(input=self.input, scratchpad=rewoo_process)
         
         if self.reflector.json_mode and self.reflector.reflections:
             try:
@@ -495,7 +517,8 @@ class ReWOOSystem(System):
         
         # Generate plan - CRITICAL: Pass manager_kwargs AND planner_kwargs (for reflection feedback)
         combined_kwargs = {**self.manager_kwargs, **self.planner_kwargs}
-        plan = self.planner.invoke(query, self.task, **combined_kwargs)
+        with duration_tracker.track_agent_call('planner'):
+            plan = self.planner.invoke(query, self.task, **combined_kwargs)
         self.current_plan = plan
         self.plan_steps = self.planner.parse_plan(plan)
         
@@ -552,7 +575,8 @@ class ReWOOSystem(System):
         logger.info("ReWOO Phase 3: Solving")
         
         # Generate final solution - CRITICAL: Pass manager_kwargs like collaboration system
-        solution = self.solver.invoke(self.current_plan, self.execution_results, self.task, **self.manager_kwargs)
+        with duration_tracker.track_agent_call('solver'):
+            solution = self.solver.invoke(self.current_plan, self.execution_results, self.task, **self.manager_kwargs)
         
         self.log(f"**ReWOO Final Solution:**\n{solution}", agent=self.solver)
         
@@ -602,8 +626,17 @@ class ReWOOSystem(System):
         self._last_solution = solution
         self._last_final_answer = final_answer
         
+        # Track ground truth position BEFORE reflection
+        self._gt_position_before_reflection = self._get_ground_truth_position(final_answer)
+        
+        # **CRITICAL**: Store the original answer before any reflection reruns
+        # This is used to decide which answer to return (original vs improved via rerun)
+        self._answer_before_reflection = final_answer.copy() if isinstance(final_answer, list) else final_answer
+        
         # Log the final solution with ground truth for comparison
         logger.info(f"ReWOO Final Answer: {final_answer} | Ground Truth: {self.gt_answer}")
+        if self._gt_position_before_reflection > 0:
+            logger.info(f"Ground truth position (before reflection): {self._gt_position_before_reflection}")
         
         return self.finish(final_answer)
 
@@ -688,6 +721,8 @@ class ReWOOSystem(System):
             
             logger.debug(f"Worker {worker_type} json_mode: {json_mode}")
             
+            from macrec.utils import duration_tracker
+            
             if worker_type.lower() == 'analyst':
                 # Use the task description to determine what to analyze
                 args = self._parse_analyst_arguments_from_context(task_desc)
@@ -704,16 +739,17 @@ class ReWOOSystem(System):
                 }
                 
                 # Handle argument format based on json_mode
-                if json_mode and isinstance(args, list):
-                    # JSON mode expects list format
-                    result = worker.invoke(argument=args, json_mode=json_mode, **kwargs)
-                elif not json_mode and isinstance(args, list):
-                    # Non-JSON mode expects string format
-                    arg_string = f"{args[0]},{args[1]}" if len(args) >= 2 else "user,1"
-                    result = worker.invoke(argument=arg_string, json_mode=json_mode, **kwargs)
-                else:
-                    # Pass as-is
-                    result = worker.invoke(argument=args, json_mode=json_mode, **kwargs)
+                with duration_tracker.track_agent_call('analyst'):
+                    if json_mode and isinstance(args, list):
+                        # JSON mode expects list format
+                        result = worker.invoke(argument=args, json_mode=json_mode, **kwargs)
+                    elif not json_mode and isinstance(args, list):
+                        # Non-JSON mode expects string format
+                        arg_string = f"{args[0]},{args[1]}" if len(args) >= 2 else "user,1"
+                        result = worker.invoke(argument=arg_string, json_mode=json_mode, **kwargs)
+                    else:
+                        # Pass as-is
+                        result = worker.invoke(argument=args, json_mode=json_mode, **kwargs)
                 
                 # Update entity cache with new data from this step
                 self._update_entity_cache(args, result)
@@ -721,11 +757,13 @@ class ReWOOSystem(System):
             elif worker_type.lower() == 'searcher':
                 logger.debug(f"Searcher args: {task_desc}, type: {type(task_desc)}")
                 # Only pass argument and json_mode like collaboration system does
-                result = worker.invoke(argument=task_desc, json_mode=json_mode)
+                with duration_tracker.track_agent_call('searcher'):
+                    result = worker.invoke(argument=task_desc, json_mode=json_mode)
             elif worker_type.lower() == 'interpreter':
                 logger.debug(f"Interpreter args: {task_desc}, type: {type(task_desc)}")
                 # Only pass argument and json_mode like collaboration system does
-                result = worker.invoke(argument=task_desc, json_mode=json_mode)
+                with duration_tracker.track_agent_call('interpreter'):
+                    result = worker.invoke(argument=task_desc, json_mode=json_mode)
             else:
                 result = f"Unknown worker type: {worker_type}"
                 

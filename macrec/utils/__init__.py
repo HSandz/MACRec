@@ -9,5 +9,6 @@ from macrec.utils.prompts import read_prompts
 from macrec.utils.prompt_compression import get_prompt_compressor, compress_prompt, compress_if_needed, APIPromptCompressor
 from macrec.utils.string import format_step, format_last_attempt, format_reflections, format_history, format_chat_history, str2list, get_avatar
 from macrec.utils.token_tracking import token_tracker, TokenTracker
+from macrec.utils.duration_tracking import duration_tracker, DurationTracker
 from macrec.utils.utils import get_rm, task2name, system2dir
 from macrec.utils.web import add_chat_message, get_color

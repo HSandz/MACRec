@@ -1,4 +1,5 @@
 import json
+import time
 from abc import ABC, abstractmethod
 from loguru import logger
 from typing import Any, Optional, TYPE_CHECKING
@@ -6,7 +7,7 @@ from langchain.prompts import PromptTemplate
 
 from macrec.llms import BaseLLM, OpenSourceLLM, GeminiLLM, OpenRouterLLM, OllamaLLM
 from macrec.tools import TOOL_MAP, Tool
-from macrec.utils import run_once, format_history, read_prompts
+from macrec.utils import run_once, format_history, read_prompts, duration_tracker
 
 if TYPE_CHECKING:
     from macrec.systems import System
@@ -68,6 +69,19 @@ class Agent(ABC):
     def reset(self) -> None:
         """Reset the agent state. Override in subclasses if needed."""
         pass
+    
+    def track_execution(self) -> Any:
+        """Get a context manager for tracking this agent's execution time.
+        
+        Usage:
+            with agent.track_execution() as timer:
+                result = agent.forward()
+        
+        Returns:
+            A context manager that tracks execution duration
+        """
+        agent_name = self.__class__.__name__
+        return duration_tracker.track_agent_call(agent_name)
     
     def get_llm_instances(self) -> dict[str, BaseLLM]:
         """Get all LLM instances used by this agent.

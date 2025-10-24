@@ -7,7 +7,7 @@ from macrec.systems.base import System
 from macrec.factories import DefaultAgentFactory, ConfigManager
 from macrec.components import CollaborationOrchestrator, AgentCoordinator
 from macrec.agents.base import Agent
-from macrec.utils import parse_answer, parse_action, format_chat_history
+from macrec.utils import parse_answer, parse_action, format_chat_history, duration_tracker
 
 if TYPE_CHECKING:
     from macrec.agents import Manager, Analyst, Interpreter, Reflector, Searcher
@@ -171,7 +171,8 @@ class CollaborationSystem(System):
             logger.debug(f'Truncated scratchpad to prevent context overflow')
         
         self.scratchpad += f'\nThought {self.step_n}:'
-        thought = self.manager(scratchpad=self.scratchpad, stage='thought', **self.manager_kwargs)
+        with duration_tracker.track_agent_call('manager'):
+            thought = self.manager(scratchpad=self.scratchpad, stage='thought', **self.manager_kwargs)
         
         # Clean up thought to prevent multiple actions/thoughts bleeding through
         thought = thought.split('Action')[0].split('Observation')[0].split('Thought')[0].strip()
@@ -200,7 +201,8 @@ class CollaborationSystem(System):
         # Removed confusing action examples that were causing hallucinations
         self.scratchpad += f'\nAction {self.step_n}:'
         logger.debug(f'Action step - Manager kwargs: {self.manager_kwargs}')
-        action = self.manager(scratchpad=self.scratchpad, stage='action', **self.manager_kwargs)
+        with duration_tracker.track_agent_call('manager'):
+            action = self.manager(scratchpad=self.scratchpad, stage='action', **self.manager_kwargs)
         
         # Clean up action to get only the JSON part and prevent multiple actions
         action_clean = action.strip()
@@ -331,7 +333,8 @@ class CollaborationSystem(System):
                 
                 self.log(f':violet[Calling] :red[Analyst] :violet[with] :blue[{argument}]:violet[...]', agent=self.manager, logging=False)
                 try:
-                    observation = self.analyst.invoke(argument=argument, json_mode=self.manager.json_mode)
+                    with duration_tracker.track_agent_call('analyst'):
+                        observation = self.analyst.invoke(argument=argument, json_mode=self.manager.json_mode)
                     log_head = f':violet[Response from] :red[Analyst] :violet[with] :blue[{argument}]:violet[:]\n- '
                     
                     # Check if the analyst returned an error and suggest correction
@@ -348,7 +351,8 @@ class CollaborationSystem(System):
             else:
                 self.log(f':violet[Calling] :red[Searcher] :violet[with] :blue[{argument}]:violet[...]', agent=self.manager, logging=False)
                 try:
-                    observation = self.searcher.invoke(argument=argument, json_mode=self.manager.json_mode)
+                    with duration_tracker.track_agent_call('searcher'):
+                        observation = self.searcher.invoke(argument=argument, json_mode=self.manager.json_mode)
                     log_head = f':violet[Response from] :red[Searcher] :violet[with] :blue[{argument}]:violet[:]\n- '
                 except Exception as e:
                     logger.error(f"Error in Searcher invocation: {e}")
@@ -362,7 +366,8 @@ class CollaborationSystem(System):
             else:
                 self.log(f':violet[Calling] :red[Interpreter] :violet[with] :blue[{argument}]:violet[...]', agent=self.manager, logging=False)
                 try:
-                    observation = self.interpreter.invoke(argument=argument, json_mode=self.manager.json_mode)
+                    with duration_tracker.track_agent_call('interpreter'):
+                        observation = self.interpreter.invoke(argument=argument, json_mode=self.manager.json_mode)
                     log_head = f':violet[Response from] :red[Interpreter] :violet[with] :blue[{argument}]:violet[:]\n- '
                 except Exception as e:
                     logger.error(f"Error in Interpreter invocation: {e}")
@@ -419,7 +424,8 @@ class CollaborationSystem(System):
             'step_n': self.step_n
         }
         
-        self.reflector(self.input, self.scratchpad)
+        with duration_tracker.track_agent_call('reflector'):
+            self.reflector(self.input, self.scratchpad)
         self.reflected = True
         self.manager_kwargs['reflections'] = self.reflector.reflections_str
         

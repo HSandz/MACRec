@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 import datetime
 
 from macrec.tasks.base import Task
-from macrec.utils import init_api, read_json, token_tracker
+from macrec.utils import init_api, read_json, token_tracker, duration_tracker
 from macrec.systems import CollaborationSystem, ReWOOSystem
 
 class GenerationTask(Task):
@@ -158,7 +158,7 @@ class GenerationTask(Task):
         raise NotImplementedError
 
     def generate(self, data: list[tuple[str, int | float | str, pd.Series]], steps: int = 2):
-        # Start token tracking for this generation task
+        # Start token and duration tracking for this generation task
         task_id = f"{self.dataset}_{self.task}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
         task_info = {
             'dataset': self.dataset,
@@ -171,6 +171,7 @@ class GenerationTask(Task):
         }
         
         token_tracker.start_task(task_id, task_info)
+        duration_tracker.start_task(task_id, task_info)
         
         # Reset all agent LLM usage stats to start fresh
         token_tracker.reset_agent_stats(self.system)
@@ -186,6 +187,9 @@ class GenerationTask(Task):
                 record['user_id'] = data_sample.get('user_id', 'unknown')
                 
                 self.system.set_data(input=test_data, context="", gt_answer=gt_answer, data_sample=data_sample)
+                # **CRITICAL**: Store current sample_idx for reflection improvement tracking
+                self.system._current_sample_idx = sample_idx
+                self.system._current_user_id = record['user_id']
                 self.system.reset(clear=True)
                 
                 # NO LONGER reset agent LLM usage - let it accumulate for proper tracking
@@ -201,8 +205,9 @@ class GenerationTask(Task):
                 self.after_iteration(answer=self.system.answer, gt_answer=gt_answer, record=record, pbar=pbar)
                 pbar.update(1)
                 
-        # End token tracking and save stats
+        # End token and duration tracking and save stats
         final_stats = token_tracker.end_task()
+        duration_stats = duration_tracker.end_task()
         
         # Log summary
         logger.info("=== Token Usage Summary ===")
@@ -214,19 +219,35 @@ class GenerationTask(Task):
         logger.info(f"Models used: {final_stats.get('models_used', [])}")
         logger.info(f"Duration: {final_stats.get('duration', 0):.2f}s")
         
-        # Log per-agent statistics if available
+        # Log unified per-agent statistics
         agents = final_stats.get('agents', {})
-        if agents:
-            logger.info("=== Per-Agent Token Usage ===")
-            for agent_name, agent_stats in agents.items():
+        agent_durations = duration_stats.get('agents', {})
+        
+        if agents or agent_durations:
+            logger.info("=== Per-Agent Statistics===")
+            all_agent_names = set(agents.keys()) | set(agent_durations.keys())
+            
+            for agent_name in sorted(all_agent_names):
                 logger.info(f"Agent: {agent_name}")
-                logger.info(f"  API calls: {agent_stats.get('api_calls', 0)}")
-                logger.info(f"  Total tokens: {agent_stats.get('total_tokens', 0)}")
-                logger.info(f"  Input tokens: {agent_stats.get('total_input_tokens', 0)}")
-                logger.info(f"  Output tokens: {agent_stats.get('total_output_tokens', 0)}")
-                logger.info(f"  Model: {agent_stats.get('model_name', 'unknown')}")
+                
+                # Token usage info
+                if agent_name in agents:
+                    agent_stats = agents[agent_name]
+                    logger.info(f"  API calls: {agent_stats.get('api_calls', 0)}")
+                    logger.info(f"  Total tokens: {agent_stats.get('total_tokens', 0)}")
+                    logger.info(f"  Input tokens: {agent_stats.get('total_input_tokens', 0)}")
+                    logger.info(f"  Output tokens: {agent_stats.get('total_output_tokens', 0)}")
+                    logger.info(f"  Model: {agent_stats.get('model_name', 'unknown')}")
+                
+                # Execution duration info
+                if agent_name in agent_durations:
+                    duration_info = agent_durations[agent_name]
+                    logger.info(f"  Total duration: {duration_info.get('total_duration', 0):.3f}s")
+                    logger.info(f"  Number of calls: {duration_info.get('call_count', 0)}")
+                    logger.info(f"  Average duration per call: {duration_info.get('avg_duration_per_call', 0):.3f}s")
         
         self.after_generate()
+
 
     def run(self, api_config: str, dataset: str, data_file: str, system: str, system_config: str, task: str, max_his: int, model: str = 'gemini', openrouter: str = None, ollama: str = None, enable_reflection_rerun: bool = False):
         if dataset == 'None':
