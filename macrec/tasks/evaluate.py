@@ -64,6 +64,8 @@ class EvaluateTask(GenerationTask):
         self.total_count = 0
         self.failed_samples = []  # Track which samples failed
         self.gt_positions = []  # Track ground truth positions in ranked lists
+        self.reflection_positions_before = {}  # Track GT positions BEFORE reflection
+        self.reflection_positions_after = {}  # Track GT positions AFTER reflection
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         dataset = os.path.basename(os.path.dirname(self.args.data_file))
         data_file = os.path.basename(self.args.data_file)
@@ -202,28 +204,28 @@ class EvaluateTask(GenerationTask):
                                 f"{pos_info['list_length']:<12}\n"
                             )
         
-        # Log reflection improvements if available
-        if hasattr(self.system, 'reflection_improvements') and self.system.reflection_improvements:
-            if hasattr(self, 'log_handler_id') and self.log_handler_id is not None:
-                log_file_path = None
-                for handler_id, handler in logger._core.handlers.items():
-                    if handler_id == self.log_handler_id:
-                        if hasattr(handler._sink, 'name'):
-                            log_file_path = handler._sink.name
-                        elif hasattr(handler._sink, '_file') and hasattr(handler._sink._file, 'name'):
-                            log_file_path = handler._sink._file.name
-                        break
-                
-                if log_file_path:
-                    with open(log_file_path, 'a', encoding='utf-8') as log_file:
-                        improvements = self.system.reflection_improvements
-                        total_reflections_triggered = getattr(self.system, 'total_reflections_triggered', 0)
-                        
-                        log_file.write("\n===================================Reflection Summary===================================\n")
-                        log_file.write(f"Total reflection reruns triggered: {total_reflections_triggered}\n")
-                        log_file.write(f"Reflection reruns with improvements: {len(improvements)}\n")
-                        log_file.write(f"Improvement rate: {len(improvements)}/{total_reflections_triggered} ({100*len(improvements)/max(total_reflections_triggered, 1):.1f}%)\n")
-                        
+        # Log reflection summary ALWAYS (even if no improvements)
+        if hasattr(self, 'log_handler_id') and self.log_handler_id is not None:
+            log_file_path = None
+            for handler_id, handler in logger._core.handlers.items():
+                if handler_id == self.log_handler_id:
+                    if hasattr(handler._sink, 'name'):
+                        log_file_path = handler._sink.name
+                    elif hasattr(handler._sink, '_file') and hasattr(handler._sink._file, 'name'):
+                        log_file_path = handler._sink._file.name
+                    break
+            
+            if log_file_path:
+                with open(log_file_path, 'a', encoding='utf-8') as log_file:
+                    improvements = getattr(self.system, 'reflection_improvements', [])
+                    total_reflections_triggered = getattr(self.system, 'total_reflections_triggered', 0)
+                    
+                    log_file.write("\n===================================Reflection Summary===================================\n")
+                    log_file.write(f"Total reflection reruns triggered: {total_reflections_triggered}\n")
+                    log_file.write(f"Reflection reruns with improvements: {len(improvements)}\n")
+                    log_file.write(f"Improvement rate: {len(improvements)}/{total_reflections_triggered} ({100*len(improvements)/max(total_reflections_triggered, 1):.1f}%)\n")
+                    
+                    if improvements:
                         log_file.write("\n===================================Reflection Improvements Summary===================================\n")
                         log_file.write(f"Samples where reflector improved ground truth position: {len(improvements)}/{len(self.gt_positions)}\n")
                         
@@ -231,24 +233,68 @@ class EvaluateTask(GenerationTask):
                         log_file.write("Note: Scores in the metrics above INCLUDE the improved answers from reflection reruns.\n")
                         log_file.write("The system returned the IMPROVED answer (better GT position) for scoring calculation.\n\n")
                         
-                        if improvements:
-                            log_file.write("Samples with Improved GT Ranking (sorted by improvement):\n")
-                            log_file.write(f"{'Sample':<8} {'User':<8} {'GT Item':<10} {'Before':<10} {'After':<10} {'Improvement':<12}\n")
-                            log_file.write("-" * 68 + "\n")
-                            
-                            # Sort by improvement (most improved first)
-                            sorted_improvements = sorted(improvements, key=lambda x: x['position_before'] - x['position_after'], reverse=True)
+                        log_file.write("Samples with Improved GT Ranking (sorted by improvement):\n")
+                        log_file.write(f"{'Sample':<8} {'User':<8} {'GT Item':<10} {'Before':<10} {'After':<10} {'Improvement':<12}\n")
+                        log_file.write("-" * 68 + "\n")
+                        
+                        # Sort by improvement (most improved first)
+                        sorted_improvements = sorted(improvements, key=lambda x: x['position_before'] - x['position_after'], reverse=True)
+                        
+                        for imp_info in sorted_improvements:
+                            improvement = imp_info['position_before'] - imp_info['position_after']
+                            log_file.write(
+                                f"{imp_info['sample_idx']:<8} "
+                                f"{imp_info['user_id']:<8} "
+                                f"{imp_info['gt_item']:<10} "
+                                f"{imp_info['position_before']:<10} "
+                                f"{imp_info['position_after']:<10} "
+                                f"{improvement:<12}\n"
+                            )
+                        
+                        # Add comparison of scores for improved samples
+                        log_file.write("\n===================================Score Comparison for Improved Samples===================================\n")
+                        log_file.write("Impact of Reflection on Metrics (BEFORE vs AFTER rerun):\n\n")
+                        
+                        if self.task == 'sr' or self.task == 'rr':
+                            # Calculate metrics for each improved sample
+                            log_file.write(f"{'Sample':<8} {'Metric':<15} {'Before':<12} {'After':<12} {'Change':<12}\n")
+                            log_file.write("-" * 65 + "\n")
                             
                             for imp_info in sorted_improvements:
-                                improvement = imp_info['position_before'] - imp_info['position_after']
+                                sample_idx = imp_info['sample_idx']
+                                answer_before = imp_info.get('answer_before', [])
+                                answer_after = imp_info.get('answer_after', [])
+                                gt_item = imp_info['gt_item']
+                                
+                                # Calculate HR@1 and NDCG@1 for before and after
+                                hr_before_1 = 1.0 if (isinstance(answer_before, list) and len(answer_before) > 0 and answer_before[0] == gt_item) else 0.0
+                                hr_after_1 = 1.0 if (isinstance(answer_after, list) and len(answer_after) > 0 and answer_after[0] == gt_item) else 0.0
+                                
+                                # NDCG calculation (simplified: uses position in ranking)
+                                ndcg_before_1 = 0.0
+                                if isinstance(answer_before, list) and gt_item in answer_before:
+                                    pos = answer_before.index(gt_item) + 1
+                                    ndcg_before_1 = 1.0 / (1 + (pos - 1) * 0.631)  # Approximation with log2 discount
+                                
+                                ndcg_after_1 = 0.0
+                                if isinstance(answer_after, list) and gt_item in answer_after:
+                                    pos = answer_after.index(gt_item) + 1
+                                    ndcg_after_1 = 1.0 / (1 + (pos - 1) * 0.631)
+                                
+                                # Log HR@1
                                 log_file.write(
-                                    f"{imp_info['sample_idx']:<8} "
-                                    f"{imp_info['user_id']:<8} "
-                                    f"{imp_info['gt_item']:<10} "
-                                    f"{imp_info['position_before']:<10} "
-                                    f"{imp_info['position_after']:<10} "
-                                    f"{improvement:<12}\n"
+                                    f"{sample_idx:<8} {'HR@1':<15} {hr_before_1:<12.4f} {hr_after_1:<12.4f} "
+                                    f"{('+' if hr_after_1 > hr_before_1 else ('-' if hr_after_1 < hr_before_1 else '='))}{abs(hr_after_1 - hr_before_1):<11.4f}\n"
                                 )
+                                
+                                # Log NDCG@1
+                                log_file.write(
+                                    f"{'':<8} {'NDCG@1':<15} {ndcg_before_1:<12.4f} {ndcg_after_1:<12.4f} "
+                                    f"{('+' if ndcg_after_1 > ndcg_before_1 else ('-' if ndcg_after_1 < ndcg_before_1 else '='))}{abs(ndcg_after_1 - ndcg_before_1):<11.4f}\n"
+                                )
+                                log_file.write("-" * 65 + "\n")
+                    else:
+                        log_file.write("No reflection improvements found.\n")
         
 
     def run(self, steps: int, topks: list[int], *args, **kwargs):

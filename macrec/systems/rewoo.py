@@ -215,10 +215,8 @@ class ReWOOSystem(System):
             best_result = result  # Track best result for scoring
             best_position = self._gt_position_before_reflection if hasattr(self, '_gt_position_before_reflection') else -1
             
-            # **CRITICAL FIX**: Save the INITIAL position from first workflow IMMEDIATELY
-            # This must be saved BEFORE reflection and BEFORE any rerun loops
-            # Do NOT save it from instance attribute later, as it gets overwritten during reruns
             original_position_before_reflection = self._gt_position_before_reflection if hasattr(self, '_gt_position_before_reflection') else -1
+            original_answer_before_reflection = result  # Save the answer before reflection for comparison
             
             # Handle reflection and potential reruns (only if enabled)
             if self.enable_reflection_rerun:
@@ -254,7 +252,9 @@ class ReWOOSystem(System):
                             'user_id': user_id,
                             'gt_item': gt_item,
                             'position_before': position_before,
-                            'position_after': position_after
+                            'position_after': position_after,
+                            'answer_before': original_answer_before_reflection,
+                            'answer_after': result
                         })
                         logger.info(f"✅ Reflection improved GT position: {position_before} → {position_after}")
                         
