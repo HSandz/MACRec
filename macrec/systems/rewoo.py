@@ -77,6 +77,7 @@ class ReWOOSystem(System):
         
         # Track reflection improvements for logging
         self.reflection_improvements = []  # List of (sample_idx, user_id, gt_item, position_before, position_after)
+        self.total_reflections_triggered = 0  # Count of reflection reruns triggered (when correctness=false)
         
         # **CRITICAL**: Initialize sample tracking for reflection improvements
         self._current_sample_idx = -1  # Current sample index (set by generation task)
@@ -268,7 +269,7 @@ class ReWOOSystem(System):
                     should_continue_reflecting = self._perform_reflection()
                 
                 if reflection_count >= max_reflections:
-                    logger.warning(f'Stopped after {max_reflections} ReWOO reflection cycle to prevent infinite loops')
+                    logger.info(f'Stopped after {max_reflections} ReWOO reflection cycle to prevent infinite loops')
                 
                 # **CRITICAL**: Return the best result found (either original or improved via rerun)
                 logger.info(f"ReWOO returning best answer with GT position: {best_position}")
@@ -402,6 +403,9 @@ class ReWOOSystem(System):
                 if not correctness:
                     logger.debug(f"ReWOO Reflection identified issues: {reason}")
                     self.log(f"**ReWOO Reflection Issues Identified:**\n{reason}", agent=self.reflector)
+                    
+                    # Track reflection rerun trigger
+                    self.total_reflections_triggered += 1
                     
                     # Add reflection comment to planner_kwargs ONLY to prompt better planning
                     if 'reflections' not in self.planner_kwargs:
@@ -556,10 +560,16 @@ class ReWOOSystem(System):
         
         # Execute step
         result = self._execute_step(current_step)
-        self.execution_results[current_step['variable']] = result
         
-        self.log(f"**Step {self.step_n} ({current_step['variable']})**: {current_step['task_description']}\n**Result**: {result}", 
-                agent=self._get_worker_agent(current_step['worker_type']))
+        # Skip meaningless results from being stored in execution_results
+        # This prevents noise from appearing in Solver's prompt
+        if not self._is_meaningless_result(result):
+            self.execution_results[current_step['variable']] = result
+            
+            self.log(f"**Step {self.step_n} ({current_step['variable']})**: {current_step['task_description']}\n**Result**: {result}", 
+                    agent=self._get_worker_agent(current_step['worker_type']))
+        else:
+            logger.info(f"Skipped storing meaningless result for {current_step['variable']}")
         
         self.step_n += 1
         
@@ -694,6 +704,59 @@ class ReWOOSystem(System):
             if dep not in self.execution_results:
                 return False
         return True
+
+    def _is_meaningless_result(self, result: str) -> bool:
+        """
+        Check if a result is meaningless (noise that shouldn't be stored).
+        Returns True if result should be skipped from execution_results.
+        
+        Detects patterns like:
+        - "User info database not available"
+        - "No history found for..."
+        - "User information database not available"
+        """
+        if not isinstance(result, str):
+            return False
+        
+        meaningless_patterns = [
+            'User info database not available',
+            'User information database not available',
+            'No history found for user',
+            'No history found for item',
+            'database not available',
+            'No user information',
+            'User History X: No history',  # Format from Analyst
+        ]
+        
+        # Check if result is ONLY meaningless content (no actionable data)
+        lines = result.strip().split('\n')
+        
+        # If very short result with only noise, it's meaningless
+        if len(lines) <= 2:
+            for pattern in meaningless_patterns:
+                if pattern in result:
+                    logger.debug(f"Skipping meaningless result (matched pattern '{pattern}'): {result[:100]}")
+                    return True
+        
+        # For longer results, check if they contain ONLY noise (no real data)
+        has_actionable_data = False
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Check if this line has actionable data (not just noise)
+            is_noise = any(pattern in line for pattern in meaningless_patterns)
+            
+            if not is_noise and any(keyword in line for keyword in ['Brand:', 'Price:', 'Categories:', 'Rating:', 'Title:', 'Genres:', 'User:', 'Item:', 'analyzed', 'Retrieved']):
+                has_actionable_data = True
+                break
+        
+        if not has_actionable_data and any(pattern in result for pattern in meaningless_patterns):
+            logger.debug(f"Skipping meaningless result (no actionable data): {result[:100]}")
+            return True
+        
+        return False
 
     def _execute_step(self, step: Dict[str, Any]) -> str:
         """Execute a single plan step using the appropriate worker with real data exactly like collaboration system."""

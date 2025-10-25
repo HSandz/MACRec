@@ -217,6 +217,13 @@ class EvaluateTask(GenerationTask):
                 if log_file_path:
                     with open(log_file_path, 'a', encoding='utf-8') as log_file:
                         improvements = self.system.reflection_improvements
+                        total_reflections_triggered = getattr(self.system, 'total_reflections_triggered', 0)
+                        
+                        log_file.write("\n===================================Reflection Summary===================================\n")
+                        log_file.write(f"Total reflection reruns triggered: {total_reflections_triggered}\n")
+                        log_file.write(f"Reflection reruns with improvements: {len(improvements)}\n")
+                        log_file.write(f"Improvement rate: {len(improvements)}/{total_reflections_triggered} ({100*len(improvements)/max(total_reflections_triggered, 1):.1f}%)\n")
+                        
                         log_file.write("\n===================================Reflection Improvements Summary===================================\n")
                         log_file.write(f"Samples where reflector improved ground truth position: {len(improvements)}/{len(self.gt_positions)}\n")
                         
