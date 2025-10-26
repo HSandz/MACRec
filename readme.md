@@ -13,7 +13,7 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
 
 ## Key Features
 
-- 🤖 **Multi-Agent Collaboration**: Manager, Analyst, Searcher, Interpreter, Reflector, and Retriever agents
+- 🤖 **Multi-Agent Collaboration**: Manager, Analyst, Searcher, Interpreter, and Reflector agents
 - 🧠 **ReWOO Style**: Reasoning Without Observation - 3-phase workflow (Planning → Working → Solving)
 - ☁️ **Cloud LLM Support**: Access to 200+ models via OpenRouter (GPT, Claude, Gemini, Llama, etc.)
 - 🏠 **Local LLM Support**: Privacy-focused local inference via Ollama
@@ -78,21 +78,6 @@ python main.py --main Test --data_file data/ml-100k/test.csv --system collaborat
 python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 3
 ```
 
-### Training LightGCN Models (just for MovieLens 100k dataset)
-
-To train LightGCN models and generate embeddings for use with the retriever agent:
-
-```shell
-python lightgcn/run.py
-```
-
-This will:
-- Train a LightGCN model on the specified dataset
-- You can modify hyperparameters in `lightgcn/config.yaml`
-- Save model checkpoints in the `lightgcn/saved/` directory
-- Generate and save user/item embeddings in the `lightgcn/output` directory
-- Create ID mapping files for the embedding retriever tool in the `lightgcn/output` directory
-
 ## Architecture
 
 MACRec features a modern, maintainable architecture built with clean software design principles:
@@ -137,7 +122,6 @@ The following systems have been removed in favor of the improved architecture:
         - `interpreter.py`: The *Task Interpreter* agent class.
         - `manager.py`: The *Manager* agent class.
         - `reflector.py`: The *Reflector* agent class.
-        - `retriever.py`: The *Retriever* agent class for candidate item retrieval using precomputed embeddings.
         - `searcher.py`: The *Searcher* agent class.
         - `planner.py`: The *Planner* agent for ReWOO-style task decomposition.
         - `solver.py`: The *Solver* agent for ReWOO-style result aggregation.
@@ -154,14 +138,8 @@ The following systems have been removed in favor of the improved architecture:
         - **`collaboration.py`**: The collaboration system class with factory pattern integration.
         - **`rewoo.py`**: The ReWOO system class with component-based architecture and 3-phase workflow.
     - `tasks/`: For external function calls (e.g. main.py). **Note needs to be distinguished from recommended tasks.**
-        - `base.py`: The base agent class and base tool agent class.
-        - `interpreter.py`: The *Task Interpreter* agent class.
-        - `manager.py`: The *Manager* agent class.
-        - `reflector.py`: The *Reflector* agent class.
-        - `retriever.py`: The *Retriever* agent class for candidate item retrieval using precomputed embeddings.
-        - `searcher.py`: The *Searcher* agent class.
-        - `planner.py`: The *Planner* agent for ReWOO-style task decomposition.
-        - `solver.py`: The *Solver* agent for ReWOO-style result aggregation.
+        - `base.py`: The base task class.
+        - Task implementations for evaluation, generation, preprocessing, etc.
     - **`components.py`**: Core architectural components (orchestrators, coordinators, state management).
     - `dataset/`: All dataset preprocessing methods.
     - `evaluation/`: The basic evaluation method, including the ranking metrics and the rating metrics.
@@ -189,7 +167,6 @@ The following systems have been removed in favor of the improved architecture:
         - `test.py`: The task for evaluating the system on few-shot data samples. The task is inherited from `evaluate.py`.
     - `tools/`: Tool implementations for various functionalities.
         - `base.py`: The base tool class.
-        - `embedding_retriever.py`: Tool for retrieving top-K items using precomputed embeddings from trained models (e.g., LightGCN).
         - `info_database.py`: Tool for retrieving item attribute information.
         - `interaction.py`: Tool for retrieving user-item interaction history.
         - `summarize.py`: Tool for text summarization.
@@ -208,11 +185,6 @@ The following systems have been removed in favor of the improved architecture:
     - `tools/`: The configuration for each tool.
     - `training/`: Some configuration for the PPO or other RL algorithms training.
 - `ckpts/`: The checkpoint folder for PPO training.
-- `lightgcn/`: The LightGCN implementation for generating user/item embeddings.
-    - `config.yaml`: The configuration file for LightGCN training and evaluation.
-    - `run.py`: The main file to run LightGCN training and evaluation.
-    - `saved/`: The model checkpoint folder for LightGCN.
-    - `output/`: The output folder for LightGCN, including the user/item embeddings and ID mapping files.
 - `data/`: The dataset folder which contains both the raw and preprocessed data.
 - `log/`: The log folder.
 - `run/`: The evaluation result folder.
@@ -271,7 +243,6 @@ python main.py --main Test --data_file data/ml-100k/test.csv --system collaborat
 | Configuration | Agents | Best For |
 |---------------|---------|----------|
 | `analyse.json` | Manager + Analyst | Quick testing, simple tasks |
-| `retrieve_analyse.json` | Manager + Retriever + Analyst | Tasks needing item retrieval |
 | `reflect_analyse_search.json` | Manager + Reflector + Analyst + Searcher | Complex reasoning tasks |
 
 #### ReWOO System (3-Phase Reasoning)
@@ -280,7 +251,6 @@ python main.py --main Test --data_file data/ml-100k/test.csv --system collaborat
 | `basic.json` | Planner + Analyst + Solver | Structured reasoning, limited agents |
 | `reflector.json` | Planner + Analyst + Reflector + Solver | Recommendations with validation |
 | `searcher.json` | Planner + Analyst + Searcher + Solver | Genre-aware recommendations |
-| `retriever.json` | Planner + Analyst + Retriever + Solver | Retrieve & rank tasks |
 | `full.json` | Planner + All Workers + Solver | Complex multi-step reasoning |
 
 ### Example Workflows
@@ -343,13 +313,6 @@ The ReWOO system implements a structured 3-phase reasoning approach:
 - **Improved Accuracy**: Multi-step reasoning with intermediate validation
 - **Quality Assurance**: Optional Reflector validates completeness and format compliance
 - **Scalable**: Can handle complex tasks by breaking them into manageable steps
-
-### LightGCN Integration
-Train embedding models for the Retriever agent:
-```bash
-cd lightgcn
-python run.py
-```
 
 ### Web Demo
 ```bash

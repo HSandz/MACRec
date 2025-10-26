@@ -2,14 +2,14 @@ from argparse import ArgumentParser
 import os
 
 from macrec.tasks.base import Task
-from macrec.dataset import ml100k_process_data, amazon_process_data, ml1m_process_data, gowalla_process_data
+from macrec.dataset import ml100k_process_data, amazon_process_data, ml1m_process_data, gowalla_process_data, yelp2018_process_data
 from macrec.utils import init_all_seeds
 
 class PreprocessTask(Task):
     @staticmethod
     def parse_task_args(parser: ArgumentParser) -> ArgumentParser:
         parser.add_argument('--data_dir', type=str, required=True, help='input file')
-        parser.add_argument('--dataset', type=str, required=True, choices=['ml-100k', 'ml-1m', 'amazon', 'gowalla'], help='dataset type')
+        parser.add_argument('--dataset', type=str, required=True, choices=['ml-100k', 'ml-1m', 'amazon', 'gowalla', 'yelp2018'], help='dataset type')
         parser.add_argument('--amazon_category', type=str, help='Amazon category (e.g., Beauty, Books, Movies_and_TV, etc.). Required when dataset is amazon.')
         parser.add_argument('--n_neg_items', type=int, default=7, help='numbers of negative items')
         return parser
@@ -29,6 +29,8 @@ class PreprocessTask(Task):
             amazon_process_data(category_data_dir, n_neg_items)
         elif dataset == 'gowalla':
             gowalla_process_data(data_dir, n_neg_items)
+        elif dataset == 'yelp2018':
+            yelp2018_process_data(data_dir, n_neg_items)
         else:
             raise NotImplementedError
 

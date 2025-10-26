@@ -69,7 +69,7 @@ class GenerationTask(Task):
                 candidate_item_attributes=df['candidate_item_attributes'][i]
             ), df['item_id'][i], df.iloc[i]) for i in tqdm(range(len(df)), desc="Loading data") if df['rating'][i] >= 4]
         elif self.task == 'rr':
-            # Retrieve & Rank: no candidate list in CSV; retriever agent will fetch candidates
+            # Retrieve & Rank: no candidate list in CSV; candidates must be provided
             # Set a default n_candidate for validation purposes
             self.system_kwargs['n_candidate'] = 6  # Default to 6 candidates for rr tasks
             return [(data_prompt.format(

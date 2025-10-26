@@ -260,11 +260,11 @@ class CollaborationSystem(System):
                     return
         
         if action_type.lower() == 'finish':
-            # For rr tasks, check if candidates have been retrieved
+            # For rr tasks, check if candidates have been provided
             if self.task == 'rr':
                 if 'n_candidate' not in self.kwargs:
                     logger.debug(f'rr task: n_candidate not found in kwargs. Current kwargs: {self.kwargs}')
-                    observation = 'For rr tasks, use Retrieve[user_id, 10] to get candidates before finishing.'
+                    observation = 'For rr tasks, candidate items must be provided before finishing.'
                     log_head = ':red[Error]: '
                 else:
                     # Check if all retrieved items have been analyzed

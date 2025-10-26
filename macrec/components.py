@@ -314,7 +314,7 @@ class ReWOOOrchestrator(SystemOrchestrator):
         
         # Parse plan to identify required workers
         # This is a simplified implementation
-        workers = ['Analyst', 'Searcher', 'Retriever']
+        workers = ['Analyst', 'Searcher']
         
         for worker_name in workers:
             worker = self.agent_coordinator.get_agent(worker_name)

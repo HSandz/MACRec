@@ -69,7 +69,7 @@ def gen_page(system: System, task: str, dataset: str):
             gt_answer = data_sample['item_id']
         elif task == 'rr':
             st.markdown('##### Retrieve & Rank:')
-            st.markdown('Candidates will be retrieved by the Retriever agent at runtime.')
+            st.markdown('Candidates must be provided for ranking.')
             system_input = data_prompt.format(
                 user_id=data_sample['user_id'],
                 user_profile=data_sample['user_profile'],

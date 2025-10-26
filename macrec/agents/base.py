@@ -100,7 +100,7 @@ class Agent(ABC):
         
         # Common LLM attribute names to check (for performance)
         common_llm_attrs = ['llm', 'analyst', 'thought_llm', 'action_llm', 
-                           'searcher', 'interpreter', 'retriever_llm', 
+                           'searcher', 'interpreter', 
                            'planner', 'solver', 'reflector']
         
         # First check common attributes for performance
