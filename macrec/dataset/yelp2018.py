@@ -1,12 +1,76 @@
 import os
 import json
 import random
+import tarfile
+import zipfile
 import pandas as pd
 import numpy as np
 from loguru import logger
 from langchain.prompts import PromptTemplate
 
 from macrec.utils import append_his_info
+
+def extract_data(dir: str):
+    """Extract Yelp2018 dataset if needed.
+    
+    Note: The dataset must be manually downloaded from Kaggle:
+    https://www.kaggle.com/datasets/yelp-dataset/yelp-dataset/download?datasetVersionNumber=1
+    and placed in {dir}/raw_data/archive.zip or dataset.tgz
+    """
+    raw_path = os.path.join(dir, 'raw_data')
+    os.makedirs(raw_path, exist_ok=True)
+    
+    review_file = os.path.join(raw_path, 'yelp_academic_dataset_review.json')
+    
+    # Check if already extracted
+    if os.path.exists(review_file):
+        logger.info('Yelp2018 dataset already extracted')
+        return
+    
+    # Check for archive files (try .zip first, then .tgz)
+    zip_file = os.path.join(raw_path, 'archive.zip')
+    tgz_file = os.path.join(raw_path, 'dataset.tgz')
+    
+    archive_file = None
+    archive_type = None
+    
+    if os.path.exists(zip_file):
+        archive_file = zip_file
+        archive_type = 'zip'
+    elif os.path.exists(tgz_file):
+        archive_file = tgz_file
+        archive_type = 'tgz'
+    else:
+        raise FileNotFoundError(
+            f"Dataset file not found in: {raw_path}\n"
+            "Please manually download from Kaggle:\n"
+            "https://www.kaggle.com/datasets/yelp-dataset/yelp-dataset/download?datasetVersionNumber=1\n"
+            f"and place it as: {raw_path}/archive.zip or {raw_path}/dataset.tgz"
+        )
+    
+    # Extract based on file type
+    logger.info(f'Extracting Yelp2018 dataset from {archive_file}...')
+    try:
+        if archive_type == 'zip':
+            with zipfile.ZipFile(archive_file, 'r') as zip_ref:
+                zip_ref.extractall(raw_path)
+            logger.info('Extracted .zip file')
+            
+            # Check if .zip contains .tgz (nested archive from Kaggle)
+            nested_tgz = os.path.join(raw_path, 'dataset.tgz')
+            if os.path.exists(nested_tgz) and not os.path.exists(review_file):
+                logger.info('Found nested dataset.tgz, extracting...')
+                with tarfile.open(nested_tgz, 'r:gz') as tar:
+                    tar.extractall(raw_path)
+                logger.info('Extracted nested .tgz file')
+        else:  # tgz
+            with tarfile.open(archive_file, 'r:gz') as tar:
+                tar.extractall(raw_path)
+        
+        logger.info('Successfully extracted Yelp2018 dataset')
+    except Exception as e:
+        logger.error(f'Failed to extract dataset: {e}')
+        raise
 
 def read_data(dir: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Read Yelp2018 raw data files."""
@@ -61,11 +125,15 @@ def read_data(dir: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     
     return data_df, business_df, user_df
 
-def process_user_data(user_df: pd.DataFrame, filtered_data_df: pd.DataFrame) -> pd.DataFrame:
+def process_user_data(user_df: pd.DataFrame, filtered_data_df: pd.DataFrame, user_id_map: dict) -> pd.DataFrame:
     """Process user data to create user profiles."""
     # Filter users that are in the filtered dataset
     valid_users = filtered_data_df['user_id'].unique()
-    user_df = user_df[user_df['user_id'].isin(valid_users)].copy()
+    
+    # Map string IDs to integer IDs
+    user_df['user_id_int'] = user_df['user_id'].map(user_id_map)
+    user_df = user_df[user_df['user_id_int'].notna()].copy()
+    user_df = user_df.drop(columns=['user_id']).rename(columns={'user_id_int': 'user_id'})
     user_df = user_df.set_index('user_id')
     
     template = PromptTemplate(
@@ -76,12 +144,12 @@ def process_user_data(user_df: pd.DataFrame, filtered_data_df: pd.DataFrame) -> 
     
     return user_df
 
-def process_item_data(business_df: pd.DataFrame, filtered_data_df: pd.DataFrame) -> pd.DataFrame:
+def process_item_data(business_df: pd.DataFrame, filtered_data_df: pd.DataFrame, item_id_map: dict) -> pd.DataFrame:
     """Process business data to create item attributes."""
-    # Filter businesses that are in the filtered dataset
-    valid_businesses = filtered_data_df['item_id'].unique()
-    business_df = business_df[business_df['business_id'].isin(valid_businesses)].copy()
-    business_df = business_df.rename(columns={'business_id': 'item_id'})
+    # Map string IDs to integer IDs
+    business_df['item_id_int'] = business_df['business_id'].map(item_id_map)
+    business_df = business_df[business_df['item_id_int'].notna()].copy()
+    business_df = business_df.drop(columns=['business_id']).rename(columns={'item_id_int': 'item_id'})
     business_df = business_df.set_index('item_id')
     
     template = PromptTemplate(
@@ -93,15 +161,23 @@ def process_item_data(business_df: pd.DataFrame, filtered_data_df: pd.DataFrame)
     return business_df
 
 def filter_data(data_df: pd.DataFrame, min_interactions: int = 10) -> pd.DataFrame:
-    """Apply k-core filtering."""
+    """Apply k-core filtering with iterative process.
+    
+    Iteratively removes users and items with < min_interactions until convergence.
+    This is necessary because removing users can make items fall below the threshold,
+    and vice versa.
+    """
     original_size = data_df.shape[0]
     original_users = data_df['user_id'].nunique()
     original_items = data_df['business_id'].nunique()
     
+    # Iterative k-core filtering
     filter_before = -1
     while filter_before != data_df.shape[0]:
         filter_before = data_df.shape[0]
+        # Remove users with < min_interactions
         data_df = data_df.groupby('user_id').filter(lambda x: len(x) >= min_interactions)
+        # Remove items with < min_interactions
         data_df = data_df.groupby('business_id').filter(lambda x: len(x) >= min_interactions)
     
     filtered_size = data_df.shape[0]
@@ -109,11 +185,11 @@ def filter_data(data_df: pd.DataFrame, min_interactions: int = 10) -> pd.DataFra
     filtered_items = data_df['business_id'].nunique()
     
     logger.info(f'{min_interactions}-core filtering: {original_size} -> {filtered_size} interactions')
-    logger.info(f'Users: {original_users} -> {filtered_users}, Businesses: {original_items} -> {filtered_items}')
+    logger.info(f'Users: {original_users} -> {filtered_users}, Items: {original_items} -> {filtered_items}')
     
     return data_df
 
-def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 7) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 7, k_core: int = 10) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict, dict]:
     """Process interaction data with negative sampling."""
     # Convert timestamp
     data_df['timestamp'] = pd.to_datetime(data_df['timestamp'])
@@ -121,10 +197,23 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 7) -> tup
     
     # Sort by timestamp
     data_df = data_df.sort_values(by=['timestamp'])
-    data_df = filter_data(data_df)
+    data_df = filter_data(data_df, min_interactions=k_core)
     
     # Rename business_id to item_id
     data_df = data_df.rename(columns={'business_id': 'item_id'})
+    
+    # Map string IDs to integer IDs
+    logger.info('Mapping string IDs to integer IDs...')
+    unique_users = sorted(data_df['user_id'].unique())
+    unique_items = sorted(data_df['item_id'].unique())
+    
+    user_id_map = {old_id: new_id for new_id, old_id in enumerate(unique_users, start=1)}
+    item_id_map = {old_id: new_id for new_id, old_id in enumerate(unique_items, start=1)}
+    
+    data_df['user_id'] = data_df['user_id'].map(user_id_map)
+    data_df['item_id'] = data_df['item_id'].map(item_id_map)
+    
+    logger.info(f'Mapped {len(user_id_map)} users and {len(item_id_map)} items to integer IDs')
     
     # Build clicked item set
     clicked_item_set = {}
@@ -169,25 +258,28 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 7) -> tup
     
     logger.info(f'Data split - Train: {len(train_df)}, Dev: {len(dev_df)}, Test: {len(test_df)}')
     
-    return train_df, dev_df, test_df, data_df
+    return train_df, dev_df, test_df, data_df, user_id_map, item_id_map
 
 def process_data(dir: str, n_neg_items: int = 7, k_core: int = 10):
     """Process Yelp2018 dataset."""
     logger.info(f'Starting to process Yelp2018 dataset in {dir}')
     
-    raw_data_dir = os.path.join(dir, "raw")
+    # Extract dataset if needed
+    extract_data(dir)
+    
+    raw_data_dir = os.path.join(dir, "raw_data")
     
     data_df, business_df, user_df = read_data(raw_data_dir)
     
     logger.info('Processing interaction data...')
-    train_df, dev_df, test_df, filtered_data_df = process_interaction_data(data_df, n_neg_items)
+    train_df, dev_df, test_df, filtered_data_df, user_id_map, item_id_map = process_interaction_data(data_df, n_neg_items, k_core)
     
     logger.info('Processing user data...')
-    user_df = process_user_data(user_df, filtered_data_df)
+    user_df = process_user_data(user_df, filtered_data_df, user_id_map)
     logger.info(f'Number of users: {user_df.shape[0]}')
     
     logger.info('Processing business data...')
-    item_df = process_item_data(business_df, filtered_data_df)
+    item_df = process_item_data(business_df, filtered_data_df, item_id_map)
     logger.info(f'Number of businesses: {item_df.shape[0]}')
     
     logger.info('Appending history information...')
