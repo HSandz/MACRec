@@ -4,6 +4,8 @@ import json
 import torch
 import numpy as np
 import pandas as pd
+import os
+from pathlib import Path
 
 def collator(data: list[dict[str, torch.Tensor]]) -> dict:
     """Collator for dataloader.
@@ -17,7 +19,7 @@ def collator(data: list[dict[str, torch.Tensor]]) -> dict:
     return dict((key, [d[key] for d in data]) for key in data[0])
 
 def read_json(path: str) -> dict:
-    """Read json file.
+    """Read json file with case-insensitive path matching for cross-platform compatibility.
 
     Args:
         `path` (`str`): Path to the json file.
@@ -25,6 +27,28 @@ def read_json(path: str) -> dict:
     Returns:
         `dict`: The json data.
     """
+    # First try the exact path
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    
+    # If not found, try case-insensitive matching (for cross-platform compatibility)
+    path_obj = Path(path)
+    parent_dir = path_obj.parent
+    filename = path_obj.name
+    
+    # If parent directory doesn't exist, raise the original error
+    if not parent_dir.exists():
+        with open(path, 'r', encoding='utf-8') as f:  # This will raise FileNotFoundError
+            return json.load(f)
+    
+    # Search for files in the parent directory with case-insensitive matching
+    for file in parent_dir.iterdir():
+        if file.name.lower() == filename.lower():
+            with open(file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    
+    # If still not found, raise the original error with the requested path
     with open(path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
