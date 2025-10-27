@@ -210,41 +210,41 @@ class GenerationTask(Task):
         duration_stats = duration_tracker.end_task()
         
         # Log summary
-        logger.info("=== Token Usage Summary ===")
-        logger.info(f"Task: {self.dataset} {self.task} ({len(data)} samples)")
-        logger.info(f"Total API calls: {final_stats.get('total_api_calls', 0)}")
-        logger.info(f"Total tokens: {final_stats.get('total_tokens', 0)}")
-        logger.info(f"Input tokens: {final_stats.get('total_input_tokens', 0)}")
-        logger.info(f"Output tokens: {final_stats.get('total_output_tokens', 0)}")
-        logger.info(f"Models used: {final_stats.get('models_used', [])}")
-        logger.info(f"Duration: {final_stats.get('duration', 0):.2f}s")
+        logger.success("=== Token Usage Summary ===")
+        logger.success(f"Task: {self.dataset} {self.task} ({len(data)} samples)")
+        logger.success(f"Total API calls: {final_stats.get('total_api_calls', 0)}")
+        logger.success(f"Total tokens: {final_stats.get('total_tokens', 0)}")
+        logger.success(f"Input tokens: {final_stats.get('total_input_tokens', 0)}")
+        logger.success(f"Output tokens: {final_stats.get('total_output_tokens', 0)}")
+        logger.success(f"Models used: {final_stats.get('models_used', [])}")
+        logger.success(f"Duration: {final_stats.get('duration', 0):.2f}s")
         
         # Log unified per-agent statistics
         agents = final_stats.get('agents', {})
         agent_durations = duration_stats.get('agents', {})
         
         if agents or agent_durations:
-            logger.info("=== Per-Agent Statistics===")
+            logger.success("=== Per-Agent Statistics===")
             all_agent_names = set(agents.keys()) | set(agent_durations.keys())
             
             for agent_name in sorted(all_agent_names):
-                logger.info(f"Agent: {agent_name}")
+                logger.success(f"Agent: {agent_name}")
                 
                 # Token usage info
                 if agent_name in agents:
                     agent_stats = agents[agent_name]
-                    logger.info(f"  API calls: {agent_stats.get('api_calls', 0)}")
-                    logger.info(f"  Total tokens: {agent_stats.get('total_tokens', 0)}")
-                    logger.info(f"  Input tokens: {agent_stats.get('total_input_tokens', 0)}")
-                    logger.info(f"  Output tokens: {agent_stats.get('total_output_tokens', 0)}")
-                    logger.info(f"  Model: {agent_stats.get('model_name', 'unknown')}")
+                    logger.success(f"  API calls: {agent_stats.get('api_calls', 0)}")
+                    logger.success(f"  Total tokens: {agent_stats.get('total_tokens', 0)}")
+                    logger.success(f"  Input tokens: {agent_stats.get('total_input_tokens', 0)}")
+                    logger.success(f"  Output tokens: {agent_stats.get('total_output_tokens', 0)}")
+                    logger.success(f"  Model: {agent_stats.get('model_name', 'unknown')}")
                 
                 # Execution duration info
                 if agent_name in agent_durations:
                     duration_info = agent_durations[agent_name]
-                    logger.info(f"  Total duration: {duration_info.get('total_duration', 0):.3f}s")
-                    logger.info(f"  Number of calls: {duration_info.get('call_count', 0)}")
-                    logger.info(f"  Average duration per call: {duration_info.get('avg_duration_per_call', 0):.3f}s")
+                    logger.success(f"  Total duration: {duration_info.get('total_duration', 0):.3f}s")
+                    logger.success(f"  Number of calls: {duration_info.get('call_count', 0)}")
+                    logger.success(f"  Average duration per call: {duration_info.get('avg_duration_per_call', 0):.3f}s")
         
         self.after_generate()
 
