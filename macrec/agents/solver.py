@@ -58,14 +58,35 @@ Original Query Data:
         
         # For SR/RR tasks, extract and explicitly list candidate item IDs
         candidate_ids_list = ""
-        if task in ['sr', 'rr'] and kwargs.get('input'):
-            import re
-            # Extract candidate item IDs from the input query
-            # Support multiple dataset formats: "ID: Title:" (MovieLens) or "ID: Brand:" (Beauty)
-            candidate_matches = re.findall(r'(\d+):\s*(?:Title|Brand):', kwargs['input'])
-            if candidate_matches:
-                candidate_ids = [int(item_id) for item_id in candidate_matches]
-                candidate_ids_list = f"""
+        if task in ['sr', 'rr']:
+            # Extract candidate item IDs directly from data_sample CSV column (most reliable)
+            if kwargs.get('data_sample') is not None and 'candidate_item_id' in kwargs['data_sample']:
+                try:
+                    candidate_item_id_value = kwargs['data_sample']['candidate_item_id']
+                    # Parse the list string representation
+                    if isinstance(candidate_item_id_value, str):
+                        candidate_ids = list(eval(candidate_item_id_value))
+                    elif isinstance(candidate_item_id_value, (list, set)):
+                        candidate_ids = list(candidate_item_id_value)
+                    else:
+                        candidate_ids = []
+                    
+                    if candidate_ids:
+                        candidate_ids_list = f"""
+MANDATORY: You MUST rank ONLY these {len(candidate_ids)} candidate item IDs (in any order): {candidate_ids}
+DO NOT include any other item IDs in your ranking.
+"""
+                except Exception as e:
+                    logger.warning(f"Failed to extract candidate_item_id from data_sample in Solver: {e}")
+            
+            # Fallback to regex extraction from input if CSV extraction failed
+            if not candidate_ids_list and kwargs.get('input'):
+                import re
+                # Support multiple dataset formats: "ID: Title:" (MovieLens), "ID: Brand:" (Beauty), or "ID: Business:" (Yelp)
+                candidate_matches = re.findall(r'(\d+):\s*(?:Title|Brand|Business):', kwargs['input'])
+                if candidate_matches:
+                    candidate_ids = [int(item_id) for item_id in candidate_matches]
+                    candidate_ids_list = f"""
 MANDATORY: You MUST rank ONLY these {len(candidate_ids)} candidate item IDs (in any order): {candidate_ids}
 DO NOT include any other item IDs in your ranking.
 """

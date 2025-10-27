@@ -610,14 +610,22 @@ class ReWOOSystem(System):
                     logger.warning(f"Failed to extract history_item_id from data_sample: {e}")
                     history_item_ids = set()
             
-            # Extract candidate item IDs from input query
+            # Extract candidate item IDs directly from data_sample CSV column
             candidate_item_ids = set()
             
-            # For SR/RP tasks: extract from input query  
-            if hasattr(self, 'input') and self.input:
-                # Support multiple dataset formats: "ID: Title:" (MovieLens) or "ID: Brand:" (Beauty)
-                candidate_matches = re.findall(r'(\d+):\s*(?:Title|Brand):', self.input)
-                candidate_item_ids = set(int(item_id) for item_id in candidate_matches)
+            # For SR/RP tasks: extract from data_sample CSV column (most reliable source)
+            if hasattr(self, 'data_sample') and self.data_sample is not None and 'candidate_item_id' in self.data_sample:
+                try:
+                    candidate_item_id_value = self.data_sample['candidate_item_id']
+                    # Parse the list string representation
+                    if isinstance(candidate_item_id_value, str):
+                        candidate_item_ids = set(eval(candidate_item_id_value))
+                    elif isinstance(candidate_item_id_value, (list, set)):
+                        candidate_item_ids = set(candidate_item_id_value)
+                    logger.debug(f"Extracted candidate item IDs from data_sample: {sorted(candidate_item_ids)}")
+                except Exception as e:
+                    logger.warning(f"Failed to extract candidate_item_id from data_sample: {e}")
+                    candidate_item_ids = set()
             
             # Filter answer to keep only candidate items (not history items)
             original_answer = final_answer.copy()
