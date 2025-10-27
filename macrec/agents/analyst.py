@@ -89,16 +89,33 @@ class Analyst(ToolAgent):
         item_histories = {}
         user_preferences = {}
         
-        # Track which items are from history
+        # Track which items are from history - use data from execution_context if available
         history_item_ids = set()
-        for key, value in self.gathered_info.items():
-            if key.startswith("user_history_"):
-                # Extract item IDs from history
-                import re
-                item_ids_match = re.search(r'before:\s*([\d,\s]+)', value)
-                if item_ids_match:
-                    item_ids_str = item_ids_match.group(1)
-                    history_item_ids.update(int(iid.strip()) for iid in item_ids_str.split(',') if iid.strip())
+        if hasattr(self, 'execution_context') and self.execution_context and 'data_sample' in self.execution_context:
+            try:
+                data_sample = self.execution_context['data_sample']
+                if 'history_item_id' in data_sample:
+                    history_item_id_value = data_sample['history_item_id']
+                    # Parse the list string representation
+                    if isinstance(history_item_id_value, str):
+                        history_item_ids = set(eval(history_item_id_value))
+                    elif isinstance(history_item_id_value, (list, set)):
+                        history_item_ids = set(history_item_id_value)
+                    logger.debug(f"Extracted history item IDs from execution context data_sample: {sorted(history_item_ids)}")
+            except Exception as e:
+                logger.warning(f"Failed to extract history_item_id from execution_context: {e}")
+                history_item_ids = set()
+        
+        # Fallback to parsing from gathered_info if not available
+        if not history_item_ids:
+            for key, value in self.gathered_info.items():
+                if key.startswith("user_history_"):
+                    # Extract item IDs from history
+                    import re
+                    item_ids_match = re.search(r'before:\s*([\d,\s]+)', value)
+                    if item_ids_match:
+                        item_ids_str = item_ids_match.group(1)
+                        history_item_ids.update(int(iid.strip()) for iid in item_ids_str.split(',') if iid.strip())
         
         for key, value in self.gathered_info.items():
             if key.startswith("user_history_"):
@@ -583,16 +600,33 @@ class Analyst(ToolAgent):
         candidate_item_info_parts = []  # Candidate items being evaluated
         user_preferences = {}
         
-        # Track which items are from history
+        # Track which items are from history - use data from execution_context if available
         history_item_ids = set()
-        for key, value in self.gathered_info.items():
-            if key.startswith('user_history_'):
-                # Extract item IDs from history
-                import re
-                item_ids_match = re.search(r'before:\s*([\d,\s]+)', value)
-                if item_ids_match:
-                    item_ids_str = item_ids_match.group(1)
-                    history_item_ids.update(int(iid.strip()) for iid in item_ids_str.split(',') if iid.strip())
+        if hasattr(self, 'execution_context') and self.execution_context and 'data_sample' in self.execution_context:
+            try:
+                data_sample = self.execution_context['data_sample']
+                if 'history_item_id' in data_sample:
+                    history_item_id_value = data_sample['history_item_id']
+                    # Parse the list string representation
+                    if isinstance(history_item_id_value, str):
+                        history_item_ids = set(eval(history_item_id_value))
+                    elif isinstance(history_item_id_value, (list, set)):
+                        history_item_ids = set(history_item_id_value)
+                    logger.debug(f"Extracted history item IDs from execution context data_sample: {sorted(history_item_ids)}")
+            except Exception as e:
+                logger.warning(f"Failed to extract history_item_id from execution_context: {e}")
+                history_item_ids = set()
+        
+        # Fallback to parsing from gathered_info if not available
+        if not history_item_ids:
+            for key, value in self.gathered_info.items():
+                if key.startswith('user_history_'):
+                    # Extract item IDs from history
+                    import re
+                    item_ids_match = re.search(r'before:\s*([\d,\s]+)', value)
+                    if item_ids_match:
+                        item_ids_str = item_ids_match.group(1)
+                        history_item_ids.update(int(iid.strip()) for iid in item_ids_str.split(',') if iid.strip())
         
         for key, value in self.gathered_info.items():
             if key.startswith('user_') and not key.startswith('user_history_'):

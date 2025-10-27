@@ -595,18 +595,20 @@ class ReWOOSystem(System):
         
         # CRITICAL: Filter out history items from the answer
         if self.task in ['sr'] and isinstance(final_answer, list):
-            # Extract history item IDs from execution results
+            # Extract history item IDs directly from data_sample column
             history_item_ids = set()
-            for step_var, result in self.execution_results.items():
-                # Look for user history results
-                if isinstance(result, str) and ('User History' in result or 'interacted with before:' in result):
-                    # Extract item IDs from history: "Retrieved 10 items that user X interacted with before: 56, 98, 97, ..."
-                    history_match = re.search(r'interacted with before:\s*([\d,\s]+)', result)
-                    if history_match:
-                        item_ids_str = history_match.group(1)
-                        # Parse comma-separated IDs
-                        item_ids = [int(x.strip()) for x in item_ids_str.split(',') if x.strip().isdigit()]
-                        history_item_ids.update(item_ids)
+            if hasattr(self, 'data_sample') and self.data_sample is not None and 'history_item_id' in self.data_sample:
+                try:
+                    history_item_id_value = self.data_sample['history_item_id']
+                    # Parse the list string representation
+                    if isinstance(history_item_id_value, str):
+                        history_item_ids = set(eval(history_item_id_value))
+                    elif isinstance(history_item_id_value, (list, set)):
+                        history_item_ids = set(history_item_id_value)
+                    logger.info(f"Extracted history item IDs from data_sample: {sorted(history_item_ids)}")
+                except Exception as e:
+                    logger.warning(f"Failed to extract history_item_id from data_sample: {e}")
+                    history_item_ids = set()
             
             # Extract candidate item IDs from input query
             candidate_item_ids = set()
@@ -858,7 +860,8 @@ class ReWOOSystem(System):
                 'items': list(self.analyzed_items)
             },
             'step_number': self.step_n,
-            'total_steps': len(self.plan_steps)
+            'total_steps': len(self.plan_steps),
+            'data_sample': self.data_sample
         }
         return context
     
