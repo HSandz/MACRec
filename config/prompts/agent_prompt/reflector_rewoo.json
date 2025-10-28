@@ -5,11 +5,11 @@
     },
     "reflect_prompt_json": {
         "type": "template", 
-        "content": "Analyze the ReWOO process and provide CONCISE, ACTIONABLE feedback specifically for improving the PLANNING phase.\n\nFocus on planning deficiencies:\n- **Missing Analysis Steps**: What key entities or preferences weren't analyzed?\n- **Planning Order**: Should user analysis come before or after item analysis?\n- **Genre Focus**: Did the plan explicitly request genre preference extraction?\n- **Specificity**: Were analysis tasks too vague or broad?\n\nProvide feedback in 2-3 sentences maximum. Be direct about what the PLANNER should do differently.\n\nIMPORTANT: Return ONLY ONE JSON object.\n\n{examples}\nReWOO Process:\n{input}{scratchpad}\n\nJSON Response (single object only):"
+        "content": "Analyze the complete ReWOO process across all three phases and provide CONCISE, ACTIONABLE feedback.\n\nEvaluate:\n- **Planning Phase**: Were analysis steps logical, comprehensive, and specific enough?\n- **Working Phase**: Did workers produce relevant, actionable results? Were there missing analyses?\n- **Solving Phase**: Did the final answer accurately synthesize worker results and satisfy the original query?\n\nFocus primary feedback on improving the PLANNING phase (which drives the subsequent phases). However, also note if worker results were ineffective or solver quality was poor.\n\nProvide feedback in 2-3 sentences maximum. Be direct about what needs improvement.\n\nIMPORTANT: Return ONLY ONE JSON object.\n\n{examples}\nReWOO Process:\n{input}{scratchpad}\n\nJSON Response (single object only):"
     },
     "reflect_examples_json": {
         "type": "raw",
-        "content": "Example 1: `{\"correctness\": false, \"reason\": \"Plan lacks explicit genre preference analysis for user. Add step: Extract user's preferred genres from rating history.\"}`\n\nExample 2: `{\"correctness\": true, \"reason\": \"Plan correctly prioritizes user genre analysis before item analysis.\"}`"
+        "content": "Example 1: `{\"correctness\": false, \"reason\": \"Plan lacks explicit genre preference analysis. Worker results were vague about user preferences. Solver couldn't rank items effectively. Add step: Extract user's preferred genres before analyzing items.\"}`\n\nExample 2: `{\"correctness\": true, \"reason\": \"Plan correctly prioritized user analysis. Workers provided clear preference data. Solver accurately ranked items using those insights.\"}`\n\nExample 3: `{\"correctness\": false, \"reason\": \"Plan was detailed, but workers didn't follow through on analysis. Solver produced inaccurate ranking because of incomplete worker results. Ensure plan instructions are clear and specific.\"}`"
     },
     "reflection_header": {
         "type": "raw",

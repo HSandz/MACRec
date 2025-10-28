@@ -159,13 +159,13 @@ class Analyst(ToolAgent):
         # So we skip the detailed historical items list to avoid redundancy
         task_type = getattr(self.system, 'task', 'sr') if hasattr(self, 'system') and self.system else 'sr'
         if history_item_info and task_type not in ['sr', 'rr']:
-            summary_parts.append("User's Historical Items (for context only - DO NOT rank):")
+            summary_parts.append("User's Historical Items:")
             for key, value in history_item_info.items():
                 summary_parts.append(f"  - {key.replace('_', ' ').title()}: {value}")
         
         # Add candidate items with clear labeling
         if candidate_item_info:
-            summary_parts.append("Candidate Items (RANK):")
+            summary_parts.append("Candidate Items:")
             for key, value in candidate_item_info.items():
                 summary_parts.append(f"  - {key.replace('_', ' ').title()}: {value}")
         
@@ -672,12 +672,12 @@ class Analyst(ToolAgent):
         # So we skip the detailed historical items list to avoid redundancy
         task_type = getattr(self.system, 'task', 'sr') if hasattr(self, 'system') and self.system else 'sr'
         if history_item_info_parts and task_type not in ['sr', 'rr']:
-            analysis_parts.append("User's Historical Items (for context only - DO NOT rank):")
+            analysis_parts.append("User's Historical Items (for context only:")
             analysis_parts.extend([f"  - {part}" for part in history_item_info_parts])
         
         # Add candidate items with clear labeling
         if candidate_item_info_parts:
-            analysis_parts.append("Candidate Items (RANK):")
+            analysis_parts.append("Candidate Items:")
             analysis_parts.extend([f"  - {part}" for part in candidate_item_info_parts])
         
         # Join all parts
