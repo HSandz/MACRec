@@ -50,10 +50,10 @@ class Solver(Agent):
         
         # Include original query data so Solver can see candidate items
         original_query = ""
-        if kwargs.get('data'):
+        if kwargs.get('input'):
             original_query = f"""
 Original Query Data:
-{kwargs['data']}
+{kwargs['input']}
 """
         
         # For SR/RR tasks, extract and explicitly list candidate item IDs

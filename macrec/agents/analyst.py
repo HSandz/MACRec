@@ -146,14 +146,19 @@ class Analyst(ToolAgent):
                 if preference_text:
                     summary_parts.append(f"  - {preference_text}")
         
-        # Add user history section
-        if user_histories:
+        # Add user history section - SKIP FOR SR/RR TASKS
+        # For SR/RR tasks, the Original Query Data already contains all history information
+        task_type = getattr(self.system, 'task', 'sr') if hasattr(self, 'system') and self.system else 'sr'
+        if user_histories and task_type not in ['sr', 'rr']:
             summary_parts.append("User History:")
             for key, value in user_histories.items():
                 summary_parts.append(f"  - {key.replace('_', ' ').title()}: {value}")
         
-        # Add history items with clear labeling
-        if history_item_info:
+        # Add history items with clear labeling - SKIP FOR SR/RR TASKS
+        # For SR/RR tasks, the Original Query Data already contains this information
+        # So we skip the detailed historical items list to avoid redundancy
+        task_type = getattr(self.system, 'task', 'sr') if hasattr(self, 'system') and self.system else 'sr'
+        if history_item_info and task_type not in ['sr', 'rr']:
             summary_parts.append("User's Historical Items (for context only - DO NOT rank):")
             for key, value in history_item_info.items():
                 summary_parts.append(f"  - {key.replace('_', ' ').title()}: {value}")
@@ -656,11 +661,17 @@ class Analyst(ToolAgent):
                     analysis_parts.append(f"  - {preference_text}")
         
         if user_history_parts:
-            analysis_parts.append("User History:")
-            analysis_parts.extend([f"  - {part}" for part in user_history_parts])
+            # SKIP User History section for SR/RR tasks - Original Query Data already has it
+            task_type = getattr(self.system, 'task', 'sr') if hasattr(self, 'system') and self.system else 'sr'
+            if task_type not in ['sr', 'rr']:
+                analysis_parts.append("User History:")
+                analysis_parts.extend([f"  - {part}" for part in user_history_parts])
         
-        # Add history items with clear labeling
-        if history_item_info_parts:
+        # Add history items with clear labeling - SKIP FOR SR/RR TASKS
+        # For SR/RR tasks, the Original Query Data already contains this information
+        # So we skip the detailed historical items list to avoid redundancy
+        task_type = getattr(self.system, 'task', 'sr') if hasattr(self, 'system') and self.system else 'sr'
+        if history_item_info_parts and task_type not in ['sr', 'rr']:
             analysis_parts.append("User's Historical Items (for context only - DO NOT rank):")
             analysis_parts.extend([f"  - {part}" for part in history_item_info_parts])
         

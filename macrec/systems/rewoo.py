@@ -195,6 +195,7 @@ class ReWOOSystem(System):
                 self.manager_kwargs['history'] = self.chat_history if hasattr(self, 'chat_history') else []
             else:
                 self.manager_kwargs['input'] = self.input
+                self.manager_kwargs['data_sample'] = self.data_sample
                 
             if reset:
                 self.reset()
