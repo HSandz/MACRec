@@ -64,6 +64,7 @@ class ReWOOSystem(System):
         self.analyzed_items = set()
         self.analyzed_users = set()
         self.execution_results = {}
+        self.completed_steps = set()
         self.current_plan = None
         self.plan_steps = []
         self.step_n = 1
@@ -562,15 +563,18 @@ class ReWOOSystem(System):
         # Execute step
         result = self._execute_step(current_step)
         
+        step_variable = current_step['variable']
+        self.completed_steps.add(step_variable)
+        
         # Skip meaningless results from being stored in execution_results
         # This prevents noise from appearing in Solver's prompt
         if not self._is_meaningless_result(result):
-            self.execution_results[current_step['variable']] = result
+            self.execution_results[step_variable] = result
             
-            self.log(f"**Step {self.step_n} ({current_step['variable']})**: {current_step['task_description']}\n**Result**: {result}", 
+            self.log(f"**Step {self.step_n} ({step_variable})**: {current_step['task_description']}\n**Result**: {result}", 
                     agent=self._get_worker_agent(current_step['worker_type']))
         else:
-            logger.info(f"Skipped storing meaningless result for {current_step['variable']}")
+            logger.info(f"Skipped storing meaningless result for {step_variable}")
         
         self.step_n += 1
         
@@ -712,7 +716,7 @@ class ReWOOSystem(System):
         variable = step.get('variable', 'unknown')
         
         for dep in dependencies:
-            if dep not in self.execution_results:
+            if dep not in self.completed_steps:
                 return False
         return True
 
