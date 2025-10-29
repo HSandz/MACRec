@@ -53,6 +53,47 @@ class EvaluateTask(GenerationTask):
                 'label': gt_answer,
             }, prefix='true')
 
+    def _log_cumulative_scores(self, sample_id: str) -> None:
+        """Log cumulative evaluation scores to the log file after each sample completes.
+        
+        Args:
+            sample_id: The ID of the sample that just completed
+        """
+        try:
+            if hasattr(self, 'log_handler_id') and self.log_handler_id is not None:
+                # Find the log file path from logger handlers
+                log_file_path = None
+                for handler_id, handler in logger._core.handlers.items():
+                    if handler_id == self.log_handler_id:
+                        if hasattr(handler._sink, 'name'):
+                            log_file_path = handler._sink.name
+                        elif hasattr(handler._sink, '_file') and hasattr(handler._sink._file, 'name'):
+                            log_file_path = handler._sink._file.name
+                        break
+                
+                if log_file_path:
+                    # Compute all metrics
+                    result = self.metrics.compute()
+                    
+                    # Write scores to the log file
+                    with open(log_file_path, 'a', encoding='utf-8') as log_file:
+                        log_file.write(f"\n===== Sample {sample_id} - Cumulative Scores ({self.total_count} samples) =====\n")
+                        
+                        # Write each metric in the same format as metrics.report()
+                        for metric_name, metric_values in result.items():
+                            if len(metric_values) == 1:
+                                # Single value metric
+                                value = next(iter(metric_values.values()))
+                                log_file.write(f"{metric_name}: {value:.4f}\n")
+                            else:
+                                # Multi-value metric
+                                log_file.write(f"{metric_name}:\n")
+                                for key, value in metric_values.items():
+                                    log_file.write(f"  {key}: {value:.4f}\n")
+                        log_file.write("\n")
+        except Exception as e:
+            logger.warning(f"Failed to log cumulative scores: {e}")
+
     @property
     def running_steps(self):
         return self.steps
@@ -130,6 +171,9 @@ class EvaluateTask(GenerationTask):
         
         self.output_file.write(record)
         pbar.set_description(self.update_evaluation(answer, gt_answer))
+        
+        # **CHECKPOINT**: Log cumulative scores after each sample
+        self._log_cumulative_scores(sample_id)
 
     def after_generate(self) -> None:
         self.output_file.close()
