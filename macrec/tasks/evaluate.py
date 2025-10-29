@@ -6,7 +6,7 @@ from loguru import logger
 from argparse import ArgumentParser
 
 from macrec.tasks.generation import GenerationTask
-from macrec.utils import str2list, NumpyEncoder
+from macrec.utils import str2list, NumpyEncoder, token_tracker
 from macrec.evaluation import MetricDict, HitRatioAt, NDCGAt, RMSE, Accuracy, MAE
 
 class EvaluateTask(GenerationTask):
@@ -54,7 +54,7 @@ class EvaluateTask(GenerationTask):
             }, prefix='true')
 
     def _log_cumulative_scores(self, sample_id: str) -> None:
-        """Log cumulative evaluation scores to the log file after each sample completes.
+        """Log cumulative evaluation scores and token usage to the log file after each sample completes.
         
         Args:
             sample_id: The ID of the sample that just completed
@@ -75,9 +75,16 @@ class EvaluateTask(GenerationTask):
                     # Compute all metrics
                     result = self.metrics.compute()
                     
+                    # Get current token stats
+                    current_task_stats = token_tracker.get_task_stats()
+                    total_input_tokens = current_task_stats.get('total_input_tokens', 0)
+                    total_output_tokens = current_task_stats.get('total_output_tokens', 0)
+                    total_tokens = current_task_stats.get('total_tokens', 0)
+                    
                     # Write scores to the log file
                     with open(log_file_path, 'a', encoding='utf-8') as log_file:
                         log_file.write(f"\n===== Sample {sample_id} - Cumulative Scores ({self.total_count} samples) =====\n")
+                        log_file.write(f"Tokens: Input={total_input_tokens} | Output={total_output_tokens} | Total={total_tokens}\n\n")
                         
                         # Write each metric in the same format as metrics.report()
                         for metric_name, metric_values in result.items():
