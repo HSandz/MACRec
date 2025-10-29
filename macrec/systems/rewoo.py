@@ -76,8 +76,9 @@ class ReWOOSystem(System):
             'reflections': '',  # Only planner receives reflection feedback
         }
         
-        # Track reflection improvements for logging
-        self.reflection_improvements = []  # List of (sample_idx, user_id, gt_item, position_before, position_after)
+        # Track reflection improvements and all reruns for logging
+        self.reflection_improvements = []  # List of improved samples (for backward compatibility)
+        self.reflection_all_reruns = []  # List of ALL samples that were rerun by reflection (improved or not)
         self.total_reflections_triggered = 0  # Count of reflection reruns triggered (when correctness=false)
         
         # **CRITICAL**: Initialize sample tracking for reflection improvements
@@ -245,25 +246,31 @@ class ReWOOSystem(System):
                     # Check position after rerun
                     position_after = self._get_ground_truth_position(self._last_final_answer)
                     
+                    # Get sample info for logging
+                    sample_idx = getattr(self, '_current_sample_idx', -1)
+                    user_id = getattr(self, '_current_user_id', -1)
+                    gt_item = self.gt_answer if hasattr(self, 'gt_answer') else -1
+                    
+                    # Track this rerun in the all_reruns list (regardless of improvement)
+                    rerun_info = {
+                        'sample_idx': sample_idx,
+                        'user_id': user_id,
+                        'gt_item': gt_item,
+                        'position_before': position_before,
+                        'position_after': position_after
+                    }
+                    self.reflection_all_reruns.append(rerun_info)
+                    
                     # Track improvement if position improved (lower is better)
-                    # **CRITICAL FIX**: Update best_result if position improved
                     if position_before > 0 and position_after > 0 and position_after < position_before:
-                        sample_idx = getattr(self, '_current_sample_idx', -1)
-                        user_id = getattr(self, '_current_user_id', -1)
-                        gt_item = self.gt_answer if hasattr(self, 'gt_answer') else -1
-                        self.reflection_improvements.append({
-                            'sample_idx': sample_idx,
-                            'user_id': user_id,
-                            'gt_item': gt_item,
-                            'position_before': position_before,
-                            'position_after': position_after
-                        })
+                        self.reflection_improvements.append(rerun_info)
                         logger.info(f"✅ Reflection improved GT position: {position_before} → {position_after}")
                         
                         # **CRITICAL**: Store the improved result to be returned for scoring
                         best_result = result
                         best_position = position_after
                         logger.info(f"✅ Will return IMPROVED answer for scoring (position {position_before} → {position_after})")
+                        logger.info(f"✅ self.answer is now: {self.answer}")
                     else:
                         logger.info(f"↩️  Reflection did NOT improve position (before: {position_before}, after: {position_after})")
                     

@@ -254,7 +254,7 @@ class EvaluateTask(GenerationTask):
                             )
         
         # Log reflection improvements if available
-        if hasattr(self.system, 'reflection_improvements') and self.system.reflection_improvements:
+        if hasattr(self.system, 'reflection_all_reruns') and self.system.reflection_all_reruns:
             if hasattr(self, 'log_handler_id') and self.log_handler_id is not None:
                 log_file_path = None
                 for handler_id, handler in logger._core.handlers.items():
@@ -267,39 +267,38 @@ class EvaluateTask(GenerationTask):
                 
                 if log_file_path:
                     with open(log_file_path, 'a', encoding='utf-8') as log_file:
-                        improvements = self.system.reflection_improvements
-                        total_reflections_triggered = getattr(self.system, 'total_reflections_triggered', 0)
+                        all_reruns = self.system.reflection_all_reruns
+                        improvements = self.system.reflection_improvements if hasattr(self.system, 'reflection_improvements') else []
+                        total_reflections_triggered = len(all_reruns)  # Use actual rerun count
                         
                         log_file.write("\n===================================Reflection Summary===================================\n")
                         log_file.write(f"Total reflection reruns triggered: {total_reflections_triggered}\n")
                         log_file.write(f"Reflection reruns with improvements: {len(improvements)}\n")
-                        log_file.write(f"Improvement rate: {len(improvements)}/{total_reflections_triggered} ({100*len(improvements)/max(total_reflections_triggered, 1):.1f}%)\n")
+                        if total_reflections_triggered > 0:
+                            log_file.write(f"Improvement rate: {len(improvements)}/{total_reflections_triggered} ({100*len(improvements)/total_reflections_triggered:.1f}%)\n")
                         
-                        log_file.write("\n===================================Reflection Improvements Summary===================================\n")
-                        log_file.write(f"Samples where reflector improved ground truth position: {len(improvements)}/{len(self.gt_positions)}\n")
+                        log_file.write("\n===================================Reflection Reruns Summary===================================\n")
+                        log_file.write(f"Samples rerun by reflection: {len(all_reruns)}/{len(self.gt_positions)}\n")
                         
-                        # **CRITICAL NOTE**: Scores have been updated for these samples
-                        log_file.write("Note: Scores in the metrics above INCLUDE the improved answers from reflection reruns.\n")
-                        log_file.write("The system returned the IMPROVED answer (better GT position) for scoring calculation.\n\n")
-                        
-                        if improvements:
-                            log_file.write("Samples with Improved GT Ranking (sorted by improvement):\n")
+                        if all_reruns:
+                            log_file.write("All Reflection Reruns (sorted by improvement, positive = improved, negative = worsened):\n")
                             log_file.write(f"{'Sample':<8} {'User':<8} {'GT Item':<10} {'Before':<10} {'After':<10} {'Improvement':<12}\n")
                             log_file.write("-" * 68 + "\n")
                             
-                            # Sort by improvement (most improved first)
-                            sorted_improvements = sorted(improvements, key=lambda x: x['position_before'] - x['position_after'], reverse=True)
+                            # Sort by improvement (most improved first, then least worsened)
+                            sorted_reruns = sorted(all_reruns, key=lambda x: x['position_before'] - x['position_after'], reverse=True)
                             
-                            for imp_info in sorted_improvements:
-                                improvement = imp_info['position_before'] - imp_info['position_after']
+                            for rerun_info in sorted_reruns:
+                                improvement = rerun_info['position_before'] - rerun_info['position_after']
                                 log_file.write(
-                                    f"{imp_info['sample_idx']:<8} "
-                                    f"{imp_info['user_id']:<8} "
-                                    f"{imp_info['gt_item']:<10} "
-                                    f"{imp_info['position_before']:<10} "
-                                    f"{imp_info['position_after']:<10} "
+                                    f"{rerun_info['sample_idx']:<8} "
+                                    f"{rerun_info['user_id']:<8} "
+                                    f"{rerun_info['gt_item']:<10} "
+                                    f"{rerun_info['position_before']:<10} "
+                                    f"{rerun_info['position_after']:<10} "
                                     f"{improvement:<12}\n"
                                 )
+
         
 
     def run(self, steps: int, topks: list[int], *args, **kwargs):
