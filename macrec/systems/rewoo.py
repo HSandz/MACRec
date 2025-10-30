@@ -225,7 +225,7 @@ class ReWOOSystem(System):
             
             # Handle reflection and potential reruns (only if enabled)
             if self.enable_reflection_rerun:
-                should_continue_reflecting = self._perform_reflection()
+                should_continue_reflecting, feedback_info = self._perform_reflection()
                 reflection_count = 0
                 max_reflections = 1
                 
@@ -233,18 +233,81 @@ class ReWOOSystem(System):
                     reflection_count += 1
                     logger.debug(f'Starting ReWOO reflection cycle {reflection_count}/{max_reflections}')
                     
-                    # **CRITICAL FIX**: Use the SAVED position from before the reflection loop
-                    # NOT the one that gets overwritten when _execute_rewoo_workflow() runs
-                    position_before = original_position_before_reflection
+                    # **NEW**: Dual feedback handling - check which agent has issues
+                    planner_correct = feedback_info.get('planner_correct', True)
+                    solver_correct = feedback_info.get('solver_correct', True)
+                    planner_reason = feedback_info.get('planner_reason', '')
+                    solver_reason = feedback_info.get('solver_reason', '')
                     
-                    # Reset with progress preservation for reflection continuation
-                    self.reset(preserve_progress=True)
+                    # Conditional rerun logic:
+                    # 1. If BOTH incorrect: Full rerun (Planner gets feedback, then Solver)
+                    # 2. If ONLY Planner incorrect: Full rerun (Planner gets feedback)
+                    # 3. If ONLY Solver incorrect: Solver-only reranking (no full rerun)
+                    # 4. If both correct: Stop reflecting
                     
-                    # Re-execute ReWOO workflow with reflection feedback
-                    result = self._execute_rewoo_workflow()
-                    
-                    # Check position after rerun
-                    position_after = self._get_ground_truth_position(self._last_final_answer)
+                    if not planner_correct:
+                        # Planner is incorrect - FULL RERUN needed
+                        logger.info(f"❌ Planner feedback triggered: {planner_reason}")
+                        logger.info(f"🔄 Applying Planner feedback and executing full ReWOO rerun...")
+                        
+                        # **CRITICAL FIX**: Use the SAVED position from before the reflection loop
+                        # NOT the one that gets overwritten when _execute_rewoo_workflow() runs
+                        position_before = original_position_before_reflection
+                        
+                        # Reset with progress preservation for reflection continuation
+                        self.reset(preserve_progress=True)
+                        
+                        # Add Planner feedback
+                        if 'reflections' not in self.planner_kwargs:
+                            self.planner_kwargs['reflections'] = ""
+                        
+                        reflection_feedback = f"\n=== Planning Improvement Required (Reflection Feedback) ===\n"
+                        reflection_feedback += f"{planner_reason}\n"
+                        reflection_feedback += f"CRITICAL: Revise your plan to address this specific issue.\n"
+                        
+                        self.planner_kwargs['reflections'] += reflection_feedback
+                        
+                        # If BOTH incorrect, also add Solver feedback for the solving phase
+                        if not solver_correct:
+                            logger.info(f"❌ Solver feedback also triggered: {solver_reason}")
+                            logger.info(f"📋 Applying feedback to BOTH Planner and Solver for full improvement")
+                            
+                            if 'solver_reflections' not in self.manager_kwargs:
+                                self.manager_kwargs['solver_reflections'] = ""
+                            
+                            solver_reflection_feedback = f"\n=== Solver Improvement Required (Reflection Feedback) ===\n"
+                            solver_reflection_feedback += f"{solver_reason}\n"
+                            solver_reflection_feedback += f"CRITICAL: Adjust your ranking to address this specific issue.\n"
+                            
+                            self.manager_kwargs['solver_reflections'] += solver_reflection_feedback
+                        
+                        # Re-execute full ReWOO workflow with planner feedback (and possibly solver feedback)
+                        result = self._execute_rewoo_workflow()
+                        
+                        # Check position after rerun
+                        position_after = self._get_ground_truth_position(self._last_final_answer)
+                        logger.info(f"📊 Full rerun complete - position: {position_before} → {position_after}")
+                        
+                    elif not solver_correct:
+                        # ONLY Solver is incorrect - SOLVER RERANKING only (no full rerun)
+                        logger.info(f"❌ Solver feedback triggered (solver-only reranking): {solver_reason}")
+                        logger.info(f"🔄 Applying Solver feedback and performing reranking (skipping full rerun for efficiency)...")
+                        
+                        position_before = self._get_ground_truth_position(self._last_final_answer)
+                        
+                        # Perform solver reranking WITHOUT full rerun
+                        reranked_answer = self._perform_solver_reranking(solver_reason)
+                        self.answer = self.finish(reranked_answer)
+                        result = self.answer  # Update result for tracking
+                        
+                        position_after = self._get_ground_truth_position(reranked_answer)
+                        logger.info(f"📊 Solver reranking complete - position: {position_before} → {position_after}")
+                        
+                    else:
+                        # Both correct - should not reach here, but handle gracefully
+                        logger.info("✅ Both Planner and Solver are correct - stopping reflection")
+                        should_continue_reflecting = False
+                        break
                     
                     # Get sample info for logging
                     sample_idx = getattr(self, '_current_sample_idx', -1)
@@ -257,31 +320,47 @@ class ReWOOSystem(System):
                         'user_id': user_id,
                         'gt_item': gt_item,
                         'position_before': position_before,
-                        'position_after': position_after
+                        'position_after': position_after,
+                        'feedback_type': 'both' if (not planner_correct and not solver_correct) else ('planner' if not planner_correct else 'solver')
                     }
                     self.reflection_all_reruns.append(rerun_info)
                     
                     # Track improvement if position improved (lower is better)
                     if position_before > 0 and position_after > 0 and position_after < position_before:
                         self.reflection_improvements.append(rerun_info)
-                        logger.info(f"✅ Reflection improved GT position: {position_before} → {position_after}")
+                        improvement_delta = position_before - position_after
+                        logger.info(f"✅ Reflection IMPROVED GT position: {position_before} → {position_after} (Δ{improvement_delta:+d})")
+                        logger.info(f"📈 Improvement rate: {len(self.reflection_improvements)}/{len(self.reflection_all_reruns)} reflections successful")
                         
                         # **CRITICAL**: Store the improved result to be returned for scoring
-                        best_result = result
+                        best_result = result if not solver_correct or planner_correct else self.finish(reranked_answer)
                         best_position = position_after
-                        logger.info(f"✅ Will return IMPROVED answer for scoring (position {position_before} → {position_after})")
-                        logger.info(f"✅ self.answer is now: {self.answer}")
+                        logger.info(f"✅ Will return IMPROVED answer for scoring")
+                    elif position_before > 0 and position_after > 0 and position_after > position_before:
+                        worsened_delta = position_after - position_before
+                        logger.warning(f"⚠️  Reflection WORSENED GT position: {position_before} → {position_after} (Δ{worsened_delta:+d})")
+                        logger.info(f"📊 Still keeping original answer (better than worsened version)")
                     else:
-                        logger.info(f"↩️  Reflection did NOT improve position (before: {position_before}, after: {position_after})")
+                        logger.info(f"↩️  Reflection did NOT change position (before: {position_before}, after: {position_after})")
                     
                     # Check if we should continue reflecting
-                    should_continue_reflecting = self._perform_reflection()
+                    should_continue_reflecting, feedback_info = self._perform_reflection()
                 
                 if reflection_count >= max_reflections:
                     logger.info(f'Stopped after {max_reflections} ReWOO reflection cycle to prevent infinite loops')
                 
+                # Log final reflection summary before returning
+                logger.info(f"\n{'='*80}")
+                logger.info(f"📊 REFLECTION CYCLE COMPLETE:")
+                logger.info(f"  Total reflections triggered: {len(self.reflection_all_reruns)}")
+                logger.info(f"  Successful improvements: {len(self.reflection_improvements)}")
+                if self.reflection_all_reruns:
+                    success_rate = len(self.reflection_improvements) / len(self.reflection_all_reruns) * 100
+                    logger.info(f"  Success rate: {success_rate:.1f}%")
+                logger.info(f"  Final answer GT position: {best_position}")
+                logger.info(f"{'='*80}\n")
+                
                 # **CRITICAL**: Return the best result found (either original or improved via rerun)
-                logger.info(f"ReWOO returning best answer with GT position: {best_position}")
                 return best_result
             else:
                 # Just perform reflection for logging purposes but don't rerun
@@ -342,20 +421,20 @@ class ReWOOSystem(System):
         # Always perform reflection on every sample
         return True, "Performing reflection on every sample for comprehensive quality assessment"
     
-    def _perform_reflection(self) -> bool:
+    def _perform_reflection(self) -> tuple[bool, dict]:
         """
-        Perform smart reflection only when necessary.
+        Perform dual feedback reflection for both Planner and Solver.
         
-        Reflection triggers:
-        - Final answer is empty/malformed
-        - Critical errors occurred during execution
-        - Random sampling (10% of cases for quality monitoring)
-        
-        Skip reflection when:
-        - Answer format is correct and complete
+        Returns:
+            tuple[bool, dict]: (should_continue_reflecting, feedback_info)
+            feedback_info contains:
+            - 'planner_correct': bool indicating if Planner is correct
+            - 'solver_correct': bool indicating if Solver is correct
+            - 'planner_reason': feedback for Planner if incorrect
+            - 'solver_reason': feedback for Solver if incorrect
         """
         if not self.reflector:
-            return False  # No reflector available, don't continue reflecting
+            return False, {}  # No reflector available, don't continue reflecting
         
         # Check if reflection is necessary
         should_reflect, skip_reason = self._should_perform_reflection()
@@ -363,9 +442,9 @@ class ReWOOSystem(System):
         if not should_reflect:
             logger.info(f"⏭️  Skipping reflection: {skip_reason}")
             self.log(f"**Reflection Skipped:** {skip_reason}", agent=self.reflector)
-            return False
+            return False, {}
         
-        logger.info(f"🔍 Performing reflection: {skip_reason}")
+        logger.info(f"🔍 Performing dual feedback reflection: {skip_reason}")
         
         # Build comprehensive scratchpad of ReWOO process
         if hasattr(self, '_last_solution') and hasattr(self, '_last_final_answer'):
@@ -382,68 +461,146 @@ class ReWOOSystem(System):
         with duration_tracker.track_agent_call('reflector'):
             self.reflector(input=self.input, scratchpad=rewoo_process)
         
+        feedback_info = {
+            'planner_correct': True,
+            'solver_correct': True,
+            'planner_reason': '',
+            'solver_reason': ''
+        }
+        
         if self.reflector.json_mode and self.reflector.reflections:
             try:
                 reflection_json = json.loads(self.reflector.reflections[-1])
                 
-                # Handle both single object and array of objects
-                if isinstance(reflection_json, list):
-                    logger.trace(f"Reflector returned array of {len(reflection_json)} objects. Evaluating all.")
-                    # If ANY object has correctness=false, treat overall as incorrect
-                    correctness = True
-                    reasons = []
-                    for item in reflection_json:
-                        if isinstance(item, dict) and 'correctness' in item:
-                            if not item['correctness']:
-                                correctness = False
-                                reasons.append(item.get('reason', 'No reason provided'))
-                            elif item['correctness'] and len(reflection_json) == 1:
-                                # Only use positive reason if it's the ONLY item
-                                reasons.append(item.get('reason', 'No reason provided'))
-                    reason = '\n'.join(f"- {r}" for r in reasons) if reasons else 'Multiple issues identified'
-                elif isinstance(reflection_json, dict):
-                    # Single object (expected format)
-                    correctness = reflection_json.get('correctness', False)
-                    reason = reflection_json.get('reason', 'No reason provided')
+                # NEW: Handle dual feedback format with separate Planner and Solver evaluation
+                if isinstance(reflection_json, dict):
+                    # Check for new dual format: {"Planner": {...}, "Solver": {...}}
+                    if 'Planner' in reflection_json and 'Solver' in reflection_json:
+                        logger.debug("Detected dual feedback format (Planner + Solver)")
+                        
+                        planner_feedback = reflection_json.get('Planner', {})
+                        solver_feedback = reflection_json.get('Solver', {})
+                        
+                        feedback_info['planner_correct'] = planner_feedback.get('correctness', True)
+                        feedback_info['solver_correct'] = solver_feedback.get('correctness', True)
+                        feedback_info['planner_reason'] = planner_feedback.get('reason', 'No reason provided')
+                        feedback_info['solver_reason'] = solver_feedback.get('reason', 'No reason provided')
+                        
+                        planner_status = "✅ Correct" if feedback_info['planner_correct'] else "❌ Incorrect"
+                        solver_status = "✅ Correct" if feedback_info['solver_correct'] else "❌ Incorrect"
+                        
+                        logger.debug(f"Reflection Results - Planner: {planner_status}, Solver: {solver_status}")
+                        
+                        self.log(f"**Dual Feedback Reflection Results:**\n"
+                                f"Planner: {planner_status}\n"
+                                f"Reason: {feedback_info['planner_reason']}\n\n"
+                                f"Solver: {solver_status}\n"
+                                f"Reason: {feedback_info['solver_reason']}", agent=self.reflector)
+                        
+                        # Log detailed reflection status
+                        logger.info(f"\n{'='*80}")
+                        logger.info(f"📊 REFLECTION ANALYSIS (Sample {getattr(self, '_current_sample_idx', 'N/A')}):")
+                        logger.info(f"{'='*80}")
+                        logger.info(f"Planner Status: {planner_status}")
+                        logger.info(f"Planner Feedback: {feedback_info['planner_reason']}")
+                        logger.info(f"Solver Status: {solver_status}")
+                        logger.info(f"Solver Feedback: {feedback_info['solver_reason']}")
+                        
+                        # Track reflection rerun trigger
+                        self.total_reflections_triggered += 1
+                        
+                        # **FIX**: Determine if we should continue reflecting (rerun or solver reranking needed)
+                        # Must trigger if EITHER Planner OR Solver is incorrect
+                        should_continue = not feedback_info['planner_correct'] or not feedback_info['solver_correct']
+                        
+                        # Log the decision
+                        if should_continue:
+                            if not feedback_info['planner_correct'] and not feedback_info['solver_correct']:
+                                logger.info(f"🔄 DECISION: Full ReWOO rerun (BOTH agents need improvement)")
+                            elif not feedback_info['planner_correct']:
+                                logger.info(f"🔄 DECISION: Full ReWOO rerun (Planner needs improvement)")
+                            else:
+                                logger.info(f"🔄 DECISION: Solver reranking only (Solver needs improvement)")
+                        else:
+                            logger.info(f"✅ DECISION: No improvement needed - continuing with original answer")
+                        logger.info(f"{'='*80}\n")
+                        
+                        # NOTE: Planner and Solver feedback is added in the forward() method
+                        # when we decide to do full rerun or solver reranking
+                        # This keeps the feedback application logic centralized in forward()
+                        
+                        return should_continue, feedback_info
+                    
+                    # Legacy fallback: single correctness object for backward compatibility
+                    else:
+                        logger.debug("Detected legacy single feedback format")
+                        
+                        correctness = reflection_json.get('correctness', False)
+                        reason = reflection_json.get('reason', 'No reason provided')
+                        
+                        feedback_info['planner_correct'] = correctness
+                        feedback_info['solver_correct'] = correctness
+                        feedback_info['planner_reason'] = reason
+                        feedback_info['solver_reason'] = reason
+                        
+                        if not correctness:
+                            logger.debug(f"ReWOO Reflection identified issues: {reason}")
+                            self.log(f"**ReWOO Reflection Issues Identified:**\n{reason}", agent=self.reflector)
+                            
+                            # Track reflection rerun trigger
+                            self.total_reflections_triggered += 1
+                            
+                            # Add reflection comment to planner_kwargs
+                            if 'reflections' not in self.planner_kwargs:
+                                self.planner_kwargs['reflections'] = ""
+                            
+                            reflection_feedback = f"\n=== Planning Improvement Required ===\n"
+                            reflection_feedback += f"{reason}\n"
+                            reflection_feedback += f"CRITICAL: Revise your plan to address this specific issue.\n"
+                            
+                            self.planner_kwargs['reflections'] += reflection_feedback
+                            
+                            return True, feedback_info  # Continue reflecting
+                        else:
+                            logger.debug(f"ReWOO Reflection confirms correctness: {reason}")
+                            self.log(f"**ReWOO Reflection Confirms Correctness:**\n{reason}", agent=self.reflector)
+                            return False, feedback_info  # Stop reflecting
+                
+                # Handle array format (legacy)
+                elif isinstance(reflection_json, list):
+                    logger.trace(f"Reflector returned array of {len(reflection_json)} objects. Converting to dual format.")
+                    # Convert array to dual format by checking first item
+                    if len(reflection_json) > 0 and isinstance(reflection_json[0], dict):
+                        correctness = reflection_json[0].get('correctness', False)
+                        reason = reflection_json[0].get('reason', 'No reason provided')
+                        
+                        feedback_info['planner_correct'] = correctness
+                        feedback_info['solver_correct'] = correctness
+                        feedback_info['planner_reason'] = reason
+                        feedback_info['solver_reason'] = reason
+                        
+                        should_continue = not correctness
+                        if not correctness:
+                            self.total_reflections_triggered += 1
+                        
+                        return should_continue, feedback_info
+                
                 else:
                     logger.error(f"Unexpected reflection JSON type: {type(reflection_json)}")
-                    return False
-                
-                if not correctness:
-                    logger.debug(f"ReWOO Reflection identified issues: {reason}")
-                    self.log(f"**ReWOO Reflection Issues Identified:**\n{reason}", agent=self.reflector)
-                    
-                    # Track reflection rerun trigger
-                    self.total_reflections_triggered += 1
-                    
-                    # Add reflection comment to planner_kwargs ONLY to prompt better planning
-                    if 'reflections' not in self.planner_kwargs:
-                        self.planner_kwargs['reflections'] = ""
-                    
-                    reflection_feedback = f"\n=== Planning Improvement Required ===\n"
-                    reflection_feedback += f"{reason}\n"
-                    reflection_feedback += f"CRITICAL: Revise your plan to address this specific issue.\n"
-                    
-                    self.planner_kwargs['reflections'] += reflection_feedback
-                    
-                    return True  # Continue reflecting (incorrect result)
-                else:
-                    logger.debug(f"ReWOO Reflection confirms correctness: {reason}")
-                    self.log(f"**ReWOO Reflection Confirms Correctness:**\n{reason}", agent=self.reflector)
-                    return False  # Stop reflecting (correct result)
+                    return False, feedback_info
                         
             except Exception as e:
                 logger.error(f'Invalid reflection JSON output: {self.reflector.reflections[-1]}')
                 logger.error(f'JSON parsing error: {e}')
                 # Continue execution even if reflection parsing fails
-                return False
+                return False, feedback_info
         else:
             # Non-JSON mode reflection - assume we should stop reflecting
             if self.reflector.reflections:
                 self.log(f"**ReWOO Reflection:**\n{self.reflector.reflections[-1]}", agent=self.reflector)
-            return False
+            return False, feedback_info
         
-        return False  # Default to not continue reflecting
+        return False, feedback_info  # Default to not continue reflecting
 
     def _perform_reflection_logging_only(self) -> None:
         """Perform reflection only for logging purposes without enabling reruns."""
@@ -700,6 +857,83 @@ class ReWOOSystem(System):
         scratchpad += f"Final Answer: {final_answer}\n"
         
         return scratchpad
+
+    def _perform_solver_reranking(self, solver_feedback: str) -> str:
+        """
+        Perform solver reranking without full rerun.
+        
+        Only the Solver receives feedback to improve ranking, without replanning or re-executing analysis.
+        Uses existing execution results from working phase.
+        
+        Args:
+            solver_feedback: Feedback from reflector for the Solver
+            
+        Returns:
+            str: Updated final answer from re-invoked Solver
+        """
+        logger.info("🔄 Performing Solver Reranking (without full rerun)")
+        
+        # Add solver feedback to manager_kwargs for Solver to use
+        solver_feedback_key = 'solver_reflections'
+        if solver_feedback_key not in self.manager_kwargs:
+            self.manager_kwargs[solver_feedback_key] = ""
+        
+        self.manager_kwargs[solver_feedback_key] += f"\n=== Solver Improvement Required (Reflection Feedback) ===\n"
+        self.manager_kwargs[solver_feedback_key] += f"{solver_feedback}\n"
+        self.manager_kwargs[solver_feedback_key] += f"CRITICAL: Adjust your ranking to address this specific issue.\n"
+        
+        # Re-invoke Solver with feedback, using SAME execution_results
+        logger.debug(f"Re-invoking Solver with feedback. Using existing execution results from working phase.")
+        with duration_tracker.track_agent_call('solver'):
+            reranked_solution = self.solver.invoke(self.current_plan, self.execution_results, self.task, **self.manager_kwargs)
+        
+        self.log(f"**ReWOO Reranked Solution (Solver Feedback):**\n{reranked_solution}", agent=self.solver)
+        
+        # Extract new final answer
+        reranked_answer = self.solver.extract_final_answer(reranked_solution, self.task)
+        
+        # CRITICAL: Filter out history items from the reranked answer
+        if self.task in ['sr'] and isinstance(reranked_answer, list):
+            # Extract history and candidate item IDs (same logic as _solving_phase)
+            history_item_ids = set()
+            if hasattr(self, 'data_sample') and self.data_sample is not None and 'history_item_id' in self.data_sample:
+                try:
+                    history_item_id_value = self.data_sample['history_item_id']
+                    if isinstance(history_item_id_value, str):
+                        history_item_ids = set(eval(history_item_id_value))
+                    elif isinstance(history_item_id_value, (list, set)):
+                        history_item_ids = set(history_item_id_value)
+                except Exception as e:
+                    logger.warning(f"Failed to extract history_item_id: {e}")
+                    history_item_ids = set()
+            
+            candidate_item_ids = set()
+            if hasattr(self, 'data_sample') and self.data_sample is not None and 'candidate_item_id' in self.data_sample:
+                try:
+                    candidate_item_id_value = self.data_sample['candidate_item_id']
+                    if isinstance(candidate_item_id_value, str):
+                        candidate_item_ids = set(eval(candidate_item_id_value))
+                    elif isinstance(candidate_item_id_value, (list, set)):
+                        candidate_item_ids = set(candidate_item_id_value)
+                except Exception as e:
+                    logger.warning(f"Failed to extract candidate_item_id: {e}")
+                    candidate_item_ids = set()
+            
+            # Filter answer to keep only candidate items
+            original_reranked = reranked_answer.copy()
+            reranked_answer = [item_id for item_id in reranked_answer if item_id in candidate_item_ids]
+            
+            if len(reranked_answer) != len(original_reranked):
+                removed_items = [item_id for item_id in original_reranked if item_id not in reranked_answer]
+                logger.warning(f"Reranked answer contained history items! Removed: {removed_items}")
+        
+        logger.info(f"Solver reranked answer: {reranked_answer}")
+        
+        # Store updated solution and answer
+        self._last_solution = reranked_solution
+        self._last_final_answer = reranked_answer
+        
+        return reranked_answer
 
     def _prepare_planning_query(self) -> str:
         """Prepare the query for the planner based on task and context using exact same data as collaboration system."""
