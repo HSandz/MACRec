@@ -360,17 +360,10 @@ class ReWOOSystem(System):
                 if reflection_count >= max_reflections:
                     logger.info(f'Stopped after {max_reflections} ReWOO reflection cycle to prevent infinite loops')
                 
-                # Log final reflection summary before returning
-                logger.info(f"\n{'='*80}")
-                logger.info(f"📊 REFLECTION CYCLE COMPLETE:")
-                logger.info(f"  Total reflections triggered: {len(self.reflection_all_reruns)}")
-                logger.info(f"  Successful improvements: {len(self.reflection_improvements)}")
+                # Log concise reflection summary
                 if self.reflection_all_reruns:
                     success_rate = len(self.reflection_improvements) / len(self.reflection_all_reruns) * 100
-                    logger.info(f"  Success rate: {success_rate:.1f}%")
-                logger.info(f"  Final answer GT position: {best_answer_position}")
-                logger.info(f"  Returning best answer from reflection process")
-                logger.info(f"{'='*80}\n")
+                    logger.info(f"Reflection complete: {len(self.reflection_improvements)}/{len(self.reflection_all_reruns)} improved ({success_rate:.1f}%), final GT position: {best_answer_position}")
                 
                 # **CRITICAL**: Ensure we're returning the best answer, not the latest one
                 # self.answer should already be the best answer (updated during reflection loop)
@@ -512,19 +505,10 @@ class ReWOOSystem(System):
                         logger.debug(f"Reflection Results - Planner: {planner_status}, Solver: {solver_status}")
                         
                         self.log(f"**Dual Feedback Reflection Results:**\n"
-                                f"Planner: {planner_status}\n"
-                                f"Reason: {feedback_info['planner_reason']}\n\n"
-                                f"Solver: {solver_status}\n"
-                                f"Reason: {feedback_info['solver_reason']}", agent=self.reflector)
-                        
-                        # Log detailed reflection status
-                        logger.info(f"\n{'='*80}")
-                        logger.info(f"📊 REFLECTION ANALYSIS (Sample {getattr(self, '_current_sample_idx', 'N/A')}):")
-                        logger.info(f"{'='*80}")
-                        logger.info(f"Planner Status: {planner_status}")
-                        logger.info(f"Planner Feedback: {feedback_info['planner_reason']}")
-                        logger.info(f"Solver Status: {solver_status}")
-                        logger.info(f"Solver Feedback: {feedback_info['solver_reason']}")
+                        f"Planner: {planner_status}\n"
+                        f"Reason: {feedback_info['planner_reason']}\n\n"
+                        f"Solver: {solver_status}\n"
+                        f"Reason: {feedback_info['solver_reason']}", agent=self.reflector)
                         
                         # Track reflection rerun trigger
                         self.total_reflections_triggered += 1
@@ -533,17 +517,14 @@ class ReWOOSystem(System):
                         # Must trigger if EITHER Planner OR Solver is incorrect
                         should_continue = not feedback_info['planner_correct'] or not feedback_info['solver_correct']
                         
-                        # Log the decision
+                        # Log concise decision (only when action is taken)
                         if should_continue:
                             if not feedback_info['planner_correct'] and not feedback_info['solver_correct']:
-                                logger.info(f"🔄 DECISION: Full ReWOO rerun (BOTH agents need improvement)")
+                                logger.info(f"🔄 Reflection: Full rerun needed (both agents)")
                             elif not feedback_info['planner_correct']:
-                                logger.info(f"🔄 DECISION: Full ReWOO rerun (Planner needs improvement)")
+                                logger.info(f"🔄 Reflection: Full rerun needed (planner)")
                             else:
-                                logger.info(f"🔄 DECISION: Solver reranking only (Solver needs improvement)")
-                        else:
-                            logger.info(f"✅ DECISION: No improvement needed - continuing with original answer")
-                        logger.info(f"{'='*80}\n")
+                                logger.info(f"🔄 Reflection: Solver reranking only")
                         
                         # NOTE: Planner and Solver feedback is added in the forward() method
                         # when we decide to do full rerun or solver reranking
