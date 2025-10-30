@@ -91,6 +91,13 @@ MANDATORY: You MUST rank ONLY these {len(candidate_ids)} candidate item IDs (in 
 DO NOT include any other item IDs in your ranking.
 """
         
+        # Extract solver reflections/feedback if present (for reranking scenarios)
+        reflection_feedback = ""
+        if 'solver_reflections' in kwargs and kwargs['solver_reflections']:
+            reflection_feedback = f"\n\n{'='*60}\n🔄 REFLECTION FEEDBACK - RERANKING REQUIRED\n{'='*60}\n"
+            reflection_feedback += kwargs['solver_reflections']
+            reflection_feedback += f"\n{'='*60}\n"
+        
         # Use config template (required)
         if 'solver_user_prompt' not in self.prompts:
             raise ValueError("solver_user_prompt not found in prompts config.")
@@ -99,6 +106,7 @@ DO NOT include any other item IDs in your ranking.
             plan=plan,
             worker_results=worker_results_text,
             original_query=original_query + candidate_ids_list,
+            reflection_feedback=reflection_feedback,
             task=task.upper()
         )
 

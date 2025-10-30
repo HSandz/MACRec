@@ -281,23 +281,78 @@ class EvaluateTask(GenerationTask):
                         log_file.write(f"Samples rerun by reflection: {len(all_reruns)}/{len(self.gt_positions)}\n")
                         
                         if all_reruns:
+                            # Categorize reruns by feedback type
+                            planner_only = [r for r in all_reruns if r.get('feedback_type') == 'planner']
+                            solver_only = [r for r in all_reruns if r.get('feedback_type') == 'solver']
+                            both_agents = [r for r in all_reruns if r.get('feedback_type') == 'both']
+                            
+                            # Calculate improvements by category
+                            def count_improvements(reruns):
+                                return sum(1 for r in reruns if r['position_after'] < r['position_before'] and r['position_before'] > 0)
+                            
+                            log_file.write("\n📊 BREAKDOWN BY FEEDBACK TYPE:\n")
+                            log_file.write(f"  • Planner only (full rerun):        {len(planner_only)} samples | {count_improvements(planner_only)} improved\n")
+                            log_file.write(f"  • Solver only (reranking):          {len(solver_only)} samples | {count_improvements(solver_only)} improved\n")
+                            log_file.write(f"  • Both agents (full rerun):         {len(both_agents)} samples | {count_improvements(both_agents)} improved\n")
+                            
+                            log_file.write("\n📈 DETAILED BREAKDOWN:\n")
                             log_file.write("All Reflection Reruns (sorted by improvement, positive = improved, negative = worsened):\n")
-                            log_file.write(f"{'Sample':<8} {'User':<8} {'GT Item':<10} {'Before':<10} {'After':<10} {'Improvement':<12}\n")
-                            log_file.write("-" * 68 + "\n")
+                            log_file.write(f"{'Sample':<8} {'User':<8} {'GT Item':<10} {'Before':<8} {'After':<8} {'Δ':<8} {'Feedback Type':<18}\n")
+                            log_file.write("-" * 80 + "\n")
                             
                             # Sort by improvement (most improved first, then least worsened)
                             sorted_reruns = sorted(all_reruns, key=lambda x: x['position_before'] - x['position_after'], reverse=True)
                             
                             for rerun_info in sorted_reruns:
                                 improvement = rerun_info['position_before'] - rerun_info['position_after']
+                                feedback_type = rerun_info.get('feedback_type', 'unknown')
+                                
+                                # Format improvement with emoji
+                                if improvement > 0:
+                                    improvement_str = f"✅ +{improvement}"
+                                elif improvement < 0:
+                                    improvement_str = f"⚠️  {improvement}"
+                                else:
+                                    improvement_str = "→ 0"
+                                
+                                # Format feedback type with emoji
+                                if feedback_type == 'planner':
+                                    feedback_str = "Planner (Full)"
+                                elif feedback_type == 'solver':
+                                    feedback_str = "Solver (Rerank)"
+                                elif feedback_type == 'both':
+                                    feedback_str = "Both (Full)"
+                                else:
+                                    feedback_str = "Unknown"
+                                
                                 log_file.write(
                                     f"{rerun_info['sample_idx']:<8} "
                                     f"{rerun_info['user_id']:<8} "
                                     f"{rerun_info['gt_item']:<10} "
-                                    f"{rerun_info['position_before']:<10} "
-                                    f"{rerun_info['position_after']:<10} "
-                                    f"{improvement:<12}\n"
+                                    f"{rerun_info['position_before']:<8} "
+                                    f"{rerun_info['position_after']:<8} "
+                                    f"{improvement_str:<8} "
+                                    f"{feedback_str:<18}\n"
                                 )
+                            
+                            # Add summary statistics at the end
+                            log_file.write("\n" + "="*80 + "\n")
+                            log_file.write("📊 REFLECTION STATISTICS:\n")
+                            improved_count = len(improvements)
+                            worsened_count = sum(1 for r in all_reruns if r['position_after'] > r['position_before'] and r['position_before'] > 0)
+                            unchanged_count = sum(1 for r in all_reruns if r['position_after'] == r['position_before'])
+                            
+                            log_file.write(f"  • Improved:   {improved_count:3d} samples (↓ position)\n")
+                            log_file.write(f"  • Worsened:   {worsened_count:3d} samples (↑ position)\n")
+                            log_file.write(f"  • Unchanged:  {unchanged_count:3d} samples (= position)\n")
+                            log_file.write(f"  • Success rate: {100*improved_count/len(all_reruns):.1f}%\n")
+                            
+                            # Calculate average improvement for improved samples
+                            if improved_count > 0:
+                                avg_improvement = sum(r['position_before'] - r['position_after'] for r in all_reruns if r['position_after'] < r['position_before'] and r['position_before'] > 0) / improved_count
+                                log_file.write(f"  • Average improvement (for improved samples): {avg_improvement:.2f} positions\n")
+                            
+                            log_file.write("="*80 + "\n")
 
         
 

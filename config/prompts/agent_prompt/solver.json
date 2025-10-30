@@ -21,6 +21,6 @@
     },
     "solver_user_prompt": {
         "type": "template",
-        "content": "{original_query}\n\nOriginal Plan:\n{plan}\n\nWorker Execution Results:\n{worker_results}\n\nBased on the above plan and execution results, please provide the final recommendation for this {task} task."
+        "content": "{original_query}\n\nOriginal Plan:\n{plan}\n\nWorker Execution Results:\n{worker_results}\n{reflection_feedback}\nBased on the above plan and execution results, please provide the final recommendation for this {task} task."
     }
 }
