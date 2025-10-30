@@ -360,13 +360,12 @@ class ReWOOSystem(System):
                 logger.info(f"  Final answer GT position: {best_position}")
                 logger.info(f"{'='*80}\n")
                 
-                # **CRITICAL**: Return the best result found (either original or improved via rerun)
-                return best_result
+                return self.answer
             else:
                 # Just perform reflection for logging purposes but don't rerun
                 self._perform_reflection_logging_only()
             
-            return result
+            return self.answer
                 
         except Exception as e:
             logger.error(f"Error in ReWOO forward: {e}")

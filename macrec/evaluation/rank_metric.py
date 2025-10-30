@@ -1,6 +1,7 @@
 import torch
 import torchmetrics
 from abc import abstractmethod
+from loguru import logger
 
 class RankMetric(torchmetrics.Metric):
     """
@@ -20,7 +21,14 @@ class RankMetric(torchmetrics.Metric):
     def update(self, output: dict) -> None:
         answer = output['answer']
         label = output['label']
-        metrics = self.metric_at_k(answer, label)
+        
+        # Handle string answers (from errors or fallback modes)
+        if isinstance(answer, str):
+            logger.warning(f"Received string answer instead of list: {answer}")
+            # Return 0 for all metrics when answer is invalid
+            metrics = {topk: 0 for topk in self.topks}
+        else:
+            metrics = self.metric_at_k(answer, label)
         for topk in self.topks:
             metric = metrics[topk]  # noqa: F841
             exec(f'self.at{topk} += metric')
@@ -55,6 +63,8 @@ class HitRatioAt(RankMetric):
     """
     def metric_at_k(self, answer: list[int], label: int) -> dict:
         result = {}
+        # Convert label to Python int to handle numpy types
+        label = int(label)
         for topk in self.topks:
             if label in answer[:topk]:
                 result[topk] = 1
@@ -72,6 +82,8 @@ class NDCGAt(RankMetric):
     """
     def metric_at_k(self, answer: list[int], label: int) -> dict:
         result = {}
+        # Convert label to Python int to handle numpy types
+        label = int(label)
         for topk in self.topks:
             try:
                 label_pos = answer.index(label) + 1
@@ -93,8 +105,13 @@ class MRRAt(RankMetric):
     """
     def metric_at_k(self, answer: list[int], label: int) -> dict:
         result = {}
+        # Convert label to Python int to handle numpy types
+        label = int(label)
         for topk in self.topks:
-            label_pos = answer.index(label) + 1
+            try:
+                label_pos = answer.index(label) + 1
+            except ValueError:
+                label_pos = topk + 1
             if label_pos <= topk:
                 result[topk] = 1 / torch.tensor(label_pos)
             else:
