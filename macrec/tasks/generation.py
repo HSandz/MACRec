@@ -187,7 +187,7 @@ class GenerationTask(Task):
                 record['user_id'] = data_sample.get('user_id', 'unknown')
                 
                 self.system.set_data(input=test_data, context="", gt_answer=gt_answer, data_sample=data_sample)
-                # **CRITICAL**: Store current sample_idx for reflection improvement tracking
+                # Store current sample_idx for reflection improvement tracking
                 self.system._current_sample_idx = sample_idx
                 self.system._current_user_id = record['user_id']
                 self.system.reset(clear=True)

@@ -81,7 +81,7 @@ class ReWOOSystem(System):
         self.reflection_all_reruns = []  # List of ALL samples that were rerun by reflection (improved or not)
         self.total_reflections_triggered = 0  # Count of reflection reruns triggered (when correctness=false)
         
-        # **CRITICAL**: Initialize sample tracking for reflection improvements
+        # Initialize sample tracking for reflection improvements
         self._current_sample_idx = -1  # Current sample index (set by generation task)
         self._current_user_id = -1  # Current user ID (set by generation task)
 
@@ -129,7 +129,7 @@ class ReWOOSystem(System):
 
     def reset(self, clear: bool = False, preserve_progress: bool = False, *args, **kwargs) -> None:
         """Reset the ReWOO system state."""
-        # **CRITICAL**: Save sample tracking info before reset
+        # Save sample tracking info before reset
         saved_sample_idx = getattr(self, '_current_sample_idx', -1)
         saved_user_id = getattr(self, '_current_user_id', -1)
         
@@ -157,8 +157,11 @@ class ReWOOSystem(System):
             # Reset planner reflection feedback
             if hasattr(self, 'planner_kwargs'):
                 self.planner_kwargs['reflections'] = ""
+            # Reset solver reflection feedback
+            if hasattr(self, 'manager_kwargs'):
+                self.manager_kwargs['solver_reflections'] = ""
         else:
-            # **CRITICAL**: Restore sample tracking info during reflection reruns
+            # Restore sample tracking info during reflection reruns
             self._current_sample_idx = saved_sample_idx
             self._current_user_id = saved_user_id
             
@@ -223,7 +226,7 @@ class ReWOOSystem(System):
             # Do NOT save it from instance attribute later, as it gets overwritten during reruns
             original_position_before_reflection = self._gt_position_before_reflection if hasattr(self, '_gt_position_before_reflection') else -1
             
-            # **CRITICAL**: Track the best answer throughout reflection process
+            # Track the best answer throughout reflection process
             # Start with the original answer as the best
             best_answer = self.answer.copy() if isinstance(self.answer, list) else self.answer
             best_answer_position = best_position
@@ -252,8 +255,8 @@ class ReWOOSystem(System):
                     
                     if not planner_correct:
                         # Planner is incorrect - FULL RERUN needed
-                        logger.info(f"❌ Planner feedback triggered: {planner_reason}")
-                        logger.info(f"🔄 Applying Planner feedback and executing full ReWOO rerun...")
+                        logger.info(f"Planner feedback triggered: {planner_reason}")
+                        logger.info(f"Applying Planner feedback and executing full ReWOO rerun...")
                         
                         # **CRITICAL FIX**: Use the SAVED position from before the reflection loop
                         # NOT the one that gets overwritten when _execute_rewoo_workflow() runs
@@ -274,8 +277,8 @@ class ReWOOSystem(System):
                         
                         # If BOTH incorrect, also add Solver feedback for the solving phase
                         if not solver_correct:
-                            logger.info(f"❌ Solver feedback also triggered: {solver_reason}")
-                            logger.info(f"📋 Applying feedback to BOTH Planner and Solver for full improvement")
+                            logger.info(f"Solver feedback also triggered: {solver_reason}")
+                            logger.info(f"Applying feedback to BOTH Planner and Solver for full improvement")
                             
                             if 'solver_reflections' not in self.manager_kwargs:
                                 self.manager_kwargs['solver_reflections'] = ""
@@ -284,7 +287,7 @@ class ReWOOSystem(System):
                             solver_reflection_feedback += f"{solver_reason}\n"
                             solver_reflection_feedback += f"CRITICAL: Adjust your ranking to address this specific issue.\n"
                             
-                            self.manager_kwargs['solver_reflections'] += solver_reflection_feedback
+                            self.manager_kwargs['solver_reflections'] = solver_reflection_feedback
                         
                         # Re-execute full ReWOO workflow with planner feedback (and possibly solver feedback)
                         result = self._execute_rewoo_workflow()
@@ -295,15 +298,14 @@ class ReWOOSystem(System):
                         
                     elif not solver_correct:
                         # ONLY Solver is incorrect - SOLVER RERANKING only (no full rerun)
-                        logger.info(f"❌ Solver feedback triggered (solver-only reranking): {solver_reason}")
-                        logger.info(f"🔄 Applying Solver feedback and performing reranking (skipping full rerun for efficiency)...")
+                        logger.info(f"Solver feedback triggered (solver-only reranking): {solver_reason}")
                         
                         position_before = self._get_ground_truth_position(self._last_final_answer)
                         
                         # Perform solver reranking WITHOUT full rerun
                         reranked_answer = self._perform_solver_reranking(solver_reason)
                         
-                        # **CRITICAL**: Store reranked answer directly, NOT the observation string from finish()
+                        # Store reranked answer directly, NOT the observation string from finish()
                         self.answer = reranked_answer
                         result = self.answer  # Update result for tracking
                         
@@ -339,16 +341,14 @@ class ReWOOSystem(System):
                         logger.info(f"✅ Reflection IMPROVED GT position: {position_before} → {position_after} (Δ{improvement_delta:+d})")
                         logger.info(f"📈 Improvement rate: {len(self.reflection_improvements)}/{len(self.reflection_all_reruns)} reflections successful")
                         
-                        # **CRITICAL**: Update best answer since this one is better
+                        # Update best answer
                         best_answer = self.answer.copy() if isinstance(self.answer, list) else self.answer
                         best_answer_position = position_after
                         best_position = position_after
                         logger.info(f"✅ Saving IMPROVED answer as best answer for scoring")
                     elif position_before > 0 and position_after > 0 and position_after > position_before:
                         worsened_delta = position_after - position_before
-                        logger.warning(f"⚠️  Reflection WORSENED GT position: {position_before} → {position_after} (Δ{worsened_delta:+d})")
-                        logger.warning(f"📊 Will REVERT to best answer (position {best_answer_position}) instead of worsened answer (position {position_after})")
-                        # **CRITICAL**: Restore the best answer since this rerun made things worse
+                        # Restore the best answer
                         self.answer = best_answer.copy() if isinstance(best_answer, list) else best_answer
                     else:
                         logger.info(f"↩️  Reflection did NOT change position (before: {position_before}, after: {position_after})")
@@ -364,14 +364,9 @@ class ReWOOSystem(System):
                 if self.reflection_all_reruns:
                     success_rate = len(self.reflection_improvements) / len(self.reflection_all_reruns) * 100
                     logger.info(f"Reflection complete: {len(self.reflection_improvements)}/{len(self.reflection_all_reruns)} improved ({success_rate:.1f}%), final GT position: {best_answer_position}")
-                
-                # **CRITICAL**: Ensure we're returning the best answer, not the latest one
-                # self.answer should already be the best answer (updated during reflection loop)
-                # but let's verify and restore if needed
+
                 current_position = self._get_ground_truth_position(self.answer)
                 if current_position != best_answer_position:
-                    logger.warning(f"⚠️  Current answer position ({current_position}) doesn't match best position ({best_answer_position})")
-                    logger.warning(f"⚠️  Restoring best answer for scoring")
                     self.answer = best_answer.copy() if isinstance(best_answer, list) else best_answer
                 
                 return self.answer
@@ -819,7 +814,7 @@ class ReWOOSystem(System):
         # Track ground truth position BEFORE reflection
         self._gt_position_before_reflection = self._get_ground_truth_position(final_answer)
         
-        # **CRITICAL**: Store the original answer before any reflection reruns
+        # Store the original answer before any reflection reruns
         # This is used to decide which answer to return (original vs improved via rerun)
         self._answer_before_reflection = final_answer.copy() if isinstance(final_answer, list) else final_answer
         
@@ -884,7 +879,6 @@ class ReWOOSystem(System):
             self.manager_kwargs[solver_feedback_key] = ""
         
         # Provide detailed feedback including the previous ranking
-        feedback_message = f"\n{'='*80}\n"
         feedback_message += f"=== SOLVER RERANKING REQUIRED (Reflection Feedback) ===\n"
         feedback_message += f"{'='*80}\n\n"
         feedback_message += f"📋 Your Previous Ranking:\n{previous_ranking}\n\n"
@@ -898,9 +892,8 @@ class ReWOOSystem(System):
         feedback_message += f"4. Produce an IMPROVED ranking that addresses the feedback\n"
         feedback_message += f"5. Ensure the new ranking is DIFFERENT from your previous one\n\n"
         feedback_message += f"CRITICAL: Your new ranking MUST be different from the previous one to address the feedback!\n"
-        feedback_message += f"{'='*80}\n"
         
-        self.manager_kwargs[solver_feedback_key] += feedback_message
+        self.manager_kwargs[solver_feedback_key] = feedback_message
         
         # Log the feedback being provided
         logger.info(f"📋 Providing Solver with previous ranking: {previous_ranking}")
@@ -952,16 +945,7 @@ class ReWOOSystem(System):
                 logger.warning(f"Reranked answer contained history items! Removed: {removed_items}")
         
         logger.info(f"Solver reranked answer: {reranked_answer}")
-        
-        # Compare with previous ranking to verify change
-        if previous_ranking != reranked_answer:
-            logger.success(f"✅ Solver produced DIFFERENT ranking after feedback!")
-            logger.info(f"   Previous: {previous_ranking}")
-            logger.info(f"   New:      {reranked_answer}")
-        else:
-            logger.warning(f"⚠️ Solver produced IDENTICAL ranking despite feedback!")
-            logger.warning(f"   Ranking:  {reranked_answer}")
-        
+
         # Store updated solution and answer
         self._last_solution = reranked_solution
         self._last_final_answer = reranked_answer
