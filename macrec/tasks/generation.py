@@ -179,16 +179,17 @@ class GenerationTask(Task):
         self.before_generate()
         with tqdm(total=len(data)) as pbar:
             for sample_idx, (test_data, gt_answer, data_sample) in enumerate(data):
-                # Log sample progress
-                logger.info(f"Sample: {sample_idx + 1}/{len(data)}")
+                # Log sample progress (1-indexed for display and storage)
+                sample_id = sample_idx + 1
+                logger.info(f"Sample: {sample_id}/{len(data)}")
                 
                 record = dict()
-                record['sample_id'] = sample_idx
+                record['sample_id'] = sample_id
                 record['user_id'] = data_sample.get('user_id', 'unknown')
                 
                 self.system.set_data(input=test_data, context="", gt_answer=gt_answer, data_sample=data_sample)
-                # Store current sample_idx for reflection improvement tracking
-                self.system._current_sample_idx = sample_idx
+                # Store current sample_id for reflection improvement tracking (1-indexed)
+                self.system._current_sample_idx = sample_id
                 self.system._current_user_id = record['user_id']
                 self.system.reset(clear=True)
                 

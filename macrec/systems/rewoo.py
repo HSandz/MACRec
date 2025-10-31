@@ -314,7 +314,7 @@ class ReWOOSystem(System):
                         
                     else:
                         # Both correct - should not reach here, but handle gracefully
-                        logger.info("✅ Both Planner and Solver are correct - stopping reflection")
+                        logger.info("Both Planner and Solver are correct - stopping reflection")
                         should_continue_reflecting = False
                         break
                     
@@ -338,14 +338,14 @@ class ReWOOSystem(System):
                     if position_before > 0 and position_after > 0 and position_after < position_before:
                         self.reflection_improvements.append(rerun_info)
                         improvement_delta = position_before - position_after
-                        logger.info(f"✅ Reflection IMPROVED GT position: {position_before} → {position_after} (Δ{improvement_delta:+d})")
+                        logger.info(f"Reflection improved GT position: {position_before} → {position_after} (improvement: {improvement_delta:+d})")
                         logger.info(f"📈 Improvement rate: {len(self.reflection_improvements)}/{len(self.reflection_all_reruns)} reflections successful")
                         
                         # Update best answer
                         best_answer = self.answer.copy() if isinstance(self.answer, list) else self.answer
                         best_answer_position = position_after
                         best_position = position_after
-                        logger.info(f"✅ Saving IMPROVED answer as best answer for scoring")
+                        logger.info(f"Saving improved answer as best answer for scoring")
                     elif position_before > 0 and position_after > 0 and position_after > position_before:
                         worsened_delta = position_after - position_before
                         # Restore the best answer
@@ -515,11 +515,11 @@ class ReWOOSystem(System):
                         # Log concise decision (only when action is taken)
                         if should_continue:
                             if not feedback_info['planner_correct'] and not feedback_info['solver_correct']:
-                                logger.info(f"🔄 Reflection: Full rerun needed (both agents)")
+                                logger.info(f"Reflection: Full rerun needed (both agents)")
                             elif not feedback_info['planner_correct']:
-                                logger.info(f"🔄 Reflection: Full rerun needed (planner)")
+                                logger.info(f"Reflection: Full rerun needed (planner)")
                             else:
-                                logger.info(f"🔄 Reflection: Solver reranking only")
+                                logger.info(f"Reflection: Solver reranking only")
                         
                         # NOTE: Planner and Solver feedback is added in the forward() method
                         # when we decide to do full rerun or solver reranking
@@ -827,29 +827,29 @@ class ReWOOSystem(System):
 
     def _build_rewoo_scratchpad(self, solution: str, final_answer: str) -> str:
         """Build a comprehensive scratchpad of the ReWOO process for reflection."""
-        scratchpad = f"\n=== ReWOO Process Summary ===\n"
+        scratchpad = f"ReWOO Process Summary\n"
         scratchpad += f"Task: {self.task.upper()}\n"
-        scratchpad += f"Original Query: {getattr(self, 'input', 'No input')}\n\n"
+        scratchpad += f"Query: {getattr(self, 'input', 'No input')}\n\n"
         
         # Phase 1: Planning
-        scratchpad += "=== Phase 1: Planning ===\n"
+        scratchpad += "Phase 1 - Planning:\n"
         if self.current_plan:
-            scratchpad += f"Generated Plan:\n{self.current_plan}\n\n"
+            scratchpad += f"{self.current_plan}\n\n"
         else:
-            scratchpad += "No plan generated - POTENTIAL ISSUE\n\n"
+            scratchpad += "No plan generated\n\n"
         
         # Phase 2: Working
-        scratchpad += "=== Phase 2: Working (Execution Results) ===\n"
+        scratchpad += "Phase 2 - Working Results:\n"
         if self.execution_results:
             for step_var, result in self.execution_results.items():
                 scratchpad += f"{step_var}: {result}\n"
         else:
-            scratchpad += "No execution results - POTENTIAL ISSUE\n"
+            scratchpad += "No execution results\n"
         scratchpad += "\n"
         
         # Phase 3: Solving
-        scratchpad += "=== Phase 3: Solving ===\n"
-        scratchpad += f"Solver Output:\n{solution}\n"
+        scratchpad += "Phase 3 - Solving:\n"
+        scratchpad += f"Solution: {solution}\n"
         scratchpad += f"Final Answer: {final_answer}\n"
         
         return scratchpad
@@ -867,7 +867,7 @@ class ReWOOSystem(System):
         Returns:
             str: Updated final answer from re-invoked Solver
         """
-        logger.info("🔄 Performing Solver Reranking (without full rerun)")
+        logger.info("Performing Solver Reranking (without full rerun)")
         
         # Get the previous ranking for comparison
         previous_ranking = self._last_final_answer if hasattr(self, '_last_final_answer') else []
@@ -879,25 +879,17 @@ class ReWOOSystem(System):
             self.manager_kwargs[solver_feedback_key] = ""
         
         # Provide detailed feedback including the previous ranking
-        feedback_message += f"=== SOLVER RERANKING REQUIRED (Reflection Feedback) ===\n"
-        feedback_message += f"{'='*80}\n\n"
-        feedback_message += f"📋 Your Previous Ranking:\n{previous_ranking}\n\n"
+        feedback_message = f"Previous ranking: {previous_ranking}\n"
         if previous_solution:
-            feedback_message += f"📝 Your Previous Reasoning:\n{previous_solution}\n\n"
-        feedback_message += f"❌ Issue Identified by Reflector:\n{solver_feedback}\n\n"
-        feedback_message += f"🎯 Required Action:\n"
-        feedback_message += f"1. Review your previous ranking above\n"
-        feedback_message += f"2. Understand the specific issue raised by the Reflector\n"
-        feedback_message += f"3. Re-analyze the user preferences and item characteristics\n"
-        feedback_message += f"4. Produce an IMPROVED ranking that addresses the feedback\n"
-        feedback_message += f"5. Ensure the new ranking is DIFFERENT from your previous one\n\n"
-        feedback_message += f"CRITICAL: Your new ranking MUST be different from the previous one to address the feedback!\n"
+            feedback_message += f"Previous solution: {previous_solution}\n\n"
+        feedback_message += f"Feedback: {solver_feedback}\n\n"
+        feedback_message += f"Required action: Review previous ranking, understand the feedback, re-analyze user preferences and items, and produce an improved ranking that addresses the feedback. The new ranking MUST be different from the previous one.\n"
         
         self.manager_kwargs[solver_feedback_key] = feedback_message
         
         # Log the feedback being provided
-        logger.info(f"📋 Providing Solver with previous ranking: {previous_ranking}")
-        logger.info(f"💬 Feedback: {solver_feedback}")
+        logger.info(f"Providing Solver with previous ranking: {previous_ranking}")
+        logger.info(f"Feedback: {solver_feedback}")
         
         # Re-invoke Solver with feedback, using SAME execution_results
         logger.debug(f"Re-invoking Solver with feedback. Using existing execution results from working phase.")
