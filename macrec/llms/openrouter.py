@@ -91,7 +91,7 @@ class OpenRouterLLM(BaseLLM):
     def _make_api_request(
         self,
         payload: Dict[str, Any],
-        timeout: int = 120
+        timeout: int = 180
     ) -> requests.Response:
         """Make a single API request without retry logic.
         
@@ -156,7 +156,7 @@ class OpenRouterLLM(BaseLLM):
             response = self.execute_with_retry(
                 self._make_api_request,
                 payload=payload,
-                timeout=120
+                timeout=180
             )
             
             # Log response summary for debugging
