@@ -4,7 +4,7 @@ langchain-community
 python-dotenv==1.0.0
 tenacity==8.2.2
 peft==0.7.1
-transformers==4.40.2
+transformers
 pandas>=1.5.3
 scikit-learn>=1.4.0
 wikipedia>=1.4.0
