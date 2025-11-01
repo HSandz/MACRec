@@ -88,12 +88,27 @@ class OpenSourceLLM(BaseLLM):
                     logger.info(f"Creating pipeline with model_kwargs: {list(model_kwargs.keys())}")
                     # Load model and tokenizer manually for better control
                     tokenizer = AutoTokenizer.from_pretrained(model_path)
-                    model = AutoModelForCausalLM.from_pretrained(
-                        model_path,
-                        **model_kwargs,
-                        torch_dtype="auto",
-                        trust_remote_code=True
-                    )
+                    
+                    try:
+                        model = AutoModelForCausalLM.from_pretrained(
+                            model_path,
+                            **model_kwargs,
+                            torch_dtype="auto",
+                            trust_remote_code=True
+                        )
+                    except ValueError as e:
+                        # Handle rope_scaling format issues with newer models like Llama 3.1
+                        if "rope_scaling" in str(e):
+                            logger.warning(f"RoPE scaling config issue detected, loading with attn_implementation='eager': {e}")
+                            model = AutoModelForCausalLM.from_pretrained(
+                                model_path,
+                                **model_kwargs,
+                                torch_dtype="auto",
+                                trust_remote_code=True,
+                                attn_implementation="eager"
+                            )
+                        else:
+                            raise
                     
                     # Create pipeline from loaded model
                     self.pipe = pipeline(
