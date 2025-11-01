@@ -1,13 +1,13 @@
 import json
 from loguru import logger
 from typing import Any, Dict, Optional
-from transformers import pipeline
+from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 from transformers.pipelines import Pipeline
 
 from macrec.llms.basellm import BaseLLM
 
 class OpenSourceLLM(BaseLLM):
-    def __init__(self, model_path: str = 'lmsys/vicuna-7b-v1.5-16k', device: int = 0, json_mode: bool = False, max_new_tokens: int = 300, do_sample: bool = True, temperature: float = 0.9, top_p: float = 1.0, agent_context: str = None, *args, **kwargs):
+    def __init__(self, model_path: str = 'lmsys/vicuna-7b-v1.5-16k', device: int = 0, json_mode: bool = False, max_new_tokens: int = 300, do_sample: bool = True, temperature: float = 0.9, top_p: float = 1.0, agent_context: str = None, load_in_8bit: bool = False, load_in_4bit: bool = False, device_map: str = 'auto', *args, **kwargs):
         """Initialize the OpenSource LLM. The OpenSource LLM is a wrapper of the HuggingFace pipeline.
 
         Args:
@@ -19,6 +19,9 @@ class OpenSourceLLM(BaseLLM):
             `temperature` (`float`, optional): The temperature of the generation. Defaults to `0.9`.
             `top_p` (`float`, optional): The top-p of the generation. Defaults to `1.0`.
             `agent_context` (`str`, optional): The context of the agent using this LLM (e.g., 'Manager', 'Analyst'). Defaults to None.
+            `load_in_8bit` (`bool`, optional): Whether to load model in 8-bit quantization. Defaults to `False`.
+            `load_in_4bit` (`bool`, optional): Whether to load model in 4-bit quantization. Defaults to `False`.
+            `device_map` (`str`, optional): Device mapping strategy ('auto', 'cpu', 'cuda'). Defaults to `'auto'`.
         """
         # Call parent constructor to initialize token tracking attributes
         super().__init__()
@@ -30,21 +33,77 @@ class OpenSourceLLM(BaseLLM):
         self.temperature = temperature
         self.top_p = top_p
         self.do_sample = do_sample
+        self.load_in_8bit = load_in_8bit
+        self.load_in_4bit = load_in_4bit
+        self.device_map = device_map
         
-        # Initialize the pipeline
+        # Initialize the pipeline with memory-efficient options
         try:
-            if device == 'auto':
-                self.pipe = pipeline("text-generation", model=model_path, device_map='auto')
+            # Prepare model loading kwargs based on quantization settings
+            model_kwargs = {}
+            self.pipe = None  # Initialize to None
+            
+            if load_in_4bit:
+                logger.info("Loading model with 4-bit quantization...")
+                try:
+                    from transformers import BitsAndBytesConfig
+                    bnb_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_use_double_quant=True,
+                        bnb_4bit_quant_type="nf4",
+                        bnb_4bit_compute_dtype="float16"
+                    )
+                    model_kwargs['quantization_config'] = bnb_config
+                    model_kwargs['device_map'] = device_map
+                except ImportError:
+                    logger.warning("bitsandbytes not available, falling back to standard loading")
+                    
+            elif load_in_8bit:
+                logger.info("Loading model with 8-bit quantization...")
+                model_kwargs['load_in_8bit'] = True
+                model_kwargs['device_map'] = device_map
             else:
-                # Check if device is available, fall back to CPU if not
-                import torch
-                if isinstance(device, int) and device >= 0:
-                    if not torch.cuda.is_available() or device >= torch.cuda.device_count():
-                        logger.warning(f"GPU device {device} not available, falling back to CPU")
-                        self.pipe = pipeline("text-generation", model=model_path, device='cpu')
-                    else:
-                        self.pipe = pipeline("text-generation", model=model_path, device=device)
+                # Standard loading with device map
+                if device_map == 'auto':
+                    model_kwargs['device_map'] = 'auto'
+                elif device == 'auto':
+                    logger.info(f"Using automatic device mapping for {model_path}")
+                    # Create pipeline directly with auto device map, set pipe to indicate it was created
+                    self.pipe = pipeline("text-generation", model=model_path, device_map='auto')
                 else:
+                    # Check if device is available, fall back to CPU if not
+                    import torch
+                    if isinstance(device, int) and device >= 0:
+                        if not torch.cuda.is_available() or device >= torch.cuda.device_count():
+                            logger.warning(f"GPU device {device} not available, falling back to CPU")
+                            model_kwargs['device_map'] = 'cpu'
+                        else:
+                            model_kwargs['device_map'] = device
+                    else:
+                        model_kwargs['device_map'] = device
+            
+            # Create pipeline with memory-efficient settings if needed
+            if self.pipe is None:  # Only if not already created above
+                if model_kwargs:
+                    logger.info(f"Creating pipeline with model_kwargs: {list(model_kwargs.keys())}")
+                    # Load model and tokenizer manually for better control
+                    tokenizer = AutoTokenizer.from_pretrained(model_path)
+                    model = AutoModelForCausalLM.from_pretrained(
+                        model_path,
+                        **model_kwargs,
+                        torch_dtype="auto",
+                        trust_remote_code=True
+                    )
+                    
+                    # Create pipeline from loaded model
+                    self.pipe = pipeline(
+                        "text-generation",
+                        model=model,
+                        tokenizer=tokenizer
+                    )
+                    logger.info(f"Pipeline created successfully with model {model_path}")
+                else:
+                    # Fallback to standard pipeline creation
                     self.pipe = pipeline("text-generation", model=model_path, device=device)
                 
             # Configure generation parameters
@@ -199,6 +258,20 @@ class OpenSourceLLM(BaseLLM):
                 
         # Use base class error handling that works for all LLM implementations
         except Exception as e:
+            # Check if it's a CUDA out of memory error and provide helpful guidance
+            error_msg = str(e).lower()
+            if 'cuda' in error_msg and 'out of memory' in error_msg:
+                logger.error(f"❌ CUDA Out of Memory: {e}")
+                logger.info("💡 To fix this, try one of the following:")
+                logger.info("   1. Use 4-bit or 8-bit quantization: pass load_in_4bit=True or load_in_8bit=True")
+                logger.info("   2. Use a smaller model variant")
+                logger.info("   3. Reduce max_new_tokens parameter")
+                logger.info("   4. Set PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True environment variable")
+                logger.info("   5. Clear other GPU processes to free up memory")
+                
+                # Return a meaningful error message
+                return f"Error: CUDA_OUT_OF_MEMORY - Insufficient GPU memory to load {self.model_name}"
+            
             # Use base class error handler for consistent error handling across all LLMs
             # This handles CUDA errors, memory errors, model loading errors, etc.
             return self.handle_api_error(e)

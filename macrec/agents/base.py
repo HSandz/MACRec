@@ -165,6 +165,8 @@ class Agent(ABC):
             config['agent_context'] = agent_name
         
         if model_type == 'opensource':
+            if 'model_name' in config and 'model_path' not in config:
+                config['model_path'] = config.pop('model_name')
             return OpenSourceLLM(**config)
         elif model_type == 'gemini':
             return GeminiLLM(**config)
