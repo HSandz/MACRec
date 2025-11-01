@@ -5,7 +5,7 @@
     },
     "reflect_prompt_json": {
         "type": "template", 
-        "content": "Analyze the complete ReWOO process (Planning, Working, Solving) and provide feedback for both Planner and Solver agents.\n\nPlanner Evaluation:\n- Did the plan decompose the task logically?\n- Were all necessary analysis steps included?\n- Was the plan specific and actionable?\n\nSolver Evaluation:\n- Did the solver correctly synthesize working phase results?\n- Does the final ranking match user preferences from analysis?\n- Is the reasoning sound and justified?\n\nProvide concise feedback (1-2 sentences per agent). Return ONLY the JSON object - no additional text.\n\n{examples}\nReWOO Process:\n{input}{scratchpad}\n\nJSON Response:"
+        "content": "Analyze the complete ReWOO process (Planning, Working, Solving) and provide precise, concise feedback for both Planner and Solver agents.\n\nPlanner Evaluation:\n- Did the plan decompose the task logically?\n- Were all necessary analysis steps included?\n- Was the plan specific and actionable?\n\nSolver Evaluation:\n- Did the solver correctly synthesize working phase results?\n- Does the final ranking match user preferences from analysis?\n- Is the reasoning sound and justified?\n\nProvide concise feedback (1-2 sentences per agent). Return ONLY the JSON object - no additional text.\n\n{examples}\nReWOO Process:\n{input}{scratchpad}\n\nJSON Response:"
     },
     "reflect_examples_json": {
         "type": "raw",
