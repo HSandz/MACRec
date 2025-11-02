@@ -9,6 +9,7 @@ import datetime
 
 from macrec.tasks.base import Task
 from macrec.utils import init_api, read_json, token_tracker, duration_tracker
+from macrec.utils.prompt_builder import PromptBuilder
 from macrec.systems import CollaborationSystem, ReWOOSystem
 
 class GenerationTask(Task):
@@ -30,64 +31,91 @@ class GenerationTask(Task):
         return parser
 
     def get_data(self, data_file: str, max_his: int) -> pd.DataFrame:
+        """Load minimal CSV data and initialize prompt builder."""
         df = pd.read_csv(data_file)
         
-        # Handle missing 'history' column
-        if 'history' not in df.columns:
-            df['history'] = 'None'
-        else:
-            df['history'] = df['history'].fillna('None')
-            df['history'] = df['history'].apply(lambda x: '\n'.join(x.split('\n')[-max_his:]))
+        # Initialize prompt builder for on-demand text formatting
+        data_dir = os.path.dirname(data_file)
+        self.prompt_builder = PromptBuilder(data_dir, self.dataset)
         
-        # Handle missing 'user_profile' column
-        if 'user_profile' not in df.columns:
-            df['user_profile'] = 'None'
+        # For SR tasks, determine n_candidate from first row
+        if self.task == 'sr' and 'candidate_item_id' in df.columns:
+            # Parse first candidate list to get count
+            import ast
+            first_candidates = df['candidate_item_id'].iloc[0]
+            if isinstance(first_candidates, str):
+                try:
+                    first_candidates = ast.literal_eval(first_candidates)
+                except:
+                    pass
+            
+            if isinstance(first_candidates, list):
+                self.n_candidate = len(first_candidates)
+                self.system_kwargs['n_candidate'] = self.n_candidate
+                logger.info(f"Detected {self.n_candidate} candidates for SR task")
         
-        if self.task == 'sr':
-            candidate_example: str = df['candidate_item_attributes'][0]
-            self.n_candidate = len(candidate_example.split('\n'))
-            self.system_kwargs['n_candidate'] = self.n_candidate  # Add n_candidate to system_kwargs by data sample
         return df
 
     def prompt_data(self, df: pd.DataFrame) -> list[tuple[str, int | float | str, pd.Series]]:
+        """Build prompts on-demand from minimal CSV data."""
         data_prompt = self.system.prompts['data_prompt']
-        if self.task == 'rp':
-            return [(data_prompt.format(
-                user_id=df['user_id'][i],
-                user_profile=df['user_profile'][i],
-                history=df['history'][i],
-                target_item_id=df['item_id'][i],
-                target_item_attributes=df['target_item_attributes'][i]
-            ), df['rating'][i], df.iloc[i]) for i in tqdm(range(len(df)), desc="Loading data")]
-        elif self.task == 'sr':
-            candidate_example: str = df['candidate_item_attributes'][0]
-            self.n_candidate = len(candidate_example.split('\n'))
-            return [(data_prompt.format(
-                user_id=df['user_id'][i],
-                user_profile=df['user_profile'][i],
-                history=df['history'][i],
-                candidate_item_attributes=df['candidate_item_attributes'][i]
-            ), df['item_id'][i], df.iloc[i]) for i in tqdm(range(len(df)), desc="Loading data") if df['rating'][i] >= 4]
-        elif self.task == 'rr':
-            # Retrieve & Rank: no candidate list in CSV; candidates must be provided
-            # Set a default n_candidate for validation purposes
-            self.system_kwargs['n_candidate'] = 6  # Default to 6 candidates for rr tasks
-            return [(data_prompt.format(
-                user_id=df['user_id'][i],
-                user_profile=df['user_profile'][i],
-                history=df['history'][i]
-            ), df['item_id'][i], df.iloc[i]) for i in tqdm(range(len(df)), desc="Loading data") if df['rating'][i] >= 4]
-        elif self.task == 'gen':
-            return [(data_prompt.format(
-                user_id=df['user_id'][i],
-                user_profile=df['user_profile'][i],
-                history=df['history'][i],
-                target_item_id=df['item_id'][i],
-                target_item_attributes=df['target_item_attributes'][i],
-                rating=df['rating'][i]
-            ), df['rating'][i], df.iloc[i]) for i in tqdm(range(len(df)), desc="Loading data")]
-        else:
-            raise NotImplementedError
+        prompts = []
+        
+        logger.info(f"Building prompts for {len(df)} samples...")
+        
+        for i in tqdm(range(len(df)), desc="Building prompts"):
+            row = df.iloc[i]
+            
+            # Build formatted fields on-demand
+            fields = self.prompt_builder.build_prompt_fields(row, max_his=self.max_his)
+            
+            # Build prompt based on task type
+            if self.task == 'rp':
+                prompt = data_prompt.format(
+                    user_id=row['user_id'],
+                    user_profile=fields['user_profile'],
+                    history=fields['history'],
+                    target_item_id=row['item_id'],
+                    target_item_attributes=fields['target_item_attributes']
+                )
+                target = row['rating']
+            
+            elif self.task == 'sr':
+                prompt = data_prompt.format(
+                    user_id=row['user_id'],
+                    user_profile=fields['user_profile'],
+                    history=fields['history'],
+                    candidate_item_attributes=fields['candidate_item_attributes']
+                )
+                target = row['item_id']
+            
+            elif self.task == 'rr':
+                # Retrieve & Rank: no candidate list in CSV; candidates provided by retrieval
+                prompt = data_prompt.format(
+                    user_id=row['user_id'],
+                    user_profile=fields['user_profile'],
+                    history=fields['history']
+                )
+                target = row['item_id']
+            
+            elif self.task == 'gen':
+                prompt = data_prompt.format(
+                    user_id=row['user_id'],
+                    user_profile=fields['user_profile'],
+                    history=fields['history'],
+                    target_item_id=row['item_id'],
+                    target_item_attributes=fields['target_item_attributes'],
+                    rating=row['rating']
+                )
+                target = row['rating']
+            
+            else:
+                raise NotImplementedError(f"Task {self.task} not implemented")
+            
+            prompts.append((prompt, target, row))
+        
+        logger.info(f"Built {len(prompts)} prompts")
+        return prompts
 
     def get_system(self, system: str, system_config: str):
         if system == 'collaboration':

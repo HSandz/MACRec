@@ -163,9 +163,13 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int) -> tuple[p
 
 def process_data(dir: str, n_neg_items: int = 9):
     """Process the amazon raw data and output the processed data to `dir`.
+    
+    Outputs minimal CSV files with only IDs and essential fields.
+    Text formatting (history, user_profile, item_attributes) is done on-demand during task execution.
 
     Args:
         `dir (str)`: the directory of the dataset, e.g. `'data/Beauty'`. The raw dataset will be downloaded into `'{dir}/raw_data'` if not exists. We supppose the base name of dir is the category name.
+        `n_neg_items (int)`: Number of negative items to sample for each positive interaction.
     """
     dataset = os.path.basename(dir)
 
@@ -183,50 +187,51 @@ def process_data(dir: str, n_neg_items: int = 9):
 
     dfs = append_his_info([train_df, dev_df, test_df], summary=True, neg=True)
     logger.info('Completed append history information to interactions')
-    for df in dfs:
-        # format history by list the historical item attributes
-        df['history'] = df['history_item_id'].apply(lambda x: item_df.loc[x]['item_attributes'].values.tolist())
-        # concat the attributes with item's rating
-        df['history'] = df.apply(lambda x: [f'{item_attributes}, UserComments: {summary} (rating: {rating})' for item_attributes, summary, rating in zip(x['history'], x['history_summary'], x['history_rating'])], axis=1)
-        # Separate each item attributes by a newline
-        df['history'] = df['history'].apply(lambda x: '\n'.join(x))
-        # add user profile for this interaction
-        df['user_profile'] = df['user_id'].apply(lambda x: 'unknown')
-        df['target_item_attributes'] = df['item_id'].apply(lambda x: item_df.loc[x]['item_attributes'])
-        # candidates id
-        df['candidate_item_id'] = df.apply(lambda x: [x['item_id']]+x['neg_item_id'], axis=1)
-
-        def shuffle_list(x):
-            random.shuffle(x)
-            return x
-
-        df['candidate_item_id'] = df['candidate_item_id'].apply(lambda x: shuffle_list(x))  # shuffle candidates id
-
-        # add item attributes
-        def candidate_attr(x):
-            candidate_item_attributes = []
-            for item_id, item_attributes in zip(x, item_df.loc[x]['item_attributes']):
-                candidate_item_attributes.append(f'{item_id}: {item_attributes}')
-            return candidate_item_attributes
-
-        df['candidate_item_attributes'] = df['candidate_item_id'].apply(lambda x: candidate_attr(x))
-        df['candidate_item_attributes'] = df['candidate_item_attributes'].apply(lambda x: '\n'.join(x))
-        # replace empty string with 'None'
-        for col in df.columns.to_list():
-            df[col] = df[col].apply(lambda x: 'None' if x == '' else x)
+    
+    logger.info('Finalizing data (keeping IDs only, no text formatting)...')
+    for i, df in enumerate(dfs):
+        df_name = ['train', 'dev', 'test'][i]
+        logger.info(f'Processing {df_name} set...')
+        
+        # Create candidate_item_id list: [target] + negatives
+        df['candidate_item_id'] = df.apply(lambda x: [x['item_id']] + x['neg_item_id'], axis=1)
+        
+        # Shuffle candidate items in-place
+        df['candidate_item_id'] = df['candidate_item_id'].apply(lambda x: random.sample(x, len(x)))
+        
+        # Convert list columns to string representation for CSV storage
+        df['history_item_id'] = df['history_item_id'].apply(lambda x: str(x) if isinstance(x, list) else x)
+        df['history_rating'] = df['history_rating'].apply(lambda x: str(x) if isinstance(x, list) else x)
+        df['history_summary'] = df['history_summary'].apply(lambda x: str(x) if isinstance(x, list) else x)
+        df['neg_item_id'] = df['neg_item_id'].apply(lambda x: str(x) if isinstance(x, list) else x)
+        df['candidate_item_id'] = df['candidate_item_id'].apply(lambda x: str(x) if isinstance(x, list) else x)
 
     train_df = dfs[0]
     dev_df = dfs[1]
     test_df = dfs[2]
+
+    # Create all.csv with all interactions (for retrieval tools)
     all_df = pd.concat([train_df, dev_df, test_df])
     all_df = all_df.sort_values(by=['timestamp'], kind='mergesort')
     all_df = all_df.reset_index(drop=True)
+    
+    # Create test.csv with one row per user (last interaction per user)
+    # Take the last interaction for each user from the test split
+    test_one_per_user = test_df.groupby('user_id').tail(1).reset_index(drop=True)
+    
+    logger.info(f'all.csv: {len(all_df)} interactions from {all_df["user_id"].nunique()} users')
+    logger.info(f'test.csv: {len(test_one_per_user)} samples (one per user)')
+
     logger.info('Outputing data to csv files...')
-    item_df.to_csv(os.path.join(dir, 'item.csv'))
-    train_df.to_csv(os.path.join(dir, 'train.csv'), index=False)
-    dev_df.to_csv(os.path.join(dir, 'dev.csv'), index=False)
-    test_df.to_csv(os.path.join(dir, 'test.csv'), index=False)
-    all_df.to_csv(os.path.join(dir, 'all.csv'), index=False)
+    try:
+        item_df.to_csv(os.path.join(dir, 'item.csv'))
+        all_df.to_csv(os.path.join(dir, 'all.csv'), index=False)
+        test_one_per_user.to_csv(os.path.join(dir, 'test.csv'), index=False)
+        logger.info('Successfully saved all CSV files (item.csv, all.csv, test.csv)')
+        logger.info('Files contain IDs only - text formatting will be done on-demand during task execution')
+    except Exception as e:
+        logger.error(f'Error saving CSV files: {e}')
+        raise
 
 if __name__ == '__main__':
     process_data(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'Books'))

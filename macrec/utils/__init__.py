@@ -6,6 +6,7 @@ from macrec.utils.decorator import run_once
 from macrec.utils.init import init_gemini_api, init_api, init_all_seeds
 from macrec.utils.parse import parse_action, parse_answer, init_answer
 from macrec.utils.prompts import read_prompts
+from macrec.utils.prompt_builder import PromptBuilder
 from macrec.utils.prompt_compression import get_prompt_compressor, compress_prompt, compress_if_needed, APIPromptCompressor
 from macrec.utils.string import format_step, format_last_attempt, format_reflections, format_history, format_chat_history, str2list, get_avatar
 from macrec.utils.token_tracking import token_tracker, TokenTracker
