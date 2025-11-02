@@ -65,6 +65,19 @@ scripts\preprocess.bat
 bash ./scripts/preprocess.sh
 ```
 
+#### Generate Embedding-Based Test Files
+
+Create test files with candidates selected from model embeddings (hard negatives):
+
+```bash
+# Generate test file with 20 embedding-based candidates
+python main.py --main GenerateEmbeddingTest \
+    --data_dir data/ml-100k \
+    --model_dir models/{model_name}/ml-100k \
+    --model_name {model_name} \
+    --n_candidates 20
+```
+
 ### 4. Run Your First Experiment
 
 ```bash
@@ -156,9 +169,10 @@ The following systems have been removed in favor of the improved architecture:
         - `base.py`: The base task class.
         - `calculate.py`: The task for calculating the metrics.
         - `chat.py`: The task for chatting with the `ChatSystem`.
-        - **`evaluate.py`**: The task for evaluating the system on the rating prediction or sequence recommendation tasks. The task is inherited from `generation.py`.
+        - **`evaluate.py`**: The task for evaluating the system on the rating prediction or sequence recommendation tasks. The task is inherited from `generation.py`. Auto-adjusts evaluation metrics (HR@10, NDCG@10) for test files with ≥20 candidates.
         - `feedback.py`: The task for selecting the feedback for the *Reflector*. The task is inherited from `generation.py`.
         - `generation.py`: The basic task for generating the answers from a dataset.
+        - **`generate_embedding_test.py`**: Generates test CSV files with embedding-based candidates using model embeddings (cosine similarity). Candidates are purely from top-K similar items, excluding user history.
         - `preprocess.py`: The task for preprocessing the dataset.
         - **`pure_generation.py`**: The task for generating the answers from a dataset without any evaluation. The task is inherited from `generation.py`.
         - `reward_update.py`: The task for calculating the reward function for the RLHF.
