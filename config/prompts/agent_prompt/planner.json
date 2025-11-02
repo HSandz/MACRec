@@ -25,6 +25,6 @@
     },
     "planner_sr_structure": {
         "type": "template",
-        "content": "\nDETECTED ENTITIES:\n- Target User: {user_id}\n- Candidate Items: {candidate_items}\n\nRECOMMENDED PLAN STRUCTURE:\n#E1 = Analyst[Analyze user {user_id}'s profile, interaction history, and extract genre preferences with rating patterns]\n{candidate_steps}\n\nIMPORTANT:\n- Each step should analyze ONE specific entity\n- Item steps must only list item attributes without relevance phrases\n- Solver will handle relevance matching and ranking"
+        "content": "RECOMMENDED PLAN STRUCTURE:\n#E1 = Analyst[Analyze user {user_id}'s profile, interaction history, and extract genre preferences with rating patterns]\n{candidate_steps}\n\nIMPORTANT:\n- Each step should analyze ONE specific entity\n- Item steps must only list item attributes without relevance phrases\n- Solver will handle relevance matching and ranking"
     }
 }
