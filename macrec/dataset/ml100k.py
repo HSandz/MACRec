@@ -174,8 +174,9 @@ def filter_data(data_df: pd.DataFrame, min_interactions: int = 5, max_iterations
 
 def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 9) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     data_df.columns = ['user_id', 'item_id', 'rating', 'timestamp']
-    # sort data_df by timestamp
-    data_df = data_df.sort_values(by=['timestamp'])
+    # sort data_df by timestamp using stable sort (mergesort)
+    # This preserves the original file order for items with the same timestamp
+    data_df = data_df.sort_values(by=['timestamp'], kind='mergesort')
     data_df = filter_data(data_df)
     
     if data_df.empty:
@@ -208,7 +209,11 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 9) -> tup
         return df
 
     def generate_dev_test(data_df: pd.DataFrame) -> tuple[list[pd.DataFrame], pd.DataFrame]:
-        """Generate dev and test sets by taking the last 2 interactions per user"""
+        """Generate dev and test sets by taking the last 2 interactions per user.
+        
+        For users with multiple items at the same timestamp, this will select the LAST item
+        according to the original file order (preserved by stable sort).
+        """
         result_dfs = []
         for idx in range(2):  # Take last 2 interactions for test and dev
             result_df = data_df.groupby('user_id').tail(1).copy()
@@ -304,9 +309,11 @@ def process_data(dir: str, n_neg_items: int = 9):
         try:
             user_df.to_csv(os.path.join(dir, 'user.csv'))
             item_df.to_csv(os.path.join(dir, 'item.csv'))
+            train_df.to_csv(os.path.join(dir, 'train.csv'), index=False)
+            dev_df.to_csv(os.path.join(dir, 'dev.csv'), index=False)
             all_df.to_csv(os.path.join(dir, 'all.csv'), index=False)
             test_one_per_user.to_csv(os.path.join(dir, 'test.csv'), index=False)
-            logger.info('Successfully saved all CSV files (user.csv, item.csv, all.csv, test.csv)')
+            logger.info('Successfully saved all CSV files (user.csv, item.csv, train.csv, dev.csv, all.csv, test.csv)')
             logger.info('Files contain IDs only - text formatting will be done on-demand during task execution')
         except Exception as e:
             logger.error(f'Error saving CSV files: {e}')

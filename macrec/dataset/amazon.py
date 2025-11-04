@@ -104,6 +104,8 @@ def reindex(data_df: pd.DataFrame, out_df: pd.DataFrame = None) -> tuple[dict, d
         out_df = data_df.rename(columns={'asin': 'item_id', 'reviewerID': 'user_id', 'overall': 'rating', 'unixReviewTime': 'timestamp'})
         out_df = out_df[['user_id', 'item_id', 'rating', 'summary', 'timestamp']]
         out_df = out_df.drop_duplicates(['user_id', 'item_id', 'timestamp'])
+        # Sort by timestamp and user_id using stable sort (mergesort)
+        # This ensures deterministic ordering when multiple records have the same timestamp
         out_df = out_df.sort_values(by=['timestamp', 'user_id'], kind='mergesort').reset_index(drop=True)
 
     # reindex (start from 1)
@@ -118,6 +120,8 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int) -> tuple[p
     out_df = data_df.rename(columns={'asin': 'item_id', 'reviewerID': 'user_id', 'overall': 'rating', 'unixReviewTime': 'timestamp'})
     out_df = out_df[['user_id', 'item_id', 'rating', 'summary', 'timestamp']]
     out_df = out_df.drop_duplicates(['user_id', 'item_id', 'timestamp'])
+    # Sort by timestamp and user_id using stable sort (mergesort)
+    # This ensures deterministic ordering when multiple records have the same timestamp
     out_df = out_df.sort_values(by=['timestamp', 'user_id'], kind='mergesort').reset_index(drop=True)
 
     # reindex (start from 1)

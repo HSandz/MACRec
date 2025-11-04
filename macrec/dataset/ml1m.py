@@ -147,8 +147,9 @@ def filter_data(data_df: pd.DataFrame) -> pd.DataFrame:
 
 def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 9) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     data_df.columns = ['user_id', 'item_id', 'rating', 'timestamp']
-    # Sort data_df by timestamp
-    data_df = data_df.sort_values(by=['timestamp'])
+    # sort data_df by timestamp using stable sort (mergesort)
+    # This preserves the original file order for items with the same timestamp
+    data_df = data_df.sort_values(by=['timestamp'], kind='mergesort')
     data_df = filter_data(data_df)
     
     # Get number of unique items and create clicked item set

@@ -195,8 +195,9 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 7, k_core
     data_df['timestamp'] = pd.to_datetime(data_df['timestamp'])
     data_df['timestamp'] = data_df['timestamp'].astype(np.int64) // 10**9
     
-    # Sort by timestamp
-    data_df = data_df.sort_values(by=['timestamp'])
+    # Sort by timestamp using stable sort (mergesort)
+    # This preserves the original file order for items with the same timestamp
+    data_df = data_df.sort_values(by=['timestamp'], kind='mergesort')
     data_df = filter_data(data_df, min_interactions=k_core)
     
     # Rename business_id to item_id
