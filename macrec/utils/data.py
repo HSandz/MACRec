@@ -64,7 +64,8 @@ def append_his_info(dfs: list[pd.DataFrame], summary: bool = False, neg: bool = 
         `list[pd.DataFrame]`: Appended dataframes.
     """
     all_df = pd.concat(dfs)
-    sort_df = all_df.sort_values(by=['timestamp', 'user_id'], kind='mergesort')
+    # Sort by timestamp only using stable sort to preserve original file order for timestamp ties
+    sort_df = all_df.sort_values(by=['timestamp'], kind='mergesort')
     position = []
     user_his = {}
     history_item_id = []
