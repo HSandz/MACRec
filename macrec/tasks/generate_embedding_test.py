@@ -9,12 +9,30 @@ from macrec.tasks.base import Task
 from macrec.utils import init_all_seeds
 
 
+class SimilarityMethod:
+    """Enum for similarity computation methods."""
+    COSINE = "cosine"
+    INNER_PRODUCT = "inner_product"
+
+
 class GenerateEmbeddingTestTask(Task):
     """Generate test CSV files with candidates selected using model embeddings.
     
-    This task reads user/item embeddings from a model directory and creates test files
-    where candidate items (including target) are the top-K most similar items based on
-    cosine similarity of embeddings.
+    Supports two types of models:
+    1. Collaborative Filtering (CF) models: Use user_embeddings.csv + item_embeddings.csv
+       - Examples: LightGCN, SGCL, NCF
+       - User representation: Direct user embedding
+    
+    2. Sequential Recommendation models: Use only item_embeddings.csv
+       - Examples: SASRec, GRU4Rec, Caser
+       - User representation: Mean of history item embeddings
+    
+    Creates test files where candidates are top-K most similar items based on
+    embedding similarity (purely from embeddings, GT may not be included).
+    
+    Supports two similarity methods:
+    1. Cosine similarity: Measures angle between vectors (normalized, scale-invariant)
+    2. Inner product: Raw dot product (sensitive to embedding magnitude)
     """
     
     @staticmethod
@@ -29,12 +47,18 @@ class GenerateEmbeddingTestTask(Task):
                           help='Number of candidate items including target (default: 20)')
         parser.add_argument('--test_file', type=str, default='test.csv',
                           help='Input test file name (default: test.csv)')
+        parser.add_argument('--similarity_method', type=str, default='cosine',
+                          choices=['cosine', 'inner_product'],
+                          help='Similarity computation method (default: cosine). '
+                               'Use "cosine" for normalized angle-based similarity or '
+                               '"inner_product" for raw dot product.')
         parser.add_argument('--seed', type=int, default=2024,
                           help='Random seed for reproducibility (default: 2024)')
         return parser
 
     def run(self, data_dir: str, model_dir: str, model_name: str, 
-            n_candidates: int = 20, test_file: str = 'test.csv', seed: int = 2024):
+            n_candidates: int = 20, test_file: str = 'test.csv', 
+            similarity_method: str = 'cosine', seed: int = 2024):
         """Generate embedding-based test file.
         
         Args:
@@ -43,6 +67,7 @@ class GenerateEmbeddingTestTask(Task):
             model_name: Name of the model (used in output filename)
             n_candidates: Number of candidates to select (including target)
             test_file: Name of input test file
+            similarity_method: Similarity computation method ('cosine' or 'inner_product')
             seed: Random seed
         """
         init_all_seeds(seed)
@@ -56,8 +81,6 @@ class GenerateEmbeddingTestTask(Task):
         # Validate inputs
         if not os.path.exists(test_path):
             raise FileNotFoundError(f"Test file not found: {test_path}")
-        if not os.path.exists(user_emb_path):
-            raise FileNotFoundError(f"User embeddings not found: {user_emb_path}")
         if not os.path.exists(item_emb_path):
             raise FileNotFoundError(f"Item embeddings not found: {item_emb_path}")
         
@@ -65,20 +88,38 @@ class GenerateEmbeddingTestTask(Task):
         df_test = pd.read_csv(test_path)
         logger.info(f"Loaded {len(df_test)} test samples")
         
-        logger.info(f"Loading user embeddings from: {user_emb_path}")
-        df_user_emb = pd.read_csv(user_emb_path)
-        user_embeddings = df_user_emb.set_index('user_id').values
-        user_ids = df_user_emb['user_id'].values
-        logger.info(f"Loaded embeddings for {len(user_ids)} users")
+        # Check if user embeddings exist (for CF models) or only item embeddings (for sequential models)
+        has_user_embeddings = os.path.exists(user_emb_path)
+        
+        if has_user_embeddings:
+            logger.info(f"Loading user embeddings from: {user_emb_path}")
+            df_user_emb = pd.read_csv(user_emb_path)
+            user_embeddings = df_user_emb.set_index('user_id').values
+            user_ids = df_user_emb['user_id'].values
+            logger.info(f"Loaded embeddings for {len(user_ids)} users")
+            user_id_to_idx = {uid: idx for idx, uid in enumerate(user_ids)}
+            model_type = "collaborative filtering"
+        else:
+            logger.info("No user embeddings found - using sequential recommendation mode")
+            logger.info("Will compute user representations from history item embeddings")
+            user_embeddings = None
+            user_id_to_idx = None
+            model_type = "sequential recommendation"
         
         logger.info(f"Loading item embeddings from: {item_emb_path}")
         df_item_emb = pd.read_csv(item_emb_path)
         item_embeddings = df_item_emb.set_index('item_id').values
         item_ids = df_item_emb['item_id'].values
         logger.info(f"Loaded embeddings for {len(item_ids)} items")
+        logger.info(f"Model type detected: {model_type}")
+        
+        # Validate similarity method
+        if similarity_method not in [SimilarityMethod.COSINE, SimilarityMethod.INNER_PRODUCT]:
+            raise ValueError(f"Unknown similarity method: {similarity_method}. "
+                           f"Choose from {[SimilarityMethod.COSINE, SimilarityMethod.INNER_PRODUCT]}")
+        logger.info(f"Similarity method: {similarity_method}")
         
         # Create mappings for fast lookup
-        user_id_to_idx = {uid: idx for idx, uid in enumerate(user_ids)}
         item_id_to_idx = {iid: idx for idx, iid in enumerate(item_ids)}
         
         logger.info(f"Computing item similarities and generating candidates...")
@@ -92,29 +133,50 @@ class GenerateEmbeddingTestTask(Task):
             history_str = row['history_item_id']
             if isinstance(history_str, str):
                 # Remove brackets and split
-                history_items = set(map(int, history_str.strip('[]').split(', ')))
+                history_items = list(map(int, history_str.strip('[]').split(', ')))
+                history_items_set = set(history_items)
             else:
-                history_items = set()
+                history_items = []
+                history_items_set = set()
             
-            # Check if user and item exist in embeddings
-            if user_id not in user_id_to_idx:
-                logger.warning(f"User {user_id} not found in embeddings, skipping")
-                continue
+            # Check if target item exists in embeddings
             if target_item_id not in item_id_to_idx:
                 logger.warning(f"Item {target_item_id} not found in embeddings, skipping")
                 continue
             
-            # Get user embedding
-            user_emb = user_embeddings[user_id_to_idx[user_id]].reshape(1, -1)
+            # Get user representation based on model type
+            if has_user_embeddings:
+                # Collaborative filtering model: use user embedding
+                if user_id not in user_id_to_idx:
+                    logger.warning(f"User {user_id} not found in embeddings, skipping")
+                    continue
+                user_emb = user_embeddings[user_id_to_idx[user_id]].reshape(1, -1)
+            else:
+                # Sequential model: aggregate history item embeddings
+                # Filter history items that exist in embeddings
+                valid_history = [h for h in history_items if h in item_id_to_idx]
+                
+                if len(valid_history) == 0:
+                    logger.warning(f"No valid history items for user {user_id}, skipping")
+                    continue
+                
+                # Get embeddings for history items and compute mean as user representation
+                history_embs = np.array([item_embeddings[item_id_to_idx[h]] for h in valid_history])
+                user_emb = np.mean(history_embs, axis=0).reshape(1, -1)
             
-            # Compute similarities with all items
-            similarities = cosine_similarity(user_emb, item_embeddings)[0]
+            # Compute similarities with all items using the specified method
+            if similarity_method == SimilarityMethod.COSINE:
+                similarities = cosine_similarity(user_emb, item_embeddings)[0]
+            elif similarity_method == SimilarityMethod.INNER_PRODUCT:
+                similarities = np.dot(user_emb, item_embeddings.T)[0]
+            else:
+                raise ValueError(f"Unknown similarity method: {similarity_method}")
             
             # Create candidate pool: exclude ONLY history items (NOT the target)
             # The target may or may not appear in the top-K candidates based on embeddings
             candidate_mask = np.ones(len(item_ids), dtype=bool)
             
-            for hist_item in history_items:
+            for hist_item in history_items_set:
                 if hist_item in item_id_to_idx:
                     candidate_mask[item_id_to_idx[hist_item]] = False  # Exclude history
             
