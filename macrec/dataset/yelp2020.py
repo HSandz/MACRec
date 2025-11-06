@@ -5,15 +5,16 @@ import tarfile
 import zipfile
 import pandas as pd
 import numpy as np
+from datetime import datetime
 from loguru import logger
 from langchain.prompts import PromptTemplate
 
 from macrec.utils import append_his_info
 
 def extract_data(dir: str):
-    """Extract Yelp2018 dataset if needed.
+    """Extract Yelp2020 dataset if needed.
     Note: The dataset must be manually downloaded from Kaggle:
-    https://www.kaggle.com/datasets/yelp-dataset/yelp-dataset/download?datasetVersionNumber=1
+    https://www.kaggle.com/datasets/yelp-dataset/yelp-dataset/download?datasetVersionNumber=2
     and placed in {dir}/raw_data/archive.zip or dataset.tgz
     """
     raw_path = os.path.join(dir, 'raw_data')
@@ -23,7 +24,7 @@ def extract_data(dir: str):
     
     # Check if already extracted
     if os.path.exists(review_file):
-        logger.info('Yelp2018 dataset already extracted')
+        logger.info('Yelp2020 dataset already extracted')
         return
     
     # Check for archive files (try .zip first, then .tgz)
@@ -43,12 +44,12 @@ def extract_data(dir: str):
         raise FileNotFoundError(
             f"Dataset file not found in: {raw_path}\n"
             "Please manually download from Kaggle:\n"
-            "https://www.kaggle.com/datasets/yelp-dataset/yelp-dataset/download?datasetVersionNumber=1\n"
+            "https://www.kaggle.com/datasets/yelp-dataset/yelp-dataset\n"
             f"and place it as: {raw_path}/archive.zip or {raw_path}/dataset.tgz"
         )
     
     # Extract based on file type
-    logger.info(f'Extracting Yelp2018 dataset from {archive_file}...')
+    logger.info(f'Extracting Yelp2020 dataset from {archive_file}...')
     try:
         if archive_type == 'zip':
             with zipfile.ZipFile(archive_file, 'r') as zip_ref:
@@ -66,31 +67,52 @@ def extract_data(dir: str):
             with tarfile.open(archive_file, 'r:gz') as tar:
                 tar.extractall(raw_path)
         
-        logger.info('Successfully extracted Yelp2018 dataset')
+        logger.info('Successfully extracted Yelp2020 dataset')
     except Exception as e:
         logger.error(f'Failed to extract dataset: {e}')
         raise
 
-def read_data(dir: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Read Yelp2018 raw data files."""
-    logger.info('Reading Yelp2018 review file...')
+def read_data(dir: str, start_date: str = '2019-01-01', end_date: str = '2019-12-31') -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Read Yelp2020 raw data files and filter by date range.
+    
+    Args:
+        dir: Directory containing the raw data files
+        start_date: Start date in 'YYYY-MM-DD' format (inclusive)
+        end_date: End date in 'YYYY-MM-DD' format (inclusive)
+    """
+    logger.info(f'Reading Yelp2020 review file with date filter: {start_date} to {end_date}...')
     review_file = os.path.join(dir, 'yelp_academic_dataset_review.json')
     
+    # Parse date range
+    start_timestamp = datetime.strptime(start_date, '%Y-%m-%d')
+    end_timestamp = datetime.strptime(end_date, '%Y-%m-%d')
+    
     reviews = []
+    total_reviews = 0
+    filtered_reviews = 0
+    
     with open(review_file, 'r', encoding='utf-8') as f:
         for line in f:
+            total_reviews += 1
             review = json.loads(line)
-            reviews.append({
-                'user_id': review['user_id'],
-                'business_id': review['business_id'],
-                'rating': review['stars'],
-                'timestamp': review['date']
-            })
+            review_date = datetime.strptime(review['date'], '%Y-%m-%d %H:%M:%S')
+            
+            # Filter by date range
+            if start_timestamp <= review_date <= end_timestamp:
+                reviews.append({
+                    'original_order': total_reviews,  # Track original file order
+                    'user_id': review['user_id'],
+                    'business_id': review['business_id'],
+                    'rating': review['stars'],
+                    'timestamp': review['date']
+                })
+                filtered_reviews += 1
     
     data_df = pd.DataFrame(reviews)
-    logger.info(f'Successfully read {data_df.shape[0]} reviews')
+    logger.info(f'Filtered {filtered_reviews} reviews from {total_reviews} total reviews ({filtered_reviews/total_reviews*100:.2f}%)')
+    logger.info(f'Date range: {start_date} to {end_date}')
     
-    logger.info('Reading Yelp2018 business file...')
+    logger.info('Reading Yelp2020 business file...')
     business_file = os.path.join(dir, 'yelp_academic_dataset_business.json')
     businesses = []
     with open(business_file, 'r', encoding='utf-8') as f:
@@ -107,7 +129,7 @@ def read_data(dir: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     business_df = pd.DataFrame(businesses)
     logger.info(f'Successfully read {business_df.shape[0]} businesses')
     
-    logger.info('Reading Yelp2018 user file...')
+    logger.info('Reading Yelp2020 user file...')
     user_file = os.path.join(dir, 'yelp_academic_dataset_user.json')
     users = []
     with open(user_file, 'r', encoding='utf-8') as f:
@@ -159,7 +181,7 @@ def process_item_data(business_df: pd.DataFrame, filtered_data_df: pd.DataFrame,
     
     return business_df
 
-def filter_data(data_df: pd.DataFrame, min_interactions: int = 10) -> pd.DataFrame:
+def filter_data(data_df: pd.DataFrame, min_interactions: int = 5) -> pd.DataFrame:
     """Apply k-core filtering with iterative process.
     
     Iteratively removes users and items with < min_interactions until convergence.
@@ -172,31 +194,42 @@ def filter_data(data_df: pd.DataFrame, min_interactions: int = 10) -> pd.DataFra
     
     # Iterative k-core filtering
     filter_before = -1
+    iteration = 0
     while filter_before != data_df.shape[0]:
         filter_before = data_df.shape[0]
+        iteration += 1
         # Remove users with < min_interactions
         data_df = data_df.groupby('user_id').filter(lambda x: len(x) >= min_interactions)
         # Remove items with < min_interactions
         data_df = data_df.groupby('business_id').filter(lambda x: len(x) >= min_interactions)
+        logger.info(f'  Iteration {iteration}: {data_df.shape[0]} interactions, '
+                   f'{data_df["user_id"].nunique()} users, {data_df["business_id"].nunique()} items')
     
     filtered_size = data_df.shape[0]
     filtered_users = data_df['user_id'].nunique()
     filtered_items = data_df['business_id'].nunique()
     
-    logger.info(f'{min_interactions}-core filtering: {original_size} -> {filtered_size} interactions')
-    logger.info(f'Users: {original_users} -> {filtered_users}, Items: {original_items} -> {filtered_items}')
+    logger.info(f'{min_interactions}-core filtering completed after {iteration} iterations:')
+    logger.info(f'  Interactions: {original_size} -> {filtered_size} ({filtered_size/original_size*100:.2f}%)')
+    logger.info(f'  Users: {original_users} -> {filtered_users} ({filtered_users/original_users*100:.2f}%)')
+    logger.info(f'  Items: {original_items} -> {filtered_items} ({filtered_items/original_items*100:.2f}%)')
     
     return data_df
 
-def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 7, k_core: int = 10) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict, dict]:
+def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 7, k_core: int = 5) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict, dict]:
     """Process interaction data with negative sampling."""
     # Convert timestamp
     data_df['timestamp'] = pd.to_datetime(data_df['timestamp'])
     data_df['timestamp'] = data_df['timestamp'].astype(np.int64) // 10**9
     
-    # Sort by timestamp using stable sort (mergesort)
+    # Sort by timestamp first, then by original_order to ensure stable sorting
     # This preserves the original file order for items with the same timestamp
-    data_df = data_df.sort_values(by=['timestamp'], kind='mergesort')
+    data_df = data_df.sort_values(by=['timestamp', 'original_order'], ascending=[True, True])
+    
+    # Drop original_order column after sorting (no longer needed)
+    data_df = data_df.drop(columns=['original_order'])
+    
+    logger.info(f'Applying {k_core}-core filtering...')
     data_df = filter_data(data_df, min_interactions=k_core)
     
     # Rename business_id to item_id
@@ -252,6 +285,7 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 7, k_core
     train_df = pd.concat([leave_df, train_df]).sort_index()
     
     # Apply negative sampling
+    logger.info('Applying negative sampling...')
     train_df = negative_sample(train_df)
     dev_df = negative_sample(dev_df)
     test_df = negative_sample(test_df)
@@ -260,25 +294,29 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 7, k_core
     
     return train_df, dev_df, test_df, data_df, user_id_map, item_id_map
 
-def process_data(dir: str, n_neg_items: int = 7, k_core: int = 10):
-    """Process Yelp2018 dataset.
+def process_data(dir: str, n_neg_items: int = 7, k_core: int = 5, start_date: str = '2019-01-01', end_date: str = '2019-12-31'):
+    """Process Yelp2020 dataset with 5-core filtering and date range filtering.
     
-    NEW: Outputs minimal CSV files with only IDs and essential fields.
+    Outputs minimal CSV files with only IDs and essential fields.
     Text formatting (history, user_profile, item_attributes) is done on-demand during task execution.
     
     Args:
         dir: Directory for the dataset
         n_neg_items: Number of negative items to sample for each positive interaction
-        k_core: Minimum interactions required per user/item (k-core filtering)
+        k_core: Minimum interactions required per user/item (k-core filtering, default 5)
+        start_date: Start date for filtering interactions (default '2019-01-01')
+        end_date: End date for filtering interactions (default '2019-12-31')
     """
-    logger.info(f'Starting to process Yelp2018 dataset in {dir}')
+    logger.info(f'Starting to process Yelp2020 dataset in {dir}')
+    logger.info(f'Configuration: k_core={k_core}, date_range=[{start_date}, {end_date}], n_neg_items={n_neg_items}')
     
     # Extract dataset if needed
     extract_data(dir)
     
     raw_data_dir = os.path.join(dir, "raw_data")
     
-    data_df, business_df, user_df = read_data(raw_data_dir)
+    # Read data with date filtering
+    data_df, business_df, user_df = read_data(raw_data_dir, start_date=start_date, end_date=end_date)
     
     logger.info('Processing interaction data...')
     train_df, dev_df, test_df, filtered_data_df, user_id_map, item_id_map = process_interaction_data(data_df, n_neg_items, k_core)
@@ -333,10 +371,34 @@ def process_data(dir: str, n_neg_items: int = 7, k_core: int = 10):
         test_one_per_user.to_csv(os.path.join(dir, 'test.csv'), index=False)
         logger.info('Successfully saved all CSV files (user.csv, item.csv, all.csv, test.csv)')
         logger.info('Files contain IDs only - text formatting will be done on-demand during task execution')
+        
+        # Save processing metadata
+        metadata = {
+            'k_core': k_core,
+            'start_date': start_date,
+            'end_date': end_date,
+            'n_neg_items': n_neg_items,
+            'num_users': int(user_df.shape[0]),
+            'num_items': int(item_df.shape[0]),
+            'num_interactions': int(len(all_df)),
+            'train_size': int(len(train_df)),
+            'dev_size': int(len(dev_df)),
+            'test_size': int(len(test_df))
+        }
+        metadata_file = os.path.join(dir, 'preprocessing_metadata.json')
+        with open(metadata_file, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        logger.info(f'Saved preprocessing metadata to {metadata_file}')
+        
     except Exception as e:
         logger.error(f'Error saving CSV files: {e}')
         raise
 
 if __name__ == '__main__':
-    process_data(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'Yelp2018'), k_core=10)
-
+    # Process with 5-core filtering and 2019 date range
+    process_data(
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'Yelp2020'),
+        k_core=5,
+        start_date='2019-01-01',
+        end_date='2019-12-31'
+    )
