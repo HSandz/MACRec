@@ -58,6 +58,48 @@ class GenerationTask(Task):
 
     def prompt_data(self, df: pd.DataFrame) -> list[tuple[str, int | float | str, pd.Series]]:
         """Build prompts on-demand from minimal CSV data."""
+        import ast
+        
+        # First pass: Filter samples where GT not in candidates (BEFORE building prompts)
+        if self.task in ['sr', 'rr'] and 'candidate_item_id' in df.columns:
+            logger.info(f"Pre-filtering samples for {self.task} task...")
+            valid_indices = []
+            skipped_count = 0
+            
+            for i in range(len(df)):
+                row = df.iloc[i]
+                gt_item = row['item_id']
+                candidate_ids = row['candidate_item_id']
+                
+                # Parse candidate list if it's a string
+                if isinstance(candidate_ids, str):
+                    try:
+                        candidate_ids = ast.literal_eval(candidate_ids)
+                    except:
+                        logger.warning(f"Failed to parse candidate_item_id for sample {i+1}, skipping")
+                        skipped_count += 1
+                        continue
+                
+                # Check if GT in candidates
+                if isinstance(candidate_ids, list):
+                    if gt_item in candidate_ids:
+                        valid_indices.append(i)
+                    else:
+                        logger.trace(f"Skipping sample {i+1} (User {row['user_id']}): GT item {gt_item} not in candidates")
+                        skipped_count += 1
+                else:
+                    # If candidates not a list, include by default
+                    valid_indices.append(i)
+            
+            # Filter dataframe to only valid samples
+            if skipped_count > 0:
+                logger.warning(f"Pre-filtered: Skipped {skipped_count}/{len(df)} samples where GT item not in candidates")
+                df = df.iloc[valid_indices].reset_index(drop=True)
+                logger.success(f"Building prompts for {len(df)} valid samples (filtered from {len(df) + skipped_count} total)")
+            else:
+                logger.info(f"All {len(df)} samples have GT in candidates")
+        
+        # Second pass: Build prompts only for valid samples
         data_prompt = self.system.prompts['data_prompt']
         prompts = []
         
