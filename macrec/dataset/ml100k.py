@@ -172,7 +172,37 @@ def filter_data(data_df: pd.DataFrame, min_interactions: int = 5, max_iterations
     
     return data_df
 
-def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 9) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def densify_index(data_df: pd.DataFrame) -> tuple[pd.DataFrame, dict, dict]:
+    """Densify user and item IDs to ensure sequential IDs starting from 1.
+    
+    This ensures deterministic and dense ID mapping after filtering.
+    Sorted to guarantee consistent mapping across runs.
+    
+    Args:
+        data_df: DataFrame with user_id and item_id columns
+        
+    Returns:
+        Tuple of (densified_df, user_id_map, item_id_map)
+    """
+    logger.info('Densifying index (remapping to sequential IDs)')
+    
+    # Sort to ensure deterministic mapping
+    unique_users = sorted(data_df['user_id'].unique())
+    unique_items = sorted(data_df['item_id'].unique())
+    
+    user_id_map = {old_id: new_id for new_id, old_id in enumerate(unique_users, start=1)}
+    item_id_map = {old_id: new_id for new_id, old_id in enumerate(unique_items, start=1)}
+    
+    logger.info(f'Mapped {len(user_id_map)} users: {min(unique_users)}-{max(unique_users)} → 1-{len(user_id_map)}')
+    logger.info(f'Mapped {len(item_id_map)} items: {min(unique_items)}-{max(unique_items)} → 1-{len(item_id_map)}')
+    
+    # Apply mapping
+    data_df['user_id'] = data_df['user_id'].map(user_id_map)
+    data_df['item_id'] = data_df['item_id'].map(item_id_map)
+    
+    return data_df, user_id_map, item_id_map
+
+def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 9) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict, dict]:
     data_df.columns = ['user_id', 'item_id', 'rating', 'timestamp']
     # sort data_df by timestamp using stable sort (mergesort)
     # This preserves the original file order for items with the same timestamp
@@ -181,6 +211,9 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 9) -> tup
     
     if data_df.empty:
         raise ValueError("No data remains after filtering. Consider reducing min_interactions parameter.")
+    
+    # Densify IDs after filtering (ensures sequential IDs: 1, 2, 3, ...)
+    data_df, user_id_map, item_id_map = densify_index(data_df)
     
     clicked_item_set = dict()
     for user_id, seq_df in data_df.groupby('user_id'):
@@ -233,7 +266,7 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 9) -> tup
     logger.info(f'Data split - Train: {len(train_df)}, Dev: {len(dev_df)}, Test: {len(test_df)}')
     logger.info(f'Unique users - Train: {train_df["user_id"].nunique()}, Dev: {dev_df["user_id"].nunique()}, Test: {test_df["user_id"].nunique()}')
     
-    return train_df, dev_df, test_df
+    return train_df, dev_df, test_df, user_id_map, item_id_map
 
 def process_data(dir: str, n_neg_items: int = 9):
     """Process the ml-100k raw data and output the processed data to `dir`.
@@ -263,10 +296,30 @@ def process_data(dir: str, n_neg_items: int = 9):
         logger.info(f'Number of items: {item_df.shape[0]}')
         
         logger.info('Processing interaction data...')
-        train_df, dev_df, test_df = process_interaction_data(data_df, n_neg_items)
+        train_df, dev_df, test_df, user_id_map, item_id_map = process_interaction_data(data_df, n_neg_items)
         logger.info(f'Number of train interactions: {train_df.shape[0]}')
         logger.info(f'Number of dev interactions: {dev_df.shape[0]}')
         logger.info(f'Number of test interactions: {test_df.shape[0]}')
+        
+        # Filter user_df and item_df to only include mapped IDs
+        # Note: user_id and item_id are the INDEX, not columns
+        logger.info('Filtering user and item metadata to match processed interactions...')
+        
+        # Filter users: keep only those in user_id_map (old IDs)
+        old_user_ids = list(user_id_map.keys())
+        user_df = user_df[user_df.index.isin(old_user_ids)].copy()
+        # Remap index to new IDs
+        user_df.index = user_df.index.map(user_id_map)
+        user_df.index.name = 'user_id'
+        logger.info(f'Filtered users: {len(user_df)}')
+        
+        # Filter items: keep only those in item_id_map (old IDs)
+        old_item_ids = list(item_id_map.keys())
+        item_df = item_df[item_df.index.isin(old_item_ids)].copy()
+        # Remap index to new IDs
+        item_df.index = item_df.index.map(item_id_map)
+        item_df.index.name = 'item_id'
+        logger.info(f'Filtered items: {len(item_df)}')
         
         logger.info('Appending history information...')
         dfs = append_his_info([train_df, dev_df, test_df], neg=True)
@@ -309,8 +362,6 @@ def process_data(dir: str, n_neg_items: int = 9):
         try:
             user_df.to_csv(os.path.join(dir, 'user.csv'))
             item_df.to_csv(os.path.join(dir, 'item.csv'))
-            train_df.to_csv(os.path.join(dir, 'train.csv'), index=False)
-            dev_df.to_csv(os.path.join(dir, 'dev.csv'), index=False)
             all_df.to_csv(os.path.join(dir, 'all.csv'), index=False)
             test_one_per_user.to_csv(os.path.join(dir, 'test.csv'), index=False)
             logger.info('Successfully saved all CSV files (user.csv, item.csv, train.csv, dev.csv, all.csv, test.csv)')

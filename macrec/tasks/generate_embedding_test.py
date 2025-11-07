@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 import os
 import pandas as pd
 import numpy as np
+import pickle
 from sklearn.metrics.pairwise import cosine_similarity
 from loguru import logger
 
@@ -52,13 +53,18 @@ class GenerateEmbeddingTestTask(Task):
                           help='Similarity computation method (default: cosine). '
                                'Use "cosine" for normalized angle-based similarity or '
                                '"inner_product" for raw dot product.')
+        parser.add_argument('--use_pkl', action='store_true',
+                          help='Use .pkl file with precomputed scores instead of embeddings')
+        parser.add_argument('--pkl_file', type=str, default='retrieved.pkl',
+                          help='PKL file name (default: retrieved.pkl)')
         parser.add_argument('--seed', type=int, default=2024,
                           help='Random seed for reproducibility (default: 2024)')
         return parser
 
     def run(self, data_dir: str, model_dir: str, model_name: str, 
             n_candidates: int = 20, test_file: str = 'test.csv', 
-            similarity_method: str = 'cosine', seed: int = 2024):
+            similarity_method: str = 'cosine', use_pkl: bool = False,
+            pkl_file: str = 'retrieved.pkl', seed: int = 2024):
         """Generate embedding-based test file.
         
         Args:
@@ -68,9 +74,16 @@ class GenerateEmbeddingTestTask(Task):
             n_candidates: Number of candidates to select (including target)
             test_file: Name of input test file
             similarity_method: Similarity computation method ('cosine' or 'inner_product')
+            use_pkl: Whether to use .pkl file with precomputed scores
+            pkl_file: Name of pkl file (if use_pkl=True)
             seed: Random seed
         """
         init_all_seeds(seed)
+        
+        # If using pkl file, delegate to pkl handler
+        if use_pkl:
+            return self._run_from_pkl(data_dir, model_dir, model_name, n_candidates, 
+                                     test_file, pkl_file, seed)
         
         # Paths
         test_path = os.path.join(data_dir, test_file)
@@ -215,6 +228,175 @@ class GenerateEmbeddingTestTask(Task):
                 gt_in_candidates_count += 1
         
         logger.info(f"Candidates per sample: {n_candidates} (purely from embeddings)")
+        logger.info(f"GT item in candidates: {gt_in_candidates_count}/{len(df_new_test)} ({gt_in_candidates_count/len(df_new_test)*100:.1f}%)")
+        
+        # Print sample
+        if len(df_new_test) > 0:
+            logger.info("\n=== Sample Output ===")
+            sample = df_new_test.iloc[0]
+            cands = eval(sample['candidate_item_id'])
+            gt = sample['item_id']
+            logger.info(f"User: {sample['user_id']}, Target: {gt}")
+            logger.info(f"Candidates: {sample['candidate_item_id']}")
+            logger.info(f"GT in candidates: {gt in cands}")
+            logger.info(f"Negatives: {sample['neg_item_id']}")
+
+    def _run_from_pkl(self, data_dir: str, model_dir: str, model_name: str,
+                      n_candidates: int, test_file: str, pkl_file: str, seed: int):
+        """Generate test file from precomputed data in .pkl file.
+
+        This matches pkl_to_csv.py behavior where candidates are taken directly from the model's
+        predictions, which may include items from the user's history.
+        
+        Args:
+            data_dir: Path to dataset directory
+            model_dir: Path to model directory containing .pkl file
+            model_name: Name of the model (used in output filename)
+            n_candidates: Number of candidates to select (truncates test_topk if needed)
+            test_file: Name of input test file
+            pkl_file: Name of pkl file containing test_topk/test_probs and test_labels
+            seed: Random seed
+        """
+        init_all_seeds(seed)
+        
+        # Paths
+        test_path = os.path.join(data_dir, test_file)
+        pkl_path = os.path.join(model_dir, pkl_file)
+        output_path = os.path.join(data_dir, f'test_{model_name}.csv')
+        
+        # Validate inputs
+        if not os.path.exists(test_path):
+            raise FileNotFoundError(f"Test file not found: {test_path}")
+        if not os.path.exists(pkl_path):
+            raise FileNotFoundError(f"PKL file not found: {pkl_path}")
+        
+        logger.info(f"Loading test data from: {test_path}")
+        df_test = pd.read_csv(test_path)
+        logger.info(f"Loaded {len(df_test)} test samples")
+        
+        # IMPORTANT: Sort by user_id to match PKL order (PKL is generated with users in sorted order)
+        logger.info("Sorting test data by user_id to match PKL order...")
+        df_test = df_test.sort_values('user_id').reset_index(drop=True)
+        logger.info(f"First 5 users after sorting: {df_test['user_id'].head(5).tolist()}")
+        
+        logger.info(f"Loading precomputed data from: {pkl_path}")
+        with open(pkl_path, 'rb') as f:
+            pkl_data = pickle.load(f)
+        
+        logger.info(f"PKL file keys: {list(pkl_data.keys())}")
+        
+        # ---- Find top-K candidates or compute from scores (EXACT same logic as pkl_to_csv.py) ----
+        topk_key = None
+        for key in ['test_topk', 'topk', 'candidates', 'test_candidates']:
+            if key in pkl_data:
+                topk_key = key
+                break
+        
+        scores_key = None
+        for key in ['test_probs', 'test_scores', 'scores', 'probs']:
+            if key in pkl_data:
+                scores_key = key
+                break
+        
+        if topk_key:
+            logger.info(f"Found pre-computed top-K candidates at key: '{topk_key}'")
+            test_topk = pkl_data[topk_key]
+            # Truncate if longer than n_candidates (same as pkl_to_csv.py)
+            test_topk = [list(c[:n_candidates]) for c in test_topk]
+            logger.info(f"Loaded candidates for {len(test_topk)} samples")
+        elif scores_key:
+            logger.info(f"Found scores matrix at key: '{scores_key}', computing top-{n_candidates} indices")
+            scores = np.array(pkl_data[scores_key])
+            logger.info(f"Scores shape: {scores.shape}")
+            
+            # Use argpartition for efficient top-K selection (EXACT same as pkl_to_csv.py)
+            topk_idx = np.argpartition(-scores, kth=min(n_candidates, scores.shape[1]-1), axis=1)[:, :n_candidates]
+            
+            # Sort the top-K for stable ranking (EXACT same as pkl_to_csv.py)
+            sorted_idx = np.argsort(-scores[np.arange(scores.shape[0])[:, None], topk_idx], axis=1)
+            test_topk = topk_idx[np.arange(scores.shape[0])[:, None], sorted_idx]
+            
+            # Convert to list of lists (NO +1 conversion - indices are already item IDs!)
+            test_topk = [indices.tolist() for indices in test_topk]
+            logger.info(f"Computed top-{n_candidates} candidates for {len(test_topk)} samples")
+        else:
+            raise ValueError(f"PKL file must contain either top-K candidates or scores. "
+                           f"Found keys: {list(pkl_data.keys())}")
+        
+        # Verify lengths match
+        if len(test_topk) != len(df_test):
+            logger.warning(f"PKL has {len(test_topk)} samples but test.csv has {len(df_test)} samples")
+            logger.warning(f"Will use minimum: {min(len(test_topk), len(df_test))}")
+        
+        # ---- Create user_id to PKL index mapping (same as pkl_to_csv.py) ----
+        user_key = None
+        for key in ['user_ids', 'user_list', 'users', 'test_user_ids']:
+            if key in pkl_data:
+                user_key = key
+                break
+        
+        if user_key:
+            logger.info(f"Found user_id mapping at key: '{user_key}'")
+            pkl_user_ids = np.array(pkl_data[user_key])
+            # Create mapping from user_id to index in PKL
+            user_to_pkl_idx = {uid: idx for idx, uid in enumerate(pkl_user_ids)}
+            logger.info(f"Created mapping for {len(user_to_pkl_idx)} users")
+        else:
+            logger.warning("No user_id mapping found in PKL. Assuming PKL order matches test.csv order.")
+            user_to_pkl_idx = None
+        
+        # ---- Generate CSV rows from test_topk (keep original CSV structure) ----
+        logger.info(f"Generating test CSV from top-K candidates...")
+        new_rows = []
+        
+        for idx, row in df_test.iterrows():
+            user_id = row['user_id']
+            target_item_id = row['item_id']
+            
+            # Find the correct PKL index for this user
+            if user_to_pkl_idx is not None:
+                if user_id not in user_to_pkl_idx:
+                    logger.warning(f"User {user_id} not found in PKL mapping, skipping")
+                    continue
+                pkl_idx = user_to_pkl_idx[user_id]
+            else:
+                # Fallback: assume order matches
+                pkl_idx = idx
+                if pkl_idx >= len(test_topk):
+                    logger.warning(f"PKL index {pkl_idx} out of range, skipping")
+                    continue
+            
+            # Get top-K candidates for this user from PKL (AS-IS, no filtering - same as pkl_to_csv.py)
+            candidate_items = list(test_topk[pkl_idx][:n_candidates])
+            
+            # All candidates are negatives except if GT happens to be in top-K
+            negative_item_ids = [item for item in candidate_items if item != target_item_id]
+            
+            # Create new row keeping ALL original columns, only updating candidate_item_id
+            new_row = row.copy()
+            new_row['neg_item_id'] = str(negative_item_ids)
+            new_row['candidate_item_id'] = str(candidate_items)
+            new_rows.append(new_row)
+            
+            if (len(new_rows)) % 100 == 0:
+                logger.info(f"Processed {len(new_rows)}/{len(df_test)} samples")
+        
+        # Create new dataframe and save (preserving original CSV structure)
+        df_new_test = pd.DataFrame(new_rows)
+        df_new_test.to_csv(output_path, index=False)
+        
+        logger.success(f"Generated {len(df_new_test)} test samples from PKL top-K")
+        logger.success(f"Output saved to: {output_path}")
+        
+        # Check how many samples have GT in candidates
+        gt_in_candidates_count = 0
+        for i in range(len(df_new_test)):
+            cands = eval(df_new_test.iloc[i]['candidate_item_id'])
+            gt = df_new_test.iloc[i]['item_id']
+            if gt in cands:
+                gt_in_candidates_count += 1
+        
+        logger.info(f"Candidates per sample: {n_candidates} (from model's top-K, includes history)")
         logger.info(f"GT item in candidates: {gt_in_candidates_count}/{len(df_new_test)} ({gt_in_candidates_count/len(df_new_test)*100:.1f}%)")
         
         # Print sample
