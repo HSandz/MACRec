@@ -290,7 +290,7 @@ def parse_answer(type: str, *args, **kwargs) -> dict[str, Any]:
         return parse_raw_answer(*args, **kwargs)
     elif type == 'rp':
         return parse_rating_answer(*args, **kwargs)
-    elif type == 'sr' or type == 'rr':
+    elif type == 'sr':
         return parse_ranking_answer(*args, **kwargs)
     else:
         raise NotImplementedError(f'Unsupported task: {type}')
@@ -309,7 +309,7 @@ def init_answer(type: str) -> Any:
         return ''
     elif type == 'rp':
         return 0
-    elif type == 'sr' or type == 'rr':
+    elif type == 'sr':
         return []
     else:
         raise NotImplementedError(f'Unsupported task: {type}')

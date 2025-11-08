@@ -3,8 +3,13 @@ from abc import ABC, abstractmethod
 from macrec.utils import read_json
 
 class Tool(ABC):
-    def __init__(self, config_path: str, *args, **kwargs) -> None:
-        self.config = read_json(config_path)
+    def __init__(self, config_path: str = None, config: dict = None, *args, **kwargs) -> None:
+        if config is not None:
+            self.config = config
+        elif config_path is not None:
+            self.config = read_json(config_path)
+        else:
+            self.config = {}
 
     @abstractmethod
     def reset(self) -> None:

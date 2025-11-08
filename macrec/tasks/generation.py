@@ -21,7 +21,7 @@ class GenerationTask(Task):
         parser.add_argument('--system', type=str, default='react', choices=['react', 'reflection', 'analyse', 'collaboration', 'rewoo'], help='System name')
         parser.add_argument('--system_config', type=str, required=True, help='System configuration file')
         parser.add_argument('--model', type=str, default='google/gemini-2.0-flash-001', help='Model name for all agents')
-        parser.add_argument('--task', type=str, default='rp', choices=['rp', 'sr', 'rr', 'gen'], help='Task name')
+        parser.add_argument('--task', type=str, default='sr', choices=['rp', 'sr', 'gen'], help='Task name')
         parser.add_argument('--max_his', type=int, default=10, help='Max history length')
         
         parser.add_argument('--openrouter', type=str, help='Use OpenRouter with specified model (e.g., --openrouter google/gemini-2.0-flash-001)')
@@ -61,7 +61,7 @@ class GenerationTask(Task):
         import ast
         
         # First pass: Filter samples where GT not in candidates (BEFORE building prompts)
-        if self.task in ['sr', 'rr'] and 'candidate_item_id' in df.columns:
+        if self.task == 'sr' and 'candidate_item_id' in df.columns:
             logger.info(f"Pre-filtering samples for {self.task} task...")
             valid_indices = []
             skipped_count = 0
@@ -128,15 +128,6 @@ class GenerationTask(Task):
                     user_profile=fields['user_profile'],
                     history=fields['history'],
                     candidate_item_attributes=fields['candidate_item_attributes']
-                )
-                target = row['item_id']
-            
-            elif self.task == 'rr':
-                # Retrieve & Rank: no candidate list in CSV; candidates provided by retrieval
-                prompt = data_prompt.format(
-                    user_id=row['user_id'],
-                    user_profile=fields['user_profile'],
-                    history=fields['history']
                 )
                 target = row['item_id']
             

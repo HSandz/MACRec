@@ -56,9 +56,9 @@ Original Query Data:
 {kwargs['input']}
 """
         
-        # For SR/RR tasks, extract and explicitly list candidate item IDs
+        # For SR tasks, extract and explicitly list candidate item IDs (will be moved to end)
         candidate_ids_list = ""
-        if task in ['sr', 'rr']:
+        if task == 'sr':
             # Extract candidate item IDs directly from data_sample CSV column (most reliable)
             if kwargs.get('data_sample') is not None and 'candidate_item_id' in kwargs['data_sample']:
                 try:
@@ -101,14 +101,18 @@ DO NOT include any other item IDs in your ranking.
         # Use config template (required)
         if 'solver_user_prompt' not in self.prompts:
             raise ValueError("solver_user_prompt not found in prompts config.")
-            
-        return self.prompts['solver_user_prompt'].format(
+        
+        # Build the prompt with candidate list at the END
+        base_prompt = self.prompts['solver_user_prompt'].format(
             plan=plan,
             worker_results=worker_results_text,
-            original_query=original_query + candidate_ids_list,
+            original_query=original_query,
             reflection_feedback=reflection_feedback,
             task=task.upper()
         )
+        
+        # Append candidate list instruction at the very end
+        return base_prompt + candidate_ids_list
 
     def forward(self, *args, **kwargs) -> str:
         """Forward pass - delegate to invoke method."""
@@ -123,6 +127,25 @@ DO NOT include any other item IDs in your ranking.
             # Prepare messages
             system_msg = self.system_message(task, **kwargs)
             user_msg = self.user_message(plan, worker_results, task, **kwargs)
+            
+            # Extract and log final candidate list for ranking tasks
+            if task == 'sr' and kwargs.get('data_sample') is not None and 'candidate_item_id' in kwargs['data_sample']:
+                try:
+                    candidate_item_id_value = kwargs['data_sample']['candidate_item_id']
+                    # Parse the list string representation
+                    if isinstance(candidate_item_id_value, str):
+                        candidate_ids = list(eval(candidate_item_id_value))
+                    elif isinstance(candidate_item_id_value, (list, set)):
+                        candidate_ids = list(candidate_item_id_value)
+                    else:
+                        candidate_ids = []
+                    
+                    if candidate_ids:
+                        logger.info(f"=" * 80)
+                        logger.info(f"FINAL CANDIDATE LIST TO RANK ({len(candidate_ids)} items): {candidate_ids}")
+                        logger.info(f"=" * 80)
+                except Exception as e:
+                    logger.warning(f"Failed to extract candidate list for logging: {e}")
             
             # Generate solution
             messages = [
@@ -159,7 +182,7 @@ DO NOT include any other item IDs in your ranking.
     def extract_final_answer(self, solution: str, task: str) -> Any:
         """Extract the final answer from the solution based on task type."""
         try:
-            if task == 'sr' or task == 'rr':
+            if task == 'sr':
                 # Extract ranked list of items from JSON response
                 import json
                 import re
@@ -286,7 +309,7 @@ DO NOT include any other item IDs in your ranking.
             logger.error(f"Error extracting final answer: {e}")
             
         # Fallback based on task type
-        if task in ['sr', 'rr']:
+        if task == 'sr':
             return [1311, 627, 71, 700, 938, 258, 858, 1091]  # Default candidate order
         elif task == 'rp':
             return 3.0  # Default rating

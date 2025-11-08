@@ -38,9 +38,12 @@ class Planner(Agent):
             if hasattr(self.system, 'interpreter') and self.system.interpreter:
                 available_workers.append("Interpreter")
         
+        # Retriever is always available as a tool
+        available_workers.append("Retriever")
+        
         # Default workers if system not available
         if not available_workers:
-            available_workers = ["Analyst", "Searcher", "Interpreter"]
+            available_workers = ["Analyst", "Searcher", "Interpreter", "Retriever"]
         
         workers_desc = ""
         if "Analyst" in available_workers:
@@ -49,6 +52,8 @@ class Planner(Agent):
             workers_desc += "- Searcher: Searches for relevant information in knowledge bases\n"
         if "Interpreter" in available_workers:
             workers_desc += "- Interpreter: Interprets natural language queries or requirements\n"
+        if "Retriever" in available_workers:
+            workers_desc += "- Retriever: Retrieves candidate items for a given user (MUST be called as 2nd step after user analysis)\n"
         
         # Load prompt from config (required)
         if 'planner_system_prompt' not in self.prompts:
@@ -84,33 +89,32 @@ class Planner(Agent):
         if 'reflections' in kwargs and kwargs['reflections'].strip():
             reflection_context = f"\n{kwargs['reflections']}\n"
         
-        # For SR tasks, provide specific planning guidance
+        # For SR/RP/Gen tasks, provide specific planning guidance
         planning_guidance = ""
-        if task == 'sr':
-            # Extract user ID and candidate items from query
+        if task in ['sr', 'rp', 'gen']:
+            # Extract user ID from query
             import re
             
             user_id_match = re.search(r'user[_\s]*id[:\]]*\s*(\d+)', query, re.IGNORECASE)
-            candidate_matches = re.findall(r'(\d+):\s*Title:', query)
             
-            if user_id_match and candidate_matches:
+            if user_id_match:
                 user_id = user_id_match.group(1)
-                candidate_items = ', '.join(candidate_matches[:8]) + "..."
                 
-                # Create candidate steps
-                candidate_steps = ""
-                for i, item_id in enumerate(candidate_matches[:6], start=3):
-                    candidate_steps += f"#E{i} = Analyst[Analyze candidate item {item_id} features and attributes]\n"
-                
-                # Use config template (required)
-                if 'planner_sr_structure' not in self.prompts:
-                    raise ValueError("planner_sr_structure not found in prompts config.")
-                    
-                planning_guidance = self.prompts['planner_sr_structure'].format(
-                    user_id=user_id,
-                    candidate_items=candidate_items,
-                    candidate_steps=candidate_steps
-                )
+                # NEW WORKFLOW: No candidate items in query, must use Retriever tool
+                # Build plan structure with Retriever as 2nd step and placeholder item references
+                planning_guidance = f"\nREQUIRED PLAN STRUCTURE:\n"
+                planning_guidance += f"#E1 = Analyst[Analyze user {user_id}'s profile, interaction history, and extract preferences]\n"
+                planning_guidance += f"#E2 = Retriever[Retrieve candidate items for user {user_id}] (depends on #E1)\n"
+                planning_guidance += f"#E3 = Analyst[Analyze 1st candidate item from #E2] (depends on #E2)\n"
+                planning_guidance += f"#E4 = Analyst[Analyze 2nd candidate item from #E2] (depends on #E2)\n"
+                planning_guidance += f"#E5 = Analyst[Analyze 3rd candidate item from #E2] (depends on #E2)\n"
+                planning_guidance += f"... (continue for more candidate items: 4th, 5th, 6th, etc.)\n\n"
+                planning_guidance += f"CRITICAL:\n"
+                planning_guidance += f"- Step 1 MUST analyze the user\n"
+                planning_guidance += f"- Step 2 MUST use Retriever to get candidate items\n"
+                planning_guidance += f"- Steps 3+ MUST analyze each candidate using ORDINAL references (1st, 2nd, 3rd, etc.)\n"
+                planning_guidance += f"- Do NOT use actual item IDs in the plan - use ordinal positions instead\n"
+                planning_guidance += f"- Each item analysis step must depend on #E2\n"
         
         # Use config template (required)
         if 'planner_user_prompt' not in self.prompts:
@@ -198,6 +202,11 @@ class Planner(Agent):
                     worker_part = action.split('[')[0].strip()
                     task_desc = action.split('[')[1].split(']')[0]
                     
+                    # Clean up task description by removing dependency annotations
+                    # Remove patterns like ", depends_on: #E2" or ", depends on #E2"
+                    import re
+                    task_desc = re.sub(r',\s*depends[_ ]on:\s*#E\d+', '', task_desc, flags=re.IGNORECASE).strip()
+                    
                     # The worker_part should be the worker type
                     worker_type = worker_part
                 elif '[' in action:
@@ -247,6 +256,8 @@ class Planner(Agent):
                 task_desc = step['task_description'].lower()
                 if 'analyz' in task_desc or 'examine' in task_desc or 'pattern' in task_desc:
                     step['worker_type'] = 'Analyst'
+                elif 'retrieve candidate' in task_desc or 'get candidate' in task_desc:
+                    step['worker_type'] = 'Retriever'
                 elif 'retrieve' in task_desc or 'search' in task_desc or 'candidate' in task_desc:
                     step['worker_type'] = 'Searcher'
                 elif 'rank' in task_desc or 'score' in task_desc or 'order' in task_desc:

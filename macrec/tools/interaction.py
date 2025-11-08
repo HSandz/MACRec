@@ -19,7 +19,6 @@ class InteractionRetriever(Tool):
             data_sample = self.data[(self.data['user_id'] == user_id) & (self.data['item_id'] == item_id)]
             
             # Handle cases where the (user, item) pair doesn't exist in interaction history
-            # This is common for SR/RR tasks where we query candidate items the user hasn't interacted with
             if len(data_sample) == 0:
                 # Pair not found - use the user's last interaction as temporal cutoff point
                 user_data = self.data[self.data['user_id'] == user_id]

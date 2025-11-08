@@ -67,15 +67,6 @@ def gen_page(system: System, task: str, dataset: str):
                 candidate_item_attributes=data_sample['candidate_item_attributes']
             )
             gt_answer = data_sample['item_id']
-        elif task == 'rr':
-            st.markdown('##### Retrieve & Rank:')
-            st.markdown('Candidates must be provided for ranking.')
-            system_input = data_prompt.format(
-                user_id=data_sample['user_id'],
-                user_profile=data_sample['user_profile'],
-                history=data_sample['history']
-            )
-            gt_answer = data_sample['item_id']
         elif task == 'gen':
             system_input = data_prompt.format(
                 user_id=data_sample['user_id'],
@@ -121,12 +112,6 @@ def gen_page(system: System, task: str, dataset: str):
                 elif task == 'sr':
                     answer = [f'{item_id}' if item_id != gt_answer else f'**{item_id}**' for item_id in answer]
                     add_chat_message('assistant', f'**Answer**: `{answer}`, Ground Truth: `{gt_answer}`')
-                elif task == 'rr':
-                    if isinstance(answer, list):
-                        answer = [f'{item_id}' if item_id != gt_answer else f'**{item_id}**' for item_id in answer]
-                        add_chat_message('assistant', f'**Answer**: `{answer}`, Ground Truth: `{gt_answer}`')
-                    else:
-                        add_chat_message('assistant', f'**Answer**: `{answer}`, Ground Truth: `{gt_answer}`')
                 elif task == 'gen':
                     add_chat_message('assistant', f'**Answer**: `{answer}`')
                     

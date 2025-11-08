@@ -5,7 +5,7 @@
     },
     "reflect_prompt_json": {
         "type": "template",
-        "content": "You are a reasoning agent that improves through self-reflection. Analyze the previous trial and provide a SINGLE overall assessment.\n\nFor 'rr' tasks, check:\n1. Genre preference accuracy based on user ratings\n2. Systematic ranking methodology\n3. User preference alignment\n\nIdentify problems and provide specific guidance for improvement. Focus on:\n- Genre preference weighting based on ratings\n- Systematic scoring methodology\n- Action format correctness\n\nReturn ONLY ONE JSON object with your overall assessment. If ANY critical issues exist, set correctness to false.\n\n{examples}\nPrevious trial:\nInput: {input}{scratchpad}\n\nReflection (return ONLY ONE JSON object):"
+        "content": "You are a reasoning agent that improves through self-reflection. Analyze the previous trial and provide a SINGLE overall assessment.\n\nCheck:\n1. Genre preference accuracy based on user ratings\n2. Systematic ranking methodology\n3. User preference alignment\n\nIdentify problems and provide specific guidance for improvement. Focus on:\n- Genre preference weighting based on ratings\n- Systematic scoring methodology\n- Action format correctness\n\nReturn ONLY ONE JSON object with your overall assessment. If ANY critical issues exist, set correctness to false.\n\n{examples}\nPrevious trial:\nInput: {input}{scratchpad}\n\nReflection (return ONLY ONE JSON object):"
     },
     "reflect_examples_json": {
         "type": "raw",

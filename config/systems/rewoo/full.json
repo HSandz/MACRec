@@ -2,7 +2,6 @@
     "supported_tasks": [
         "rp",
         "sr",
-        "rr",
         "gen",
         "chat"
     ],

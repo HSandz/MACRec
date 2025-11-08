@@ -26,7 +26,7 @@ class EvaluateTask(GenerationTask):
                 'valid_rmse': RMSE(),
                 'valid_mae': MAE(),
             })
-        elif self.task == 'sr' or self.task == 'rr':
+        elif self.task == 'sr':
             self.metrics = MetricDict({
                 'true_hit_rate': HitRatioAt(topks=topks),
                 'true_ndcg': NDCGAt(topks=topks),
@@ -149,8 +149,8 @@ class EvaluateTask(GenerationTask):
         user_id = record.get('user_id', 'unknown')
         logger.info(f"Sample {sample_id} (User {user_id}): system.finished={self.system.finished}, answer_type={type(answer)}, answer={answer}")
         
-        # Track ground truth position in ranked list for SR/RR tasks
-        if self.task in ['sr', 'rr'] and self.system.finished and isinstance(answer, list):
+        # Track ground truth position in ranked list for SR tasks
+        if self.task == 'sr' and self.system.finished and isinstance(answer, list):
             try:
                 if gt_answer in answer:
                     gt_position = answer.index(gt_answer) + 1  # 1-indexed position
@@ -204,8 +204,8 @@ class EvaluateTask(GenerationTask):
         
         self.metrics.report()
         
-        # Log ground truth position summary for SR/RR tasks (only to file)
-        if self.task in ['sr', 'rr'] and self.gt_positions:
+        # Log ground truth position summary for SR tasks (only to file)
+        if self.task == 'sr' and self.gt_positions:
             # Get the log file path from the task logger
             if hasattr(self, 'log_handler_id') and self.log_handler_id is not None:
                 # Get handler info to find the log file path
@@ -346,7 +346,7 @@ class EvaluateTask(GenerationTask):
         
 
     def run(self, steps: int, topks: list[int], *args, **kwargs):
-        assert kwargs['task'] in ['rp', 'sr', 'rr'], "Only support rating (rp) and ranking (sr/rr) tasks."
+        assert kwargs['task'] in ['rp', 'sr'], "Only support rating (rp) and ranking (sr) tasks."
         self.steps = steps
         self.topks = topks
         super().run(*args, **kwargs)

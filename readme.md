@@ -248,7 +248,6 @@ python main.py --main Test --data_file data/ml-100k/test.csv --system collaborat
 |------|-------------|-----------------|
 | **sr** | Sequential Recommendation | `--task sr` |
 | **rp** | Rating Prediction | `--task rp` |
-| **rr** | Retrieve & Rank | `--task rr` |
 | **gen** | Review Generation | `--task gen` |
 
 ### System Configurations

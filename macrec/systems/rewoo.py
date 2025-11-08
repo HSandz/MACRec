@@ -87,7 +87,7 @@ class ReWOOSystem(System):
 
     @staticmethod
     def supported_tasks() -> list[str]:
-        return ['rp', 'sr', 'rr', 'gen', 'chat']
+        return ['rp', 'sr', 'gen', 'chat']
 
     @property
     def planner(self) -> Optional['Planner']:
@@ -949,12 +949,28 @@ class ReWOOSystem(System):
         # Use the same input data as collaboration system
         base_query = getattr(self, 'input', 'No input provided')
         
+        num_candidates = None
+        if self.task in ['sr'] and hasattr(self, 'data_sample') and self.data_sample is not None:
+            if 'candidate_item_id' in self.data_sample:
+                try:
+                    candidate_item_id_value = self.data_sample['candidate_item_id']
+                    if isinstance(candidate_item_id_value, str):
+                        candidate_list = eval(candidate_item_id_value)
+                    elif isinstance(candidate_item_id_value, list):
+                        candidate_list = candidate_item_id_value
+                    else:
+                        candidate_list = []
+                    num_candidates = len(candidate_list)
+                except Exception as e:
+                    logger.warning(f"Failed to extract candidate count: {e}")
+        
         if self.task == 'sr':
-            return f"Sequential recommendation task: {base_query}"
+            query = f"Sequential recommendation task: {base_query}"
+            if num_candidates:
+                query += f"\n\nThere are {num_candidates} candidate items available. Create analysis steps for all {num_candidates} candidates."
+            return query
         elif self.task == 'rp':
             return f"Rating prediction task: {base_query}" 
-        elif self.task == 'rr':
-            return f"Retrieve and rank task: {base_query}"
         elif self.task == 'gen':
             return f"Review generation task: {base_query}"
         else:
@@ -1023,20 +1039,96 @@ class ReWOOSystem(System):
         
         return False
 
+    def _replace_ordinal_with_item_id(self, task_desc: str) -> str:
+        """
+        Replace ordinal references (1st, 2nd, 3rd, etc.) in task description with actual item IDs.
+        
+        Extracts item IDs from the Retriever step (#E2) result and replaces ordinals.
+        Example: "Analyze 3rd candidate item" -> "Analyze candidate item 258"
+        """
+        import re
+        import json
+        
+        # Check if we have Retriever results (#E2)
+        if '#E2' not in self.execution_results:
+            return task_desc
+        
+        retriever_result = self.execution_results['#E2']
+        
+        # Extract item IDs from retriever result
+        # Format 1 (JSON - most reliable): "JSON: [{"item_id": 258, "title": "...", "genres": "..."}]"
+        # Format 2 (with attributes): "- 258 (Title, Genres: ...)\n- 700 (Title, Genres: ...)"
+        # Format 3 (without attributes): "Retrieved 8 candidate items for user 821: 258, 700, 627, 858, 71, 1311, 1091, 938"
+        item_ids = []
+        
+        # Try to extract from JSON format first (most reliable)
+        json_match = re.search(r'JSON:\s*(\[.*?\])', retriever_result, re.DOTALL)
+        if json_match:
+            try:
+                candidates_json = json.loads(json_match.group(1))
+                item_ids = [item['item_id'] for item in candidates_json]
+                logger.info(f"✓ Extracted {len(item_ids)} item IDs from Retriever (JSON format): {item_ids}")
+            except (json.JSONDecodeError, KeyError) as e:
+                logger.warning(f"Failed to parse JSON from Retriever result: {e}")
+        
+        # Fallback 1: Try multi-line format with attributes
+        if not item_ids:
+            attribute_matches = re.findall(r'-\s*(\d+)\s*\(', retriever_result)
+            if attribute_matches:
+                item_ids = [int(x) for x in attribute_matches]
+                logger.info(f"✓ Extracted {len(item_ids)} item IDs from Retriever (attribute format): {item_ids}")
+        
+        # Fallback 2: Try simple comma-separated format
+        if not item_ids:
+            match = re.search(r'candidate items.*?:\s*([\d,\s]+)', retriever_result)
+            if match:
+                item_ids_str = match.group(1)
+                item_ids = [int(x.strip()) for x in item_ids_str.split(',') if x.strip().isdigit()]
+                logger.info(f"✓ Extracted {len(item_ids)} item IDs from Retriever (comma format): {item_ids}")
+        
+        if not item_ids:
+            logger.warning(f"Could not extract item IDs from Retriever result: {retriever_result}")
+            return task_desc
+        
+        # Replace ordinal references with actual item IDs
+        ordinal_map = {
+            '1st': 0, '2nd': 1, '3rd': 2, '4th': 3, '5th': 4,
+            '6th': 5, '7th': 6, '8th': 7, '9th': 8, '10th': 9
+        }
+        
+        for ordinal, index in ordinal_map.items():
+            if ordinal in task_desc and index < len(item_ids):
+                # Replace "Analyze 3rd candidate item" with "Analyze candidate item 258"
+                task_desc = task_desc.replace(f'{ordinal} candidate item', f'candidate item {item_ids[index]}')
+        
+        return task_desc
+    
     def _execute_step(self, step: Dict[str, Any]) -> str:
         """Execute a single plan step using the appropriate worker with real data exactly like collaboration system."""
         worker_type = step['worker_type']
         task_desc = step['task_description']
         
         # Replace dependency references with actual results
+        # EXCEPT for #E2 (Retriever) in Analyst tasks - those are handled by _replace_ordinal_with_item_id
         for dep in step['dependencies']:
             if dep in self.execution_results:
+                # Skip replacing #E2 in Analyst task descriptions to avoid verbose repetition
+                if worker_type.lower() == 'analyst' and dep == '#E2':
+                    continue
                 task_desc = task_desc.replace(dep, str(self.execution_results[dep]))
         
-        # Get worker agent and execute using the same patterns as collaboration system
-        worker = self._get_worker_agent(worker_type)
-        if worker is None:
-            return f"Worker {worker_type} not available"
+        # Replace ordinal references (1st, 2nd, 3rd) with actual item IDs from Retriever
+        if worker_type.lower() == 'analyst':
+            task_desc = self._replace_ordinal_with_item_id(task_desc)
+        
+        # Handle Retriever separately since it's a tool, not an agent
+        if worker_type.lower() == 'retriever':
+            worker = None
+        else:
+            # Get worker agent and execute using the same patterns as collaboration system
+            worker = self._get_worker_agent(worker_type)
+            if worker is None:
+                return f"Worker {worker_type} not available"
         
         try:
             # Get json_mode setting - prefer manager's setting, but fallback to worker's own setting
@@ -1081,6 +1173,66 @@ class ReWOOSystem(System):
                 
                 # Update entity cache with new data from this step
                 self._update_entity_cache(args, result)
+                    
+            elif worker_type.lower() == 'retriever':
+                # Handle Retriever tool to get candidate items
+                logger.debug(f"Retriever args: {task_desc}, type: {type(task_desc)}")
+                
+                # Extract user_id from task description or kwargs
+                import re
+                user_id_match = re.search(r'user\s+(\d+)', task_desc, re.IGNORECASE)
+                if user_id_match:
+                    user_id = int(user_id_match.group(1))
+                elif 'user_id' in self.kwargs:
+                    user_id = int(self.kwargs['user_id'])
+                else:
+                    user_id = 1  # Default fallback
+                
+                # Use the CandidateRetriever tool
+                from macrec.tools import TOOL_MAP
+                if 'retriever' in TOOL_MAP:
+                    retriever_class = TOOL_MAP['retriever']
+                    # Create retriever instance with config
+                    config_path = 'config/tools/retriever.json'
+                    
+                    # Load base config and add item_info path based on dataset
+                    from macrec.utils import read_json
+                    import os
+                    retriever_config = read_json(config_path)
+                    
+                    # Determine item_info path from the current dataset
+                    item_info_path = None
+                    
+                    # Try agent_kwargs['info_database'] first (if agents use InfoDatabase tool)
+                    if hasattr(self, 'agent_kwargs') and 'info_database' in self.agent_kwargs:
+                        info_db_config = self.agent_kwargs['info_database']
+                        if 'item_info' in info_db_config:
+                            item_info_path = info_db_config['item_info']
+                            logger.info(f"✓ Got item_info from agent_kwargs['info_database']: {item_info_path}")
+                    
+                    # Fallback: construct from dataset name in agent_kwargs
+                    if item_info_path is None and hasattr(self, 'agent_kwargs') and 'dataset' in self.agent_kwargs:
+                        dataset_name = self.agent_kwargs['dataset']
+                        item_info_path = os.path.join('data', dataset_name, 'item.csv')
+                        logger.info(f"✓ Constructed item_info path from dataset '{dataset_name}': {item_info_path}")
+                    
+                    # Add to config if found
+                    if item_info_path is not None:
+                        retriever_config['item_info'] = item_info_path
+                        logger.info(f"✓✓ Set retriever item_info path to: {item_info_path}")
+                    else:
+                        logger.warning("⚠⚠ Could not determine item_info path for Retriever")
+                    
+                    retriever = retriever_class(config=retriever_config)
+                    
+                    # Reset with current data sample
+                    retriever.reset(data_sample=self.data_sample)
+                    
+                    # Retrieve candidates
+                    with duration_tracker.track_agent_call('retriever'):
+                        result = retriever.retrieve_candidates(user_id=user_id, k=10)
+                else:
+                    result = "Retriever tool not found in TOOL_MAP"
                     
             elif worker_type.lower() == 'searcher':
                 logger.debug(f"Searcher args: {task_desc}, type: {type(task_desc)}")
@@ -1291,19 +1443,6 @@ class ReWOOSystem(System):
         # Use exact same logic as collaboration system
         if self.max_step == self.step_n:
             self.scratchpad += f'\nHint: {self.manager.hint}'
-        
-        # Add progress reminder for rr tasks (same as collaboration)
-        if self.task == 'rr' and hasattr(self, 'analyzed_items'):
-            analyzed_count = len(self.analyzed_items)
-            if 'retrieved_items' in self.manager_kwargs:
-                remaining = [item for item in self.manager_kwargs['retrieved_items'] if item not in self.analyzed_items]
-                if remaining:
-                    progress_reminder = f'\nProgress: {analyzed_count}/10 items analyzed. Remaining: {sorted(remaining)}'
-                else:
-                    progress_reminder = f'\nProgress: {analyzed_count}/10 items analyzed.'
-            else:
-                progress_reminder = f'\nProgress: {analyzed_count}/10 items analyzed.'
-            self.scratchpad += progress_reminder
         
         self.scratchpad += f'\nAction {self.step_n}:'
         logger.debug(f'Action step - Manager kwargs: {self.manager_kwargs}')

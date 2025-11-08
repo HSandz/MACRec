@@ -30,7 +30,7 @@ class CollaborationSystem(System):
 
     @staticmethod
     def supported_tasks() -> list[str]:
-        return ['rp', 'sr', 'rr', 'gen', 'chat']
+        return ['rp', 'sr', 'gen', 'chat']
 
     def init(self, *args, **kwargs) -> None:
         """
@@ -185,19 +185,6 @@ class CollaborationSystem(System):
         if self.max_step == self.step_n:
             self.scratchpad += f'\nHint: {self.manager.hint}'
         
-        # Add progress reminder for rr tasks
-        if self.task == 'rr' and hasattr(self, 'analyzed_items'):
-            analyzed_count = len(self.analyzed_items)
-            if 'retrieved_items' in self.manager_kwargs:
-                remaining = [item for item in self.manager_kwargs['retrieved_items'] if item not in self.analyzed_items]
-                if remaining:
-                    progress_reminder = f'\nProgress: {analyzed_count}/10 items analyzed. Remaining: {sorted(remaining)}'
-                else:
-                    progress_reminder = f'\nProgress: {analyzed_count}/10 items analyzed.'
-            else:
-                progress_reminder = f'\nProgress: {analyzed_count}/10 items analyzed.'
-            self.scratchpad += progress_reminder
-        
         # Removed confusing action examples that were causing hallucinations
         self.scratchpad += f'\nAction {self.step_n}:'
         logger.debug(f'Action step - Manager kwargs: {self.manager_kwargs}')
@@ -248,11 +235,6 @@ class CollaborationSystem(System):
                 # Only warn if it's not a finish action that might be retrying due to validation
                 if action_type.lower() != 'finish':
                     observation = f'Warning: Repeated action "{action_type}" detected. Try a different approach.'
-                    if self.task == 'rr':
-                        # Convert all to strings to ensure consistent sorting
-                        analyzed_items_str = sorted([str(x) for x in self.analyzed_items])
-                        analyzed_users_str = sorted([str(x) for x in self.analyzed_users])
-                        observation += f' For rr tasks, analyze each item only once. Analyzed: {analyzed_items_str}, Users: {analyzed_users_str}.'
                     log_head = ':red[Loop Detection]: '
                     self.scratchpad += f'\nObservation: {observation}'
                     logger.debug(f'Observation: {observation}')
@@ -260,77 +242,18 @@ class CollaborationSystem(System):
                     return
         
         if action_type.lower() == 'finish':
-            # For rr tasks, check if candidates have been provided
-            if self.task == 'rr':
-                if 'n_candidate' not in self.kwargs:
-                    logger.debug(f'rr task: n_candidate not found in kwargs. Current kwargs: {self.kwargs}')
-                    observation = 'For rr tasks, candidate items must be provided before finishing.'
-                    log_head = ':red[Error]: '
-                else:
-                    # Check if all retrieved items have been analyzed
-                    expected_items = self.kwargs.get('n_candidate', 10)
-                    if len(self.analyzed_items) < expected_items:
-                        missing_items = expected_items - len(self.analyzed_items)
-                        # Add detailed debugging information
-                        debug_info = f' Analyzed items: {sorted(self.analyzed_items)}'
-                        if 'retrieved_items' in self.manager_kwargs:
-                            retrieved_items = self.manager_kwargs['retrieved_items']
-                            remaining_items = [item for item in retrieved_items if item not in self.analyzed_items]
-                            debug_info += f'. Remaining items to analyze: {sorted(remaining_items)}'
-                        observation = f'For rr tasks, analyze ALL {expected_items} items before finishing. You have {len(self.analyzed_items)}/{expected_items}. Missing: {missing_items} items.{debug_info}'
-                        log_head = ':red[Error]: '
-                    else:
-                        # All items analyzed, proceed with normal finish validation
-                        parse_result = self._parse_answer(argument)
-                        if parse_result['valid']:
-                            observation = self.finish(parse_result['answer'])
-                            log_head = ':violet[Finish with answer]:\n- '
-                        else:
-                            assert "message" in parse_result, "Invalid parse result."
-                            observation = f'{parse_result["message"]} Valid Action examples are {self.manager.valid_action_example}.'
+            # Normal finish validation
+            parse_result = self._parse_answer(argument)
+            if parse_result['valid']:
+                observation = self.finish(parse_result['answer'])
+                log_head = ':violet[Finish with answer]:\n- '
             else:
-                # For non-rr tasks, proceed with normal finish validation
-                parse_result = self._parse_answer(argument)
-                if parse_result['valid']:
-                    observation = self.finish(parse_result['answer'])
-                    log_head = ':violet[Finish with answer]:\n- '
-                else:
-                    assert "message" in parse_result, "Invalid parse result."
-                    observation = f'{parse_result["message"]} Valid Action examples are {self.manager.valid_action_example}.'
+                assert "message" in parse_result, "Invalid parse result."
+                observation = f'{parse_result["message"]} Valid Action examples are {self.manager.valid_action_example}.'
         elif action_type.lower() == 'analyse':
             if self.analyst is None:
                 observation = 'Analyst is not configured. Cannot execute the action "Analyse".'
             else:
-                # Track analyzed entities for rr tasks
-                if self.task == 'rr':
-                    if len(argument) >= 2:
-                        entity_type, entity_id = argument[0], argument[1]
-                        # Ensure consistent data types - always use string for tracking to avoid mixed types
-                        entity_id = str(entity_id)
-                        
-                        if entity_type.lower() == 'item':
-                            if entity_id in self.analyzed_items:
-                                observation = f'Item {entity_id} has already been analyzed. Please analyze a different item or proceed to ranking.'
-                                log_head = ':red[Warning]: '
-                                self.scratchpad += f'\nObservation: {observation}'
-                                logger.debug(f'Observation: {observation}')
-                                self.log(f'{log_head}{observation}', agent=self.manager, logging=False)
-                                return
-                            else:
-                                self.analyzed_items.add(entity_id)
-                                logger.debug(f'Added item {entity_id} to analyzed_items. Total analyzed: {len(self.analyzed_items)}')
-                        elif entity_type.lower() == 'user':
-                            if entity_id in self.analyzed_users:
-                                observation = f'User {entity_id} has already been analyzed. Please analyze a different user or proceed to ranking.'
-                                log_head = ':red[Warning]: '
-                                self.scratchpad += f'\nObservation: {observation}'
-                                logger.debug(f'Observation: {observation}')
-                                self.log(f'{log_head}{observation}', agent=self.manager, logging=False)
-                                return
-                            else:
-                                self.analyzed_users.add(entity_id)
-                                logger.debug(f'Added user {entity_id} to analyzed_users. Total analyzed: {len(self.analyzed_users)}')
-                
                 self.log(f':violet[Calling] :red[Analyst] :violet[with] :blue[{argument}]:violet[...]', agent=self.manager, logging=False)
                 try:
                     with duration_tracker.track_agent_call('analyst'):

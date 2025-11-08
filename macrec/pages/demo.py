@@ -6,7 +6,7 @@ from macrec.pages.task import task_config
 from macrec.systems import SYSTEMS
 from macrec.utils import task2name, init_api, system2dir, read_json
 
-all_tasks = ['rp', 'sr', 'rr', 'gen', 'chat']
+all_tasks = ['rp', 'sr', 'gen', 'chat']
 
 # Available model options - Updated to reflect current supported models
 AVAILABLE_MODELS = [
