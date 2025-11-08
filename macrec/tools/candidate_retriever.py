@@ -38,13 +38,13 @@ class CandidateRetriever(Tool):
         """Reset the retriever with the current data sample."""
         self.current_sample = data_sample
         
-    def retrieve_candidates(self, user_id: int, k: int = 10, *args, **kwargs) -> str:
+    def retrieve_candidates(self, user_id: int, k: int = -1, *args, **kwargs) -> str:
         """
         Retrieve candidate items for a given user.
         
         Args:
             user_id: The user ID to retrieve candidates for
-            k: Number of candidates to retrieve (default: 10)
+            k: Number of candidates to retrieve (default: -1 for all candidates)
             
         Returns:
             String representation of candidate items with their attributes
@@ -70,7 +70,7 @@ class CandidateRetriever(Tool):
                 logger.warning(f"Unexpected candidate_item_id format: {type(candidate_item_id_value)}")
                 return f"No candidates available for user {user_id}."
             
-            # Limit to k items if specified
+            # Limit to k items if k > 0 (k <= 0 means retrieve all)
             if k > 0 and len(candidate_items) > k:
                 candidate_items = candidate_items[:k]
             

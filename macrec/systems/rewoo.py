@@ -1090,17 +1090,38 @@ class ReWOOSystem(System):
             logger.warning(f"Could not extract item IDs from Retriever result: {retriever_result}")
             return task_desc
         
+        # Helper function to generate ordinal suffix (1st, 2nd, 3rd, 4th, ..., 20th, 21st, etc.)
+        def get_ordinal_suffix(n):
+            if 10 <= n % 100 <= 20:
+                suffix = 'th'
+            else:
+                suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+            return f'{n}{suffix}'
+        
+        # Dynamically generate ordinal_map based on number of candidates
+        ordinal_map = {}
+        for i in range(len(item_ids)):
+            ordinal = get_ordinal_suffix(i + 1)
+            ordinal_map[ordinal] = i
+        
+        logger.info(f"Generated ordinal_map for {len(item_ids)} candidates: {list(ordinal_map.keys())}")
+        logger.debug(f"Original task_desc BEFORE replacement: '{task_desc}'")
+        
         # Replace ordinal references with actual item IDs
-        ordinal_map = {
-            '1st': 0, '2nd': 1, '3rd': 2, '4th': 3, '5th': 4,
-            '6th': 5, '7th': 6, '8th': 7, '9th': 8, '10th': 9
-        }
+        # CRITICAL: Sort ordinals by length (longest first) to avoid substring matches!
+        # Example: "14th" must be processed BEFORE "4th" to prevent "Analyze 14th" → "Analyze 1candidate"
+        sorted_ordinals = sorted(ordinal_map.items(), key=lambda x: len(x[0]), reverse=True)
         
-        for ordinal, index in ordinal_map.items():
-            if ordinal in task_desc and index < len(item_ids):
+        for ordinal, index in sorted_ordinals:
+            if index < len(item_ids):
+                old_pattern = f'{ordinal} candidate item'
+                new_text = f'candidate item {item_ids[index]}'
                 # Replace "Analyze 3rd candidate item" with "Analyze candidate item 258"
-                task_desc = task_desc.replace(f'{ordinal} candidate item', f'candidate item {item_ids[index]}')
+                if old_pattern in task_desc:
+                    logger.debug(f"Replacing '{old_pattern}' with '{new_text}'")
+                    task_desc = task_desc.replace(old_pattern, new_text)
         
+        logger.debug(f"Final task_desc AFTER replacement: '{task_desc}'")
         return task_desc
     
     def _execute_step(self, step: Dict[str, Any]) -> str:
@@ -1228,9 +1249,9 @@ class ReWOOSystem(System):
                     # Reset with current data sample
                     retriever.reset(data_sample=self.data_sample)
                     
-                    # Retrieve candidates
+                    # Retrieve ALL candidates from data file (k=-1 means no limit)
                     with duration_tracker.track_agent_call('retriever'):
-                        result = retriever.retrieve_candidates(user_id=user_id, k=10)
+                        result = retriever.retrieve_candidates(user_id=user_id, k=-1)
                 else:
                     result = "Retriever tool not found in TOOL_MAP"
                     
