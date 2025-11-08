@@ -27,6 +27,7 @@ __pycache__/
 data/
 run/
 saved/
+models/
 results/
 ckpts/
 config/api-config.json
