@@ -318,6 +318,9 @@ class GenerationTask(Task):
         self.task = task
         self.max_his = max_his
         
+        # Extract data directory from data_file path for cross-environment compatibility
+        data_dir = os.path.dirname(data_file)
+        
         # Initialize API
         init_api(read_json(api_config))
         
@@ -333,6 +336,7 @@ class GenerationTask(Task):
                 'task': self.task,
                 'leak': False,
                 'dataset': self.dataset,
+                'data_dir': data_dir,  # Add data_dir for cross-environment path construction
                 'model_override': self.model_override,
                 'provider_type': self.provider_type,
                 'enable_reflection_rerun': enable_reflection_rerun,
@@ -348,6 +352,7 @@ class GenerationTask(Task):
                 'task': self.task,
                 'leak': False,
                 'dataset': self.dataset,
+                'data_dir': data_dir,  # Add data_dir for cross-environment path construction
                 'enable_reflection_rerun': enable_reflection_rerun,
             }
             

@@ -84,6 +84,10 @@ class System(ABC):
                 if isinstance(value, str):
                     self.config[key] = value.format(dataset=dataset, task=self.task)
             self.agent_kwargs['dataset'] = dataset
+        
+        if 'data_dir' in kwargs:
+            self.agent_kwargs['data_dir'] = kwargs['data_dir']
+        
         self.prompts = read_prompts(self.config['agent_prompt'])
         self.prompts.update(read_prompts(self.config['data_prompt'].format(task=self.task)))
         if 'task_agent_prompt' in self.config:

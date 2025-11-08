@@ -1214,24 +1214,48 @@ class ReWOOSystem(System):
                 if 'retriever' in TOOL_MAP:
                     retriever_class = TOOL_MAP['retriever']
                     # Create retriever instance with config
-                    config_path = 'config/tools/retriever.json'
-                    
-                    # Load base config and add item_info path based on dataset
                     from macrec.utils import read_json
                     import os
-                    retriever_config = read_json(config_path)
-                    
-                    # Determine item_info path from the current dataset
+
                     item_info_path = None
+                    retriever_config = {}
                     
-                    # Try agent_kwargs['info_database'] first (if agents use InfoDatabase tool)
-                    if hasattr(self, 'agent_kwargs') and 'info_database' in self.agent_kwargs:
+                    # Try dataset-specific config file first
+                    if hasattr(self, 'agent_kwargs') and 'dataset' in self.agent_kwargs:
+                        dataset_name = self.agent_kwargs['dataset']
+                        dataset_config_path = f'config/tools/retriever/{dataset_name}.json'
+                        if os.path.exists(dataset_config_path):
+                            retriever_config = read_json(dataset_config_path)
+                            if 'item_info' in retriever_config:
+                                # Check if it's a relative path that needs data_dir override
+                                if hasattr(self, 'agent_kwargs') and 'data_dir' in self.agent_kwargs:
+                                    data_dir = self.agent_kwargs['data_dir']
+                                    # Override with actual data_dir for cross-environment support
+                                    item_info_path = os.path.join(data_dir, 'item.csv')
+                                    logger.info(f"✓ Using data_dir override for item_info: {item_info_path}")
+                                else:
+                                    item_info_path = retriever_config['item_info']
+                                    logger.info(f"✓ Loaded item_info from dataset config '{dataset_config_path}': {item_info_path}")
+                    
+                    # Fallback to general config
+                    if not retriever_config:
+                        config_path = 'config/tools/retriever.json'
+                        if os.path.exists(config_path):
+                            retriever_config = read_json(config_path)
+                    
+                    if item_info_path is None and hasattr(self, 'agent_kwargs') and 'info_database' in self.agent_kwargs:
                         info_db_config = self.agent_kwargs['info_database']
                         if 'item_info' in info_db_config:
                             item_info_path = info_db_config['item_info']
                             logger.info(f"✓ Got item_info from agent_kwargs['info_database']: {item_info_path}")
                     
-                    # Fallback: construct from dataset name in agent_kwargs
+                    # Use data_dir from agent_kwargs if available (cross-environment support)
+                    if item_info_path is None and hasattr(self, 'agent_kwargs') and 'data_dir' in self.agent_kwargs:
+                        data_dir = self.agent_kwargs['data_dir']
+                        item_info_path = os.path.join(data_dir, 'item.csv')
+                        logger.info(f"✓ Constructed item_info path from data_dir '{data_dir}': {item_info_path}")
+                    
+                    # Final fallback: construct from dataset name in agent_kwargs (for backward compatibility)
                     if item_info_path is None and hasattr(self, 'agent_kwargs') and 'dataset' in self.agent_kwargs:
                         dataset_name = self.agent_kwargs['dataset']
                         item_info_path = os.path.join('data', dataset_name, 'item.csv')
