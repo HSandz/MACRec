@@ -204,9 +204,14 @@ class GenerateEmbeddingTestTask(Task):
             negative_item_ids = [item for item in candidate_items if item != target_item_id]
             
             # Create new row with updated candidates
-            new_row = row.copy()
-            new_row['neg_item_id'] = str(negative_item_ids)  # Store as string list
-            new_row['candidate_item_id'] = str(candidate_items)  # Store as string list
+            new_row = {
+                'user_id': row['user_id'],
+                'item_id': row['item_id'],
+                'rating': row['rating'],
+                'history_item_id': row['history_item_id'],
+                'history_rating': row['history_rating'],
+                'candidate_item_id': str(candidate_items)  # Only update this column
+            }
             new_rows.append(new_row)
             
             if (idx + 1) % 100 == 0:
@@ -239,7 +244,6 @@ class GenerateEmbeddingTestTask(Task):
             logger.info(f"User: {sample['user_id']}, Target: {gt}")
             logger.info(f"Candidates: {sample['candidate_item_id']}")
             logger.info(f"GT in candidates: {gt in cands}")
-            logger.info(f"Negatives: {sample['neg_item_id']}")
 
     def _run_from_pkl(self, data_dir: str, model_dir: str, model_name: str,
                       n_candidates: int, test_file: str, pkl_file: str, seed: int):
@@ -369,13 +373,15 @@ class GenerateEmbeddingTestTask(Task):
             # Get top-K candidates for this user from PKL (AS-IS, no filtering - same as pkl_to_csv.py)
             candidate_items = list(test_topk[pkl_idx][:n_candidates])
             
-            # All candidates are negatives except if GT happens to be in top-K
-            negative_item_ids = [item for item in candidate_items if item != target_item_id]
-            
-            # Create new row keeping ALL original columns, only updating candidate_item_id
-            new_row = row.copy()
-            new_row['neg_item_id'] = str(negative_item_ids)
-            new_row['candidate_item_id'] = str(candidate_items)
+            # Create new row with only original test.csv columns
+            new_row = {
+                'user_id': row['user_id'],
+                'item_id': row['item_id'],
+                'rating': row['rating'],
+                'history_item_id': row['history_item_id'],
+                'history_rating': row['history_rating'],
+                'candidate_item_id': str(candidate_items)  # Only update this column
+            }
             new_rows.append(new_row)
             
             if (len(new_rows)) % 100 == 0:
@@ -408,7 +414,6 @@ class GenerateEmbeddingTestTask(Task):
             logger.info(f"User: {sample['user_id']}, Target: {gt}")
             logger.info(f"Candidates: {sample['candidate_item_id']}")
             logger.info(f"GT in candidates: {gt in cands}")
-            logger.info(f"Negatives: {sample['neg_item_id']}")
 
 
 if __name__ == '__main__':
