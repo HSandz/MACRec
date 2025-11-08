@@ -215,13 +215,28 @@ def process_data(dir: str, n_neg_items: int = 9):
     test_df = dfs[2]
 
     # Create all.csv with all interactions (for retrieval tools)
+    # Keep only user interaction columns: user_id, item_id, rating, summary, timestamp, history columns
     all_df = pd.concat([train_df, dev_df, test_df])
     all_df = all_df.sort_values(by=['timestamp'], kind='mergesort')
     all_df = all_df.reset_index(drop=True)
     
+    # Remove redundant columns from all.csv (neg_item_id, position, candidate_item_id)
+    all_columns_to_remove = ['neg_item_id', 'position', 'candidate_item_id']
+    all_columns_to_remove = [col for col in all_columns_to_remove if col in all_df.columns]
+    if all_columns_to_remove:
+        all_df = all_df.drop(columns=all_columns_to_remove)
+        logger.info(f'Removed redundant columns from all.csv: {all_columns_to_remove}')
+    
     # Create test.csv with one row per user (last interaction per user)
     # Take the last interaction for each user from the test split
     test_one_per_user = test_df.groupby('user_id').tail(1).reset_index(drop=True)
+    
+    # Remove redundant columns from test.csv (timestamp, neg_item_id, position)
+    test_columns_to_remove = ['timestamp', 'neg_item_id', 'position']
+    test_columns_to_remove = [col for col in test_columns_to_remove if col in test_one_per_user.columns]
+    if test_columns_to_remove:
+        test_one_per_user = test_one_per_user.drop(columns=test_columns_to_remove)
+        logger.info(f'Removed redundant columns from test.csv: {test_columns_to_remove}')
     
     logger.info(f'all.csv: {len(all_df)} interactions from {all_df["user_id"].nunique()} users')
     logger.info(f'test.csv: {len(test_one_per_user)} samples (one per user)')
@@ -232,7 +247,8 @@ def process_data(dir: str, n_neg_items: int = 9):
         all_df.to_csv(os.path.join(dir, 'all.csv'), index=False)
         test_one_per_user.to_csv(os.path.join(dir, 'test.csv'), index=False)
         logger.info('Successfully saved all CSV files (item.csv, all.csv, test.csv)')
-        logger.info('Files contain IDs only - text formatting will be done on-demand during task execution')
+        logger.info('all.csv contains only user interaction columns')
+        logger.info('test.csv contains evaluation samples without redundant columns')
     except Exception as e:
         logger.error(f'Error saving CSV files: {e}')
         raise
