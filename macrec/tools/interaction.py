@@ -17,9 +17,32 @@ class InteractionRetriever(Tool):
     def reset(self, user_id: Optional[int] = None, item_id: Optional[int] = None, *args, **kwargs) -> None:
         if user_id is not None and item_id is not None:
             data_sample = self.data[(self.data['user_id'] == user_id) & (self.data['item_id'] == item_id)]
-            assert len(data_sample) == 1, f'User {user_id} and item {item_id} not found in data or not unique.'
-            # get the index
-            index = data_sample.index[0]
+            
+            # Handle cases where the (user, item) pair doesn't exist in interaction history
+            # This is common for SR/RR tasks where we query candidate items the user hasn't interacted with
+            if len(data_sample) == 0:
+                # Pair not found - use the user's last interaction as temporal cutoff point
+                user_data = self.data[self.data['user_id'] == user_id]
+                if len(user_data) > 0:
+                    # Use last interaction of this user to establish "current time" for history
+                    index = user_data.index[-1]
+                    from loguru import logger
+                    logger.trace(f'User {user_id} & item {item_id} pair not found (likely a candidate item). Using user\'s last interaction at index {index} as cutoff.')
+                else:
+                    # User has no interactions - use all data (edge case)
+                    index = len(self.data)
+                    from loguru import logger
+                    logger.debug(f'User {user_id} not found in interaction data. Using full dataset.')
+            elif len(data_sample) > 1:
+                # Multiple entries found - use first occurrence
+                index = data_sample.index[0]
+                from loguru import logger
+                logger.warning(f'Multiple entries for user {user_id} & item {item_id}. Using first at index {index}.')
+            else:
+                # Exact match found - standard case
+                index = data_sample.index[0]
+            
+            # Build interaction histories up to the cutoff point
             partial_data = self.data.iloc[:index]
             self.user_history = partial_data.groupby('user_id')['item_id'].apply(list).to_dict()
             self.user_rating = partial_data.groupby('user_id')['rating'].apply(list).to_dict()
