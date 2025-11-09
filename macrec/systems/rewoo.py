@@ -1112,14 +1112,27 @@ class ReWOOSystem(System):
         # Example: "14th" must be processed BEFORE "4th" to prevent "Analyze 14th" → "Analyze 1candidate"
         sorted_ordinals = sorted(ordinal_map.items(), key=lambda x: len(x[0]), reverse=True)
         
+        replacement_made = False
         for ordinal, index in sorted_ordinals:
             if index < len(item_ids):
                 old_pattern = f'{ordinal} candidate item'
                 new_text = f'candidate item {item_ids[index]}'
-                # Replace "Analyze 3rd candidate item" with "Analyze candidate item 258"
                 if old_pattern in task_desc:
                     logger.debug(f"Replacing '{old_pattern}' with '{new_text}'")
                     task_desc = task_desc.replace(old_pattern, new_text)
+                    replacement_made = True
+        
+        # ONLY try "candidate item N" pattern if ordinal pattern didn't match
+        # This handles Planner outputs like "candidate item 1" instead of "1st candidate item"
+        if not replacement_made:
+            # Sort by number (descending) to avoid substring issues (e.g., "item 10" before "item 1")
+            for i in range(len(item_ids), 0, -1):  # Process from highest to lowest
+                old_pattern = f'candidate item {i}'
+                if old_pattern in task_desc and i-1 < len(item_ids):
+                    new_text = f'candidate item {item_ids[i-1]}'
+                    logger.debug(f"Replacing '{old_pattern}' (non-ordinal) with '{new_text}'")
+                    task_desc = task_desc.replace(old_pattern, new_text)
+                    break  # Only replace once
         
         logger.debug(f"Final task_desc AFTER replacement: '{task_desc}'")
         return task_desc
