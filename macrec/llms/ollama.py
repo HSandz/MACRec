@@ -166,20 +166,17 @@ class OllamaLLM(BaseLLM):
                 logger.error(error_msg)
                 return f"Error: {error_msg}"
             
-            # Apply prompt compression if enabled
-            final_prompt, compression_info = self.compress_prompt_if_needed(prompt)
-            
             # Log the prompt being sent to the API
-            logger.info(f"LLM Prompt ({self.agent_context} → {self.model_name}):\n{final_prompt}")
+            logger.info(f"LLM Prompt ({self.agent_context} → {self.model_name}):\n{prompt}")
             
             # Log estimated token usage for the prompt
-            estimated_prompt_tokens = self.estimate_tokens(final_prompt)
+            estimated_prompt_tokens = self.estimate_tokens(prompt)
             logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_prompt_tokens} prompt tokens estimated")
             
             # Prepare the request payload for Ollama generate API
             payload = {
                 "model": self.model_name,
-                "prompt": final_prompt,
+                "prompt": prompt,
                 "stream": False,
                 "options": {
                     "temperature": self.temperature,
@@ -193,8 +190,7 @@ class OllamaLLM(BaseLLM):
             if self.json_mode:
                 payload["format"] = "json"
                 # Add explicit JSON instruction to prompt
-                final_prompt = f"{final_prompt}\n\nPlease respond with valid JSON only."
-                payload["prompt"] = final_prompt
+                payload["prompt"] = f"{prompt}\n\nPlease respond with valid JSON only."
             
             # Make the API request with automatic retry for transient errors
             # Using base class retry mechanism that works for all LLM implementations
@@ -239,11 +235,10 @@ class OllamaLLM(BaseLLM):
                         
                         # Track usage with estimates since we can't parse the JSON
                         self.track_usage(
-                            final_prompt, 
+                            prompt, 
                             content, 
                             None,  # Will use estimation
-                            None,  # Will use estimation
-                            compression_info=compression_info
+                            None  # Will use estimation
                         )
                         
                         logger.info(f"LLM Response ({self.agent_context} → {self.model_name}):\n{content}")
@@ -264,13 +259,12 @@ class OllamaLLM(BaseLLM):
                     if 'eval_count' in result:
                         output_tokens = result['eval_count']
                     
-                    # Track usage including compression info
+                    # Track usage
                     self.track_usage(
-                        final_prompt, 
+                        prompt, 
                         content, 
                         input_tokens, 
                         output_tokens,
-                        compression_info=compression_info,
                         api_usage=result
                     )
                     
@@ -283,7 +277,7 @@ class OllamaLLM(BaseLLM):
                         logger.info(f"📊 Token Usage ({self.agent_context}): {input_tokens} prompt + {output_tokens} completion = {total_tokens} total tokens")
                     else:
                         # Fallback to estimation if no API usage info
-                        estimated_input = self.estimate_tokens(final_prompt)
+                        estimated_input = self.estimate_tokens(prompt)
                         estimated_output = self.estimate_tokens(content)
                         estimated_total = estimated_input + estimated_output
                         logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_input} prompt + ~{estimated_output} completion = ~{estimated_total} total tokens (estimated)")

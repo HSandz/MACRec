@@ -5,8 +5,6 @@ from typing import Any, Optional
 import os
 import datetime
 
-from macrec.rl.reward import Reward, RatingPredictionRewardV1, RatingPredictionRewardV2, RatingPredictionReflectionReward, SequentialRecommendationRewardV1, SequentialRecommendationReflectionReward
-
 class Task(ABC):
     def __init__(self):
         self.log_handler_id = None
@@ -98,24 +96,3 @@ class Task(ABC):
             logger.info(f"Log file: {log_path}")
         
         return self.run(**vars(args))
-
-class RewardTask(Task):
-    def get_reward_model(self, reward_version: str) -> Reward:
-        if self.task == 'rp':
-            if reward_version == 'v1':
-                return RatingPredictionRewardV1()
-            elif reward_version == 'v2':
-                return RatingPredictionRewardV2()
-            elif reward_version == 'reflection':
-                return RatingPredictionReflectionReward()
-            else:
-                raise NotImplementedError
-        elif self.task == 'sr':
-            if reward_version == 'v1':
-                return SequentialRecommendationRewardV1()
-            elif reward_version == 'reflection':
-                return SequentialRecommendationReflectionReward()
-            else:
-                raise NotImplementedError
-        else:
-            raise NotImplementedError

@@ -220,21 +220,18 @@ class OpenSourceLLM(BaseLLM):
             `str`: The OpenSource LLM output.
         """
         try:
-            # Apply prompt compression if enabled
-            final_prompt, compression_info = self.compress_prompt_if_needed(prompt)
-            
             # Log the prompt being sent to the LLM
-            logger.info(f"LLM Prompt ({self.agent_context} → {self.model_name}):\n{final_prompt}")
+            logger.info(f"LLM Prompt ({self.agent_context} → {self.model_name}):\n{prompt}")
             
             # Log estimated token usage for the prompt
-            estimated_prompt_tokens = self.estimate_tokens(final_prompt)
+            estimated_prompt_tokens = self.estimate_tokens(prompt)
             logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_prompt_tokens} prompt tokens estimated")
             
             # Make the pipeline request with automatic retry for transient errors
             # Using base class retry mechanism that works for all LLM implementations
             result = self.execute_with_retry(
                 self._make_pipeline_request,
-                prompt=final_prompt
+                prompt=prompt
             )
             
             # Extract text from pipeline result
@@ -245,20 +242,19 @@ class OpenSourceLLM(BaseLLM):
                 input_tokens = None  # Will be estimated in track_usage
                 output_tokens = None  # Will be estimated in track_usage
                 
-                # Track the usage including compression info
+                # Track the usage
                 self.track_usage(
-                    final_prompt, 
+                    prompt, 
                     content, 
                     input_tokens, 
-                    output_tokens,
-                    compression_info=compression_info
+                    output_tokens
                 )
                 
                 # Log the response from the LLM
                 logger.info(f"LLM Response ({self.agent_context} → {self.model_name}):\n{content}")
                 
                 # Log token usage after LLM response (estimated for opensource models)
-                estimated_input = self.estimate_tokens(final_prompt)
+                estimated_input = self.estimate_tokens(prompt)
                 estimated_output = self.estimate_tokens(content)
                 estimated_total = estimated_input + estimated_output
                 logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_input} prompt + ~{estimated_output} completion = ~{estimated_total} total tokens (estimated)")

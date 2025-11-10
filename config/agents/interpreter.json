@@ -4,8 +4,6 @@
     "temperature": 0,
     "max_tokens": 300,
     "json_mode": true,
-    "enable_compression": true,
-    "compression_ratio": 0.9,
     "tool_config": {
         "summarizer": {
             "type": "summarize",

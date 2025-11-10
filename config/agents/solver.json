@@ -4,7 +4,5 @@
     "temperature": 0,
     "max_tokens": 1024,
     "json_mode": true,
-    "max_turns": 5,
-    "enable_compression": false,
-    "compression_ratio": 0.8
+    "max_turns": 5
 }

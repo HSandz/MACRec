@@ -124,18 +124,15 @@ class OpenRouterLLM(BaseLLM):
             `str`: The OpenRouter LLM output.
         """
         try:
-            # Apply prompt compression if enabled
-            final_prompt, compression_info = self.compress_prompt_if_needed(prompt)
-            
             # Log the prompt being sent to the API
-            logger.info(f"LLM Prompt ({self.agent_context} → {self.model_name}):\n{final_prompt}")
+            logger.info(f"LLM Prompt ({self.agent_context} → {self.model_name}):\n{prompt}")
             
             # Log estimated token usage for the prompt
-            estimated_prompt_tokens = self.estimate_tokens(final_prompt)
+            estimated_prompt_tokens = self.estimate_tokens(prompt)
             logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_prompt_tokens} prompt tokens estimated")
             
             # Prepare the request payload
-            messages = [{"role": "user", "content": final_prompt}]
+            messages = [{"role": "user", "content": prompt}]
             
             payload = {
                 "model": self.model_name,
@@ -149,7 +146,7 @@ class OpenRouterLLM(BaseLLM):
             if self.json_mode:
                 payload["response_format"] = {"type": "json_object"}
                 # Add instruction to the prompt for JSON mode
-                messages[0]["content"] = f"{final_prompt}\n\nPlease respond with valid JSON only."
+                messages[0]["content"] = f"{prompt}\n\nPlease respond with valid JSON only."
             
             # Make the API request with automatic retry for transient errors
             # Using base class retry mechanism that works for all LLM implementations
@@ -194,11 +191,10 @@ class OpenRouterLLM(BaseLLM):
                         
                         # Track usage with estimates since we can't parse the JSON
                         self.track_usage(
-                            final_prompt, 
+                            prompt, 
                             content, 
                             None,  # Will use estimation
                             None,  # Will use estimation
-                            compression_info=compression_info,
                             api_usage={'error': 'json_parse_failed'}
                         )
                         
@@ -232,13 +228,12 @@ class OpenRouterLLM(BaseLLM):
                     else:
                         logger.warning("No usage information in OpenRouter API response - falling back to estimation")
                     
-                    # Track the usage including compression info
+                    # Track the usage
                     self.track_usage(
-                        final_prompt, 
+                        prompt, 
                         content, 
                         input_tokens, 
                         output_tokens,
-                        compression_info=compression_info,
                         api_usage=result.get('usage', {})  # Store full usage info
                     )
                     
@@ -250,7 +245,7 @@ class OpenRouterLLM(BaseLLM):
                         logger.info(f"📊 Token Usage ({self.agent_context}): {input_tokens} prompt + {output_tokens} completion = {total_tokens} total tokens")
                     else:
                         # Fallback to estimation if no API usage info
-                        estimated_input = self.estimate_tokens(final_prompt)
+                        estimated_input = self.estimate_tokens(prompt)
                         estimated_output = self.estimate_tokens(content.strip())
                         estimated_total = estimated_input + estimated_output
                         logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_input} prompt + ~{estimated_output} completion = ~{estimated_total} total tokens (estimated)")

@@ -5,7 +5,7 @@ from langchain.prompts import PromptTemplate
 
 from macrec.agents.base import Agent
 from macrec.llms import GeminiLLM, OpenRouterLLM, OllamaLLM
-from macrec.utils import format_step, run_once, configure_prompt_compression, apply_compression_to_llm
+from macrec.utils import format_step, run_once
 
 class Manager(Agent):
     """
@@ -62,15 +62,6 @@ class Manager(Agent):
             self.action_enc = None
         else:
             self.action_enc = AutoTokenizer.from_pretrained(self.action_llm.model_name)
-        
-        # Apply compression configuration if specified
-        if thought_config:
-            thought_compression_config = configure_prompt_compression(thought_config)
-            apply_compression_to_llm(self.thought_llm, thought_compression_config)
-        
-        if action_config:
-            action_compression_config = configure_prompt_compression(action_config)
-            apply_compression_to_llm(self.action_llm, action_compression_config)
 
     def over_limit(self, **kwargs) -> bool:
         prompt = self._build_manager_prompt(**kwargs)

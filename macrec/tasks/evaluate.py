@@ -106,10 +106,9 @@ class EvaluateTask(GenerationTask):
         return self.steps
 
     def before_generate(self) -> None:
-        # Calculate metrics up to @10 if >= 20 candidates
-        if hasattr(self, 'n_candidate') and self.n_candidate >= 20 and self.topks == [1, 3, 5]:
+        # Calculate metrics up to @10 if >= 15 candidates
+        if hasattr(self, 'n_candidate') and self.n_candidate >= 15 and self.topks == [1, 3, 5]:
             self.topks = [1, 3, 5, 10]
-            logger.info(f"Auto-adjusted evaluation top-ks to {self.topks} for {self.n_candidate} candidates")
         
         self.get_metrics(self.topks)
         # Initialize counters for tracking valid answers

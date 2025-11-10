@@ -100,22 +100,19 @@ class GeminiLLM(BaseLLM):
             `str`: The Gemini LLM output.
         """
         try:
-            # Apply prompt compression if enabled
-            final_prompt, compression_info = self.compress_prompt_if_needed(prompt)
-            
             # Log the prompt being sent to the API
-            logger.info(f"LLM Prompt ({self.agent_context} → {self.model_name}):\n{final_prompt}")
+            logger.info(f"LLM Prompt ({self.agent_context} → {self.model_name}):\n{prompt}")
             
             # Log estimated token usage for the prompt
-            estimated_prompt_tokens = self.estimate_tokens(final_prompt)
+            estimated_prompt_tokens = self.estimate_tokens(prompt)
             logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_prompt_tokens} prompt tokens estimated")
             
             # Prepare prompt based on JSON mode
             if self.json_mode:
                 # For JSON mode, add instruction to the prompt
-                actual_prompt = f"{final_prompt}\n\nPlease respond with valid JSON only."
+                actual_prompt = f"{prompt}\n\nPlease respond with valid JSON only."
             else:
-                actual_prompt = final_prompt
+                actual_prompt = prompt
             
             # Make the API request with automatic retry for transient errors
             # Using base class retry mechanism that works for all LLM implementations
@@ -135,13 +132,12 @@ class GeminiLLM(BaseLLM):
                     input_tokens = getattr(response.usage_metadata, 'prompt_token_count', None)
                     output_tokens = getattr(response.usage_metadata, 'candidates_token_count', None)
                 
-                # Track the usage including compression info
+                # Track the usage
                 self.track_usage(
                     actual_prompt, 
                     content, 
                     input_tokens, 
-                    output_tokens,
-                    compression_info=compression_info
+                    output_tokens
                 )
                 
                 # Log the response from the API

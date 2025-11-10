@@ -7,7 +7,6 @@
   "temperature": 0,
   "top_p": 0.85,
   "timeout": 300,
-  "enable_compression": false,
   "tool_config": {
     "info_retriever": {
       "type": "info",
