@@ -46,6 +46,12 @@ class Solver(Agent):
         # Format worker results
         worker_results_text = ""
         for step_var, result in worker_results.items():
+            # For Retriever results, only include the candidate items (not the "Retrieved X candidate items" line)
+            if "Retrieved" in result and "candidate items" in result and "Candidate items:" in result:
+                # Extract only the candidate items portion
+                candidate_items_start = result.find("Candidate items:")
+                if candidate_items_start != -1:
+                    result = result[candidate_items_start:]
             worker_results_text += f"{step_var}: {result}\n"
         
         # Include original query data so Solver can see candidate items

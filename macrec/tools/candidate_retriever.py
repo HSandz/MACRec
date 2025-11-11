@@ -80,35 +80,47 @@ class CandidateRetriever(Tool):
             if self._item_info is not None:
                 logger.info(f"✓ Formatting {len(candidate_items)} candidates WITH attributes")
                 
-                # Build both JSON array and formatted text
-                import json
-                candidates_json = []
                 candidate_details = []
                 
                 for item_id in candidate_items:
                     item_data = self._item_info[self._item_info['item_id'] == item_id]
                     if not item_data.empty:
-                        # Get title and genre from the item info
-                        title = item_data['title'].values[0] if 'title' in item_data.columns else f"Item {item_id}"
-                        genre = item_data['genre'].values[0] if 'genre' in item_data.columns else "Unknown"
+                        # Detect dataset type and format accordingly
+                        if 'genre' in item_data.columns and 'title' in item_data.columns:
+                            # MovieLens format
+                            title = str(item_data['title'].values[0])
+                            genre = str(item_data['genre'].values[0])
+                            candidate_details.append(f"{item_id} (Title: {title}, Genres: {genre})")
                         
-                        # Add to JSON array
-                        candidates_json.append({
-                            "item_id": item_id,
-                            "title": title,
-                            "genres": genre
-                        })
+                        elif 'name' in item_data.columns and 'city' in item_data.columns:
+                            # Yelp format
+                            name = str(item_data['name'].values[0])
+                            categories = str(item_data['categories'].values[0]) if 'categories' in item_data.columns else "Unknown"
+                            city = str(item_data['city'].values[0])
+                            state = str(item_data['state'].values[0])
+                            candidate_details.append(f"{item_id} (Business: {name}, Categories: {categories}, Location: {city}, {state})")
                         
-                        # Add to formatted text
-                        candidate_details.append(f"{item_id} ({title}, Genres: {genre})")
+                        elif 'brand' in item_data.columns and 'title' in item_data.columns:
+                            # Amazon format (Beauty, Electronics, Video_Games)
+                            title = str(item_data['title'].values[0])
+                            brand = str(item_data['brand'].values[0])
+                            price = str(item_data['price'].values[0]) if 'price' in item_data.columns else "Unknown"
+                            categories = str(item_data['categories'].values[0]) if 'categories' in item_data.columns else "Unknown"
+                            candidate_details.append(f"{item_id} (Title: {title}, Brand: {brand}, Price: {price}, Categories: {categories})")
+                        
+                        else:
+                            # Fallback: use item_attributes if available, otherwise just ID
+                            if 'item_attributes' in item_data.columns:
+                                attributes = str(item_data['item_attributes'].values[0])
+                                candidate_details.append(f"{item_id} ({attributes})")
+                            else:
+                                candidate_details.append(str(item_id))
                     else:
-                        candidates_json.append({"item_id": item_id})
                         candidate_details.append(str(item_id))
                 
-                # Return combined format: JSON array + formatted text
+                # Return simple formatted list (no JSON to avoid parsing issues)
                 result = f"Retrieved {len(candidate_items)} candidate items for user {user_id}:\n"
-                result += f"JSON: {json.dumps(candidates_json)}\n\n"
-                result += "Formatted list:\n"
+                result += "Candidate items:\n"
                 for detail in candidate_details:
                     result += f"- {detail}\n"
                 return result.strip()

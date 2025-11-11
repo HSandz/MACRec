@@ -1056,29 +1056,17 @@ class ReWOOSystem(System):
         retriever_result = self.execution_results['#E2']
         
         # Extract item IDs from retriever result
-        # Format 1 (JSON - most reliable): "JSON: [{"item_id": 258, "title": "...", "genres": "..."}]"
-        # Format 2 (with attributes): "- 258 (Title, Genres: ...)\n- 700 (Title, Genres: ...)"
-        # Format 3 (without attributes): "Retrieved 8 candidate items for user 821: 258, 700, 627, 858, 71, 1311, 1091, 938"
+        # Format 1 (with attributes): "- 258 (Title: ..., Brand: ...)\n- 700 (Title: ..., Brand: ...)"
+        # Format 2 (without attributes): "Retrieved 8 candidate items for user 821: 258, 700, 627, 858, 71, 1311, 1091, 938"
         item_ids = []
         
-        # Try to extract from JSON format first (most reliable)
-        json_match = re.search(r'JSON:\s*(\[.*?\])', retriever_result, re.DOTALL)
-        if json_match:
-            try:
-                candidates_json = json.loads(json_match.group(1))
-                item_ids = [item['item_id'] for item in candidates_json]
-                logger.info(f"✓ Extracted {len(item_ids)} item IDs from Retriever (JSON format): {item_ids}")
-            except (json.JSONDecodeError, KeyError) as e:
-                logger.warning(f"Failed to parse JSON from Retriever result: {e}")
+        # Try multi-line format with attributes (primary format)
+        attribute_matches = re.findall(r'-\s*(\d+)\s*\(', retriever_result)
+        if attribute_matches:
+            item_ids = [int(x) for x in attribute_matches]
+            logger.info(f"✓ Extracted {len(item_ids)} item IDs from Retriever (attribute format): {item_ids}")
         
-        # Fallback 1: Try multi-line format with attributes
-        if not item_ids:
-            attribute_matches = re.findall(r'-\s*(\d+)\s*\(', retriever_result)
-            if attribute_matches:
-                item_ids = [int(x) for x in attribute_matches]
-                logger.info(f"✓ Extracted {len(item_ids)} item IDs from Retriever (attribute format): {item_ids}")
-        
-        # Fallback 2: Try simple comma-separated format
+        # Fallback: Try simple comma-separated format
         if not item_ids:
             match = re.search(r'candidate items.*?:\s*([\d,\s]+)', retriever_result)
             if match:
