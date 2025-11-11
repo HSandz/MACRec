@@ -63,7 +63,7 @@ def read_data(dir: str, dataset: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     return data_df, meta_df
 
 
-def process_item_data(data_df: pd.DataFrame, meta_df: pd.DataFrame) -> pd.DataFrame:
+def process_item_data(data_df: pd.DataFrame, meta_df: pd.DataFrame) -> tuple[pd.DataFrame, dict, dict]:
     # Only retain items that appear in interaction data
     useful_meta_df = meta_df[meta_df['asin'].isin(data_df['asin'])].reset_index(drop=True)
 
@@ -97,7 +97,7 @@ def process_item_data(data_df: pd.DataFrame, meta_df: pd.DataFrame) -> pd.DataFr
     )
     item_df['item_attributes'] = item_df[input_variables].apply(lambda x: template.format(**x), axis=1)
 
-    return item_df
+    return item_df, user2id, item2id
 
 def reindex(data_df: pd.DataFrame, out_df: pd.DataFrame = None) -> tuple[dict, dict]:
     if out_df is None:
@@ -186,7 +186,7 @@ def process_data(dir: str, n_neg_items: int = 9):
     # user_df = process_user_data(data_df)
     logger.info(f"Number of users: {out_df['user_id'].nunique()}")
 
-    item_df = process_item_data(data_df, meta_df)
+    item_df, user2id, item2id = process_item_data(data_df, meta_df)
     logger.info(f'Number of items: {item_df.shape[0]}')
 
     dfs = append_his_info([train_df, dev_df, test_df], summary=True, neg=True)
@@ -249,6 +249,19 @@ def process_data(dir: str, n_neg_items: int = 9):
         logger.info('Successfully saved all CSV files (item.csv, all.csv, test.csv)')
         logger.info('all.csv contains only user interaction columns')
         logger.info('test.csv contains evaluation samples without redundant columns')
+        
+        # Save ID mappings for RecBole integration (maps preprocessed IDs back to original IDs)
+        user_mapping_df = pd.DataFrame([
+            {'preprocessed_id': new_id, 'original_id': old_id}
+            for old_id, new_id in sorted(user2id.items(), key=lambda x: x[1])
+        ])
+        item_mapping_df = pd.DataFrame([
+            {'preprocessed_id': new_id, 'original_id': old_id}
+            for old_id, new_id in sorted(item2id.items(), key=lambda x: x[1])
+        ])
+        user_mapping_df.to_csv(os.path.join(dir, 'user_id_mapping.csv'), index=False)
+        item_mapping_df.to_csv(os.path.join(dir, 'item_id_mapping.csv'), index=False)
+        logger.info('Saved ID mappings for RecBole integration (user_id_mapping.csv, item_id_mapping.csv)')
     except Exception as e:
         logger.error(f'Error saving CSV files: {e}')
         raise

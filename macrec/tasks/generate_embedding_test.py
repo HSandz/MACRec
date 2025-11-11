@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import numpy as np
 import pickle
+from pathlib import Path
 from sklearn.metrics.pairwise import cosine_similarity
 from loguru import logger
 
@@ -34,7 +35,140 @@ class GenerateEmbeddingTestTask(Task):
     Supports two similarity methods:
     1. Cosine similarity: Measures angle between vectors (normalized, scale-invariant)
     2. Inner product: Raw dot product (sensitive to embedding magnitude)
+    
+    RecBole Integration:
+    Automatically detects and converts RecBole embeddings (which use original MovieLens IDs)
+    to match preprocessed IDs used in test.csv. Conversion is done in-place.
     """
+    
+    @staticmethod
+    def _detect_and_convert_recbole_embeddings(model_dir: str, data_dir: str):
+        """Detect RecBole embeddings and convert them to use preprocessed IDs.
+        
+        RecBole uses original dataset IDs (e.g., 1-1682 for MovieLens after filtering),
+        but MACRec's preprocessing remaps them to sequential IDs (1-N). This method
+        automatically detects this mismatch and converts embeddings in-place.
+        
+        Args:
+            model_dir: Directory containing embeddings (e.g., models/LightGCN/ml-100k/)
+            data_dir: Dataset directory containing ID mappings (e.g., data/ml-100k/)
+        """
+        item_emb_path = os.path.join(model_dir, 'item_embeddings.csv')
+        user_emb_path = os.path.join(model_dir, 'user_embeddings.csv')
+        
+        if not os.path.exists(item_emb_path):
+            return  # No embeddings to convert
+        
+        # Check for ID mapping files
+        item_mapping_path = os.path.join(data_dir, 'item_id_mapping.csv')
+        user_mapping_path = os.path.join(data_dir, 'user_id_mapping.csv')
+        
+        if not os.path.exists(item_mapping_path):
+            logger.debug(f"No item ID mapping found at {item_mapping_path}, skipping conversion")
+            return
+        
+        # Load item embeddings to check if conversion is needed
+        df_item_emb = pd.read_csv(item_emb_path)
+        
+        # Check for [PAD] token (indicates RecBole format)
+        has_pad = False
+        if len(df_item_emb) > 0 and df_item_emb.iloc[0]['item_id'] == '[PAD]':
+            has_pad = True
+            logger.info("Detected [PAD] token in embeddings (RecBole format)")
+        
+        # Load mapping
+        df_item_mapping = pd.read_csv(item_mapping_path)
+        # Create mapping with string keys for compatibility with both int and string IDs
+        id_map = dict(zip(df_item_mapping['original_id'].astype(str), df_item_mapping['preprocessed_id']))
+        
+        # Check if conversion is needed by comparing ID ranges
+        # If embeddings already use preprocessed IDs (1-N), no conversion needed
+        if not has_pad:
+            # Check if item IDs in embeddings match preprocessed range
+            emb_ids = df_item_emb['item_id'].values
+            # Try to check if IDs are numeric
+            try:
+                emb_ids_numeric = pd.to_numeric(emb_ids, errors='coerce')
+                if not pd.isna(emb_ids_numeric).all():
+                    emb_min = int(np.nanmin(emb_ids_numeric))
+                    emb_max = int(np.nanmax(emb_ids_numeric))
+                    expected_max = len(id_map)
+                    
+                    # If IDs are already in preprocessed range (1-N), skip conversion
+                    if emb_min == 1 and emb_max == expected_max:
+                        logger.debug(f"Embeddings already use preprocessed IDs (1-{expected_max}), skipping conversion")
+                        return
+            except (ValueError, TypeError):
+                # IDs are not numeric (e.g., Amazon ASINs), will need conversion
+                pass
+        
+        logger.info("=" * 80)
+        logger.info("Converting RecBole embeddings to preprocessed IDs")
+        logger.info("=" * 80)
+        
+        # Convert item embeddings
+        logger.info(f"Converting item embeddings: {item_emb_path}")
+        
+        # Remove [PAD] token if present
+        if has_pad:
+            logger.info("Removing [PAD] token row")
+            df_item_emb = df_item_emb.iloc[1:].reset_index(drop=True)
+        
+        # Convert IDs - handle both integer and string IDs (for different datasets)
+        # Keep original IDs as strings if they are strings (e.g., Amazon ASINs)
+        original_ids = df_item_emb['item_id'].astype(str)
+        df_item_emb['item_id'] = original_ids.map(id_map)
+        
+        # Check for unmapped IDs
+        unmapped = df_item_emb['item_id'].isna()
+        if unmapped.any():
+            logger.warning(f"Found {unmapped.sum()} unmapped items, removing them")
+            logger.warning(f"  Original IDs: {original_ids[unmapped].tolist()[:10]}")
+            df_item_emb = df_item_emb[~unmapped].reset_index(drop=True)
+        
+        # Sort by preprocessed ID
+        df_item_emb = df_item_emb.sort_values('item_id').reset_index(drop=True)
+        
+        # Save converted embeddings (overwrite original)
+        logger.info(f"Saving converted embeddings: {len(df_item_emb)} items")
+        df_item_emb.to_csv(item_emb_path, index=False)
+        logger.success(f"✓ Item embeddings converted successfully")
+        
+        # Convert user embeddings if they exist
+        if os.path.exists(user_emb_path) and os.path.exists(user_mapping_path):
+            logger.info(f"Converting user embeddings: {user_emb_path}")
+            
+            df_user_emb = pd.read_csv(user_emb_path)
+            df_user_mapping = pd.read_csv(user_mapping_path)
+            # Create mapping with string keys for compatibility with both int and string IDs
+            user_id_map = dict(zip(df_user_mapping['original_id'].astype(str), df_user_mapping['preprocessed_id']))
+            
+            # Remove [PAD] if present
+            if len(df_user_emb) > 0 and df_user_emb.iloc[0]['user_id'] == '[PAD]':
+                logger.info("Removing [PAD] token row from user embeddings")
+                df_user_emb = df_user_emb.iloc[1:].reset_index(drop=True)
+            
+            # Convert IDs - handle both integer and string IDs
+            original_user_ids = df_user_emb['user_id'].astype(str)
+            df_user_emb['user_id'] = original_user_ids.map(user_id_map)
+            
+            # Check for unmapped IDs
+            unmapped_users = df_user_emb['user_id'].isna()
+            if unmapped_users.any():
+                logger.warning(f"Found {unmapped_users.sum()} unmapped users, removing them")
+                df_user_emb = df_user_emb[~unmapped_users].reset_index(drop=True)
+            
+            # Sort by preprocessed ID
+            df_user_emb = df_user_emb.sort_values('user_id').reset_index(drop=True)
+            
+            # Save converted embeddings (overwrite original)
+            logger.info(f"Saving converted user embeddings: {len(df_user_emb)} users")
+            df_user_emb.to_csv(user_emb_path, index=False)
+            logger.success(f"✓ User embeddings converted successfully")
+        
+        logger.info("=" * 80)
+        logger.success("RecBole embedding conversion complete!")
+        logger.info("=" * 80)
     
     @staticmethod
     def parse_task_args(parser: ArgumentParser) -> ArgumentParser:
@@ -96,6 +230,9 @@ class GenerateEmbeddingTestTask(Task):
             raise FileNotFoundError(f"Test file not found: {test_path}")
         if not os.path.exists(item_emb_path):
             raise FileNotFoundError(f"Item embeddings not found: {item_emb_path}")
+        
+        # Automatically detect and convert RecBole embeddings if needed
+        self._detect_and_convert_recbole_embeddings(model_dir, data_dir)
         
         logger.info(f"Loading test data from: {test_path}")
         df_test = pd.read_csv(test_path)

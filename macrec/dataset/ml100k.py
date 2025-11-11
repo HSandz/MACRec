@@ -382,6 +382,23 @@ def process_data(dir: str, n_neg_items: int = 9):
             logger.info('Successfully saved all CSV files (user.csv, item.csv, all.csv, test.csv)')
             logger.info('all.csv contains only user interaction columns')
             logger.info('test.csv contains evaluation samples without redundant columns')
+            
+            # Save ID mappings for RecBole integration
+            logger.info('Saving ID mappings for RecBole compatibility...')
+            user_mapping_df = pd.DataFrame([
+                {'preprocessed_id': new_id, 'original_id': old_id}
+                for old_id, new_id in user_id_map.items()
+            ])
+            item_mapping_df = pd.DataFrame([
+                {'preprocessed_id': new_id, 'original_id': old_id}
+                for old_id, new_id in item_id_map.items()
+            ])
+            
+            user_mapping_df.to_csv(os.path.join(dir, 'user_id_mapping.csv'), index=False)
+            item_mapping_df.to_csv(os.path.join(dir, 'item_id_mapping.csv'), index=False)
+            logger.info(f'Saved ID mappings: user_id_mapping.csv ({len(user_mapping_df)} users), '
+                       f'item_id_mapping.csv ({len(item_mapping_df)} items)')
+            
         except Exception as e:
             logger.error(f'Error saving CSV files: {e}')
             raise

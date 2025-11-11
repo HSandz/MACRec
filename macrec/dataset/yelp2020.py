@@ -388,6 +388,19 @@ def process_data(dir: str, n_neg_items: int = 7, k_core: int = 5, start_date: st
         logger.info('all.csv contains only user interaction columns')
         logger.info('test.csv contains evaluation samples without redundant columns')
         
+        # Save ID mappings for RecBole integration (maps preprocessed IDs back to original IDs)
+        user_mapping_df = pd.DataFrame([
+            {'preprocessed_id': new_id, 'original_id': old_id}
+            for old_id, new_id in sorted(user_id_map.items(), key=lambda x: x[1])
+        ])
+        item_mapping_df = pd.DataFrame([
+            {'preprocessed_id': new_id, 'original_id': old_id}
+            for old_id, new_id in sorted(item_id_map.items(), key=lambda x: x[1])
+        ])
+        user_mapping_df.to_csv(os.path.join(dir, 'user_id_mapping.csv'), index=False)
+        item_mapping_df.to_csv(os.path.join(dir, 'item_id_mapping.csv'), index=False)
+        logger.info('Saved ID mappings for RecBole integration (user_id_mapping.csv, item_id_mapping.csv)')
+        
         # Save processing metadata
         metadata = {
             'k_core': k_core,
