@@ -1,44 +1,46 @@
-import torch
-import torchmetrics
 from abc import abstractmethod
 from loguru import logger
+import math
 
-class RankMetric(torchmetrics.Metric):
+
+class RankMetric:
     """
-    The base class of rank metrics.
+    Base class for rank metrics without torchmetrics dependency.
 
-    One can inherit this class and implement the `metric_at_k` function to create a new rank metric.
+    Subclasses should implement `metric_at_k(self, answer, label) -> dict`.
     """
     def __init__(self, topks: list[int] | int, *args, **kwargs):
-        super().__init__(*args, **kwargs)
         if isinstance(topks, int):
             topks = [topks]
         self.topks = topks
+        # initialize counters
         for topk in self.topks:
-            self.add_state(f'at{topk}', default=torch.tensor(0.0), dist_reduce_fx="sum")
-        self.add_state('total', default=torch.tensor(0.0), dist_reduce_fx="sum")  # candidate item number
+            setattr(self, f'at{topk}', 0.0)
+        self.total = 0
 
     def update(self, output: dict) -> None:
         answer = output['answer']
         label = output['label']
-        
+
         # Handle string answers (from errors or fallback modes)
         if isinstance(answer, str):
             logger.warning(f"Received string answer instead of list: {answer}")
-            # Return 0 for all metrics when answer is invalid
             metrics = {topk: 0 for topk in self.topks}
         else:
             metrics = self.metric_at_k(answer, label)
+
         for topk in self.topks:
-            metric = metrics[topk]  # noqa: F841
-            exec(f'self.at{topk} += metric')
+            metric = metrics[topk]
+            current = getattr(self, f'at{topk}')
+            setattr(self, f'at{topk}', current + float(metric))
+
         self.total += 1
 
     def compute(self):
         result = {}
         for topk in self.topks:
             if self.total != 0:
-                result[topk] = (eval(f'self.at{topk}') / self.total).item()
+                result[topk] = getattr(self, f'at{topk}') / float(self.total)
             else:
                 result[topk] = 0
         return result
@@ -90,7 +92,8 @@ class NDCGAt(RankMetric):
             except ValueError:
                 label_pos = topk + 1
             if label_pos <= topk:
-                result[topk] = 1 / torch.log2(torch.tensor(label_pos + 1.0))
+                # use math.log2 for a lightweight implementation
+                result[topk] = 1.0 / math.log2(label_pos + 1.0)
             else:
                 result[topk] = 0
         return result
@@ -113,7 +116,7 @@ class MRRAt(RankMetric):
             except ValueError:
                 label_pos = topk + 1
             if label_pos <= topk:
-                result[topk] = 1 / torch.tensor(label_pos)
+                result[topk] = 1.0 / float(label_pos)
             else:
                 result[topk] = 0
         return result
