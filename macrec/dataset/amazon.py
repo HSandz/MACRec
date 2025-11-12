@@ -100,15 +100,26 @@ def process_item_data(data_df: pd.DataFrame, meta_df: pd.DataFrame) -> tuple[pd.
     return item_df, user2id, item2id
 
 def reindex(data_df: pd.DataFrame, out_df: pd.DataFrame = None) -> tuple[dict, dict]:
+    """Create mapping from original IDs to preprocessed IDs (1, 2, 3, ...).
+    
+    Mapping is based on order of first appearance in the data (file order).
+    This function should be called BEFORE sorting by timestamp to preserve file order.
+    
+    Args:
+        data_df: Original dataframe (used only if out_df is None)
+        out_df: Dataframe with user_id and item_id columns (original IDs)
+        
+    Returns:
+        Tuple of (user2id, item2id) mapping dictionaries
+    """
     if out_df is None:
         out_df = data_df.rename(columns={'asin': 'item_id', 'reviewerID': 'user_id', 'overall': 'rating', 'unixReviewTime': 'timestamp'})
         out_df = out_df[['user_id', 'item_id', 'rating', 'summary', 'timestamp']]
         out_df = out_df.drop_duplicates(['user_id', 'item_id', 'timestamp'])
-        # Sort by timestamp and user_id using stable sort (mergesort)
-        # This ensures deterministic ordering when multiple records have the same timestamp
-        out_df = out_df.sort_values(by=['timestamp', 'user_id'], kind='mergesort').reset_index(drop=True)
+        # Note: Do NOT sort here - mapping should be based on file order
 
-    # reindex (start from 1) - preserve order of first appearance
+    # Create mapping (start from 1) - preserve order of first appearance
+    # This preserves the original file order (deterministic if file is read consistently)
     uids = pd.unique(out_df['user_id'])
     user2id = dict(zip(uids, range(1, len(uids) + 1)))
     iids = pd.unique(out_df['item_id'])
@@ -120,15 +131,18 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int) -> tuple[p
     out_df = data_df.rename(columns={'asin': 'item_id', 'reviewerID': 'user_id', 'overall': 'rating', 'unixReviewTime': 'timestamp'})
     out_df = out_df[['user_id', 'item_id', 'rating', 'summary', 'timestamp']]
     out_df = out_df.drop_duplicates(['user_id', 'item_id', 'timestamp'])
-    # Sort by timestamp and user_id using stable sort (mergesort)
-    # This ensures deterministic ordering when multiple records have the same timestamp
-    out_df = out_df.sort_values(by=['timestamp', 'user_id'], kind='mergesort').reset_index(drop=True)
-
-    # reindex (start from 1)
+    
+    # Create mapping BEFORE sorting by timestamp
+    # This ensures mapping is based on original file order, not timeline order
     user2id, item2id = reindex(data_df, out_df)
 
+    # Apply mapping to data
     out_df['user_id'] = out_df['user_id'].apply(lambda x: user2id[x])
     out_df['item_id'] = out_df['item_id'].apply(lambda x: item2id[x])
+    
+    # Sort by timestamp AFTER mapping
+    # This preserves the original file order for items with the same timestamp
+    out_df = out_df.sort_values(by=['timestamp', 'user_id'], kind='mergesort').reset_index(drop=True)
 
     clicked_item_set = dict()
     for user_id, seq_df in out_df.groupby('user_id'):

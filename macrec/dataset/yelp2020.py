@@ -222,21 +222,21 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 7, k_core
     data_df['timestamp'] = pd.to_datetime(data_df['timestamp'])
     data_df['timestamp'] = data_df['timestamp'].astype(np.int64) // 10**9
     
-    # Sort by timestamp first, then by original_order to ensure stable sorting
-    # This preserves the original file order for items with the same timestamp
-    data_df = data_df.sort_values(by=['timestamp', 'original_order'], ascending=[True, True])
-    
-    # Drop original_order column after sorting (no longer needed)
-    data_df = data_df.drop(columns=['original_order'])
-    
+    # Filter data first (before sorting) to remove users/items with few interactions
+    # Keep original_order for stable sorting later
     logger.info(f'Applying {k_core}-core filtering...')
     data_df = filter_data(data_df, min_interactions=k_core)
     
     # Rename business_id to item_id
     data_df = data_df.rename(columns={'business_id': 'item_id'})
     
-    # Map string IDs to integer IDs - preserve order of first appearance
+    # Map string IDs to integer IDs BEFORE sorting by timestamp
+    # This ensures mapping is based on original file order (via original_order if available), not timeline order
     logger.info('Mapping string IDs to integer IDs...')
+    # Sort by original_order first to preserve file order for mapping
+    if 'original_order' in data_df.columns:
+        data_df = data_df.sort_values(by='original_order', kind='mergesort')
+    
     unique_users = pd.unique(data_df['user_id'])
     unique_items = pd.unique(data_df['item_id'])
     
@@ -247,6 +247,14 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 7, k_core
     data_df['item_id'] = data_df['item_id'].map(item_id_map)
     
     logger.info(f'Mapped {len(user_id_map)} users and {len(item_id_map)} items to integer IDs')
+    
+    # Sort by timestamp AFTER mapping
+    # Use original_order for stable sorting if available, then drop it
+    if 'original_order' in data_df.columns:
+        data_df = data_df.sort_values(by=['timestamp', 'original_order'], ascending=[True, True], kind='mergesort')
+        data_df = data_df.drop(columns=['original_order'])
+    else:
+        data_df = data_df.sort_values(by=['timestamp'], kind='mergesort')
     
     # Build clicked item set
     clicked_item_set = {}

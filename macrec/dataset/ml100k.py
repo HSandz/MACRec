@@ -175,28 +175,37 @@ def filter_data(data_df: pd.DataFrame, min_interactions: int = 5, max_iterations
 def densify_index(data_df: pd.DataFrame) -> tuple[pd.DataFrame, dict, dict]:
     """Densify user and item IDs to ensure sequential IDs starting from 1.
     
-    This ensures deterministic and dense ID mapping after filtering.
-    Sorted to guarantee consistent mapping across runs.
+    This ensures deterministic and dense ID mapping. The mapping is based on
+    the order of first appearance in the data (which preserves the original file order).
+    This function is called BEFORE sorting by timestamp, so the mapping reflects
+    the order in which users/items appear in the original data file.
     
     Args:
-        data_df: DataFrame with user_id and item_id columns
+        data_df: DataFrame with user_id and item_id columns (original IDs)
         
     Returns:
         Tuple of (densified_df, user_id_map, item_id_map)
+        - densified_df: DataFrame with preprocessed IDs (1, 2, 3, ...)
+        - user_id_map: Dictionary mapping original_id -> preprocessed_id
+        - item_id_map: Dictionary mapping original_id -> preprocessed_id
     """
     logger.info('Densifying index (remapping to sequential IDs)')
     
-    # Preserve order of first appearance for deterministic mapping
+    # Get unique users and items in order of first appearance
+    # This preserves the original file order (deterministic if file is read consistently)
+    # Note: Mapping is created BEFORE sorting by timestamp, so order is based on file order
     unique_users = pd.unique(data_df['user_id'])
     unique_items = pd.unique(data_df['item_id'])
     
+    # Create mapping: original_id -> preprocessed_id (1, 2, 3, ...)
+    # Order is based on first appearance in the data (file order)
     user_id_map = {old_id: new_id for new_id, old_id in enumerate(unique_users, start=1)}
     item_id_map = {old_id: new_id for new_id, old_id in enumerate(unique_items, start=1)}
     
     logger.info(f'Mapped {len(user_id_map)} users: {min(unique_users)}-{max(unique_users)} → 1-{len(user_id_map)}')
     logger.info(f'Mapped {len(item_id_map)} items: {min(unique_items)}-{max(unique_items)} → 1-{len(item_id_map)}')
     
-    # Apply mapping
+    # Apply mapping to data
     data_df['user_id'] = data_df['user_id'].map(user_id_map)
     data_df['item_id'] = data_df['item_id'].map(item_id_map)
     
@@ -204,16 +213,19 @@ def densify_index(data_df: pd.DataFrame) -> tuple[pd.DataFrame, dict, dict]:
 
 def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 9) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict, dict]:
     data_df.columns = ['user_id', 'item_id', 'rating', 'timestamp']
-    # sort data_df by timestamp using stable sort (mergesort)
-    # This preserves the original file order for items with the same timestamp
-    data_df = data_df.sort_values(by=['timestamp'], kind='mergesort')
+    # Filter data first (before sorting) to remove users/items with few interactions
     data_df = filter_data(data_df)
     
     if data_df.empty:
         raise ValueError("No data remains after filtering. Consider reducing min_interactions parameter.")
     
-    # Densify IDs after filtering (ensures sequential IDs: 1, 2, 3, ...)
+    # Create mapping BEFORE sorting by timestamp
+    # This ensures mapping is based on original file order, not timeline order
     data_df, user_id_map, item_id_map = densify_index(data_df)
+    
+    # Sort data by timestamp AFTER mapping
+    # This preserves the original file order for items with the same timestamp
+    data_df = data_df.sort_values(by=['timestamp'], kind='mergesort')
     
     clicked_item_set = dict()
     for user_id, seq_df in data_df.groupby('user_id'):
