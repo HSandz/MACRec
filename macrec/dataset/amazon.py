@@ -108,10 +108,10 @@ def reindex(data_df: pd.DataFrame, out_df: pd.DataFrame = None) -> tuple[dict, d
         # This ensures deterministic ordering when multiple records have the same timestamp
         out_df = out_df.sort_values(by=['timestamp', 'user_id'], kind='mergesort').reset_index(drop=True)
 
-    # reindex (start from 1)
-    uids = sorted(out_df['user_id'].unique())
+    # reindex (start from 1) - preserve order of first appearance
+    uids = pd.unique(out_df['user_id'])
     user2id = dict(zip(uids, range(1, len(uids) + 1)))
-    iids = sorted(out_df['item_id'].unique())
+    iids = pd.unique(out_df['item_id'])
     item2id = dict(zip(iids, range(1, len(iids) + 1)))
     return user2id, item2id
 

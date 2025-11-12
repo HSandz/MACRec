@@ -202,10 +202,10 @@ def process_interaction_data(data_df: pd.DataFrame, n_neg_items: int = 7, k_core
     # Rename business_id to item_id
     data_df = data_df.rename(columns={'business_id': 'item_id'})
     
-    # Map string IDs to integer IDs
+    # Map string IDs to integer IDs - preserve order of first appearance
     logger.info('Mapping string IDs to integer IDs...')
-    unique_users = sorted(data_df['user_id'].unique())
-    unique_items = sorted(data_df['item_id'].unique())
+    unique_users = pd.unique(data_df['user_id'])
+    unique_items = pd.unique(data_df['item_id'])
     
     user_id_map = {old_id: new_id for new_id, old_id in enumerate(unique_users, start=1)}
     item_id_map = {old_id: new_id for new_id, old_id in enumerate(unique_items, start=1)}

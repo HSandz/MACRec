@@ -186,9 +186,9 @@ def densify_index(data_df: pd.DataFrame) -> tuple[pd.DataFrame, dict, dict]:
     """
     logger.info('Densifying index (remapping to sequential IDs)')
     
-    # Sort to ensure deterministic mapping
-    unique_users = sorted(data_df['user_id'].unique())
-    unique_items = sorted(data_df['item_id'].unique())
+    # Preserve order of first appearance for deterministic mapping
+    unique_users = pd.unique(data_df['user_id'])
+    unique_items = pd.unique(data_df['item_id'])
     
     user_id_map = {old_id: new_id for new_id, old_id in enumerate(unique_users, start=1)}
     item_id_map = {old_id: new_id for new_id, old_id in enumerate(unique_items, start=1)}
