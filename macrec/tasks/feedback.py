@@ -49,12 +49,15 @@ class FeedbackTask(GenerationTask, RewardTask):
     def after_generate(self) -> None:
         self.feedback_file_writer.close()
 
-    def prompt_data(self, df: pd.DataFrame) -> list[tuple[str, int | float | str, pd.Series]]:
-        data = super().prompt_data(df)
-        # sample data
-        sample_idx = np.random.choice(len(data), self.samples, replace=False)
-        data = [data[i] for i in sample_idx]
-        return data
+    def get_data(self, data_file: str, max_his: int) -> pd.DataFrame:
+        """Apply random sampling to raw CSV data BEFORE prompt building and filtering."""
+        df = super().get_data(data_file, max_his)
+        
+        # Randomly sample the requested number of samples from raw data
+        sample_idx = np.random.choice(len(df), min(self.samples, len(df)), replace=False)
+        df = df.iloc[sample_idx].reset_index(drop=True)
+        
+        return df
 
     def run(self, feedback_file: str, reward_version: str, samples: int, seed: int, *args, **kwargs):
         init_all_seeds(seed)

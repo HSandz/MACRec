@@ -59,14 +59,17 @@ class TestGenerationTask(PureGenerationTask):
         parser.add_argument('--offset', type=int, default=0, help='Offset of samples, only works when random is False')
         return parser
 
-    def prompt_data(self, df: pd.DataFrame) -> list[tuple[str, int | float | str, pd.Series]]:
-        data = super().prompt_data(df)
+    def get_data(self, data_file: str, max_his: int) -> pd.DataFrame:
+        """Apply sampling to raw CSV data BEFORE prompt building and filtering."""
+        df = super().get_data(data_file, max_his)
+        
         if self.random:
-            sample_idx = np.random.choice(len(data), self.samples, replace=False)
-            data = [data[i] for i in sample_idx]
+            sample_idx = np.random.choice(len(df), min(self.samples, len(df)), replace=False)
+            df = df.iloc[sample_idx].reset_index(drop=True)
         else:
-            data = data[self.offset: self.offset + self.samples]
-        return data
+            df = df.iloc[self.offset: self.offset + self.samples].reset_index(drop=True)
+        
+        return df
 
     def run(self, random: bool, samples: int, offset: int, *args, **kwargs):
         self.sampled = True
