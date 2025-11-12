@@ -59,21 +59,13 @@ def scan_dict(config: dict) -> bool:
 
 def check_json(config_path: str) -> bool:
     config = read_json(config_path)
-    if 'model_type' in config and config['model_type'] == 'opensource':
-        assert 'model_path' in config, 'model_path is required for OpenSource models'
-        st.markdown(f'`{config_path}` requires `{config["model_path"]}` models.')
-        return False
     if 'model_path' in config:
         st.markdown(f'`{config_path}` requires `{config["model_path"]}` models.')
         return False
     return scan_dict(config)
 
 def check_config(config_path: str) -> bool:
-    import torch
-    if torch.cuda.is_available():
-        return True
-    else:
-        return check_json(config_path)
+    return check_json(config_path)
 
 def get_system(system_type: type[System], config_path: str, task: str, dataset: str, model_override: str = 'google/gemini-2.0-flash-001') -> System:
     logger.debug(f'get_system called with model_override: {model_override}')

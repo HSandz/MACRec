@@ -5,7 +5,7 @@ from loguru import logger
 from typing import Any, Optional, TYPE_CHECKING
 from langchain.prompts import PromptTemplate
 
-from macrec.llms import BaseLLM, OpenSourceLLM, GeminiLLM, OpenRouterLLM, OllamaLLM
+from macrec.llms import BaseLLM, GeminiLLM, OpenRouterLLM, OllamaLLM
 from macrec.tools import TOOL_MAP, Tool
 from macrec.utils import run_once, format_history, read_prompts, duration_tracker
 
@@ -164,18 +164,14 @@ class Agent(ABC):
             agent_name = self.__class__.__name__
             config['agent_context'] = agent_name
         
-        if model_type == 'opensource':
-            if 'model_name' in config and 'model_path' not in config:
-                config['model_path'] = config.pop('model_name')
-            return OpenSourceLLM(**config)
-        elif model_type == 'gemini':
+        if model_type == 'gemini':
             return GeminiLLM(**config)
         elif model_type == 'openrouter':
             return OpenRouterLLM(**config)
         elif model_type == 'ollama':
             return OllamaLLM(**config)
         else:
-            raise ValueError(f"Unsupported model type: {model_type}. Supported types are 'opensource', 'gemini', 'openrouter', and 'ollama'.")
+            raise ValueError(f"Unsupported model type: {model_type}. Supported types are 'gemini', 'openrouter', and 'ollama'.")
 
 class ToolAgent(Agent):
     """

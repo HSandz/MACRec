@@ -1,6 +1,5 @@
 from enum import Enum
 from loguru import logger
-from transformers import AutoTokenizer
 from langchain.prompts import PromptTemplate
 
 from macrec.agents.base import Agent
@@ -40,12 +39,7 @@ class Reflector(Agent):
         reflection_strategy = get_rm(agent_config, 'reflection_strategy', ReflectionStrategy.REFLEXION.value)
         self.llm = self.get_LLM(config=agent_config)
         if isinstance(self.llm, (GeminiLLM, OpenRouterLLM)):
-            # For Gemini and OpenRouter, we'll use a simple word-based estimation
             self.enc = None
-        else:
-            self.enc = AutoTokenizer.from_pretrained(self.llm.model_name)
-        self.json_mode = self.llm.json_mode
-        self.keep_reflections = keep_reflections
         for strategy in ReflectionStrategy:
             if strategy.value == reflection_strategy:
                 self.reflection_strategy = strategy

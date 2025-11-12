@@ -1,6 +1,5 @@
 from loguru import logger
 import json
-from transformers import AutoTokenizer
 from langchain.prompts import PromptTemplate
 
 from macrec.agents.base import Agent
@@ -49,33 +48,13 @@ class Manager(Agent):
             self.action_llm = self.get_LLM(config=temp_config)
             
         self.json_mode = self.action_llm.json_mode
-        
-        # Initialize tokenizers based on LLM type
-        if isinstance(self.thought_llm, (GeminiLLM, OpenRouterLLM, OllamaLLM)):
-            # For Gemini, OpenRouter, and Ollama, we'll use a simple word-based estimation
-            self.thought_enc = None
-        else:
-            self.thought_enc = AutoTokenizer.from_pretrained(self.thought_llm.model_name)
-            
-        if isinstance(self.action_llm, (GeminiLLM, OpenRouterLLM, OllamaLLM)):
-            # For Gemini, OpenRouter, and Ollama, we'll use a simple word-based estimation
-            self.action_enc = None
-        else:
-            self.action_enc = AutoTokenizer.from_pretrained(self.action_llm.model_name)
 
     def over_limit(self, **kwargs) -> bool:
         prompt = self._build_manager_prompt(**kwargs)
         
-        # For Gemini models, use a simple word-based estimation (4 chars per token approximately)
-        if self.action_enc is None:
-            action_tokens = len(prompt) // 4
-        else:
-            action_tokens = len(self.action_enc.encode(prompt))
-            
-        if self.thought_enc is None:
-            thought_tokens = len(prompt) // 4
-        else:
-            thought_tokens = len(self.thought_enc.encode(prompt))
+        # Use simple word-based estimation (4 chars per token approximately)
+        action_tokens = len(prompt) // 4
+        thought_tokens = len(prompt) // 4
             
         return action_tokens > self.action_llm.tokens_limit or thought_tokens > self.thought_llm.tokens_limit
 
