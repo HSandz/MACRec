@@ -1,6 +1,8 @@
 # data paths
 save_dataloaders: False
 save_dataset: False
+checkpoint_dir: "train/saved/"
+
 # dataset config
 field_separator: "\t"
 seq_separator: " "

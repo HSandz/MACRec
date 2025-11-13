@@ -39,15 +39,16 @@ def get_user_internal_ids(dataset):
     tokens = dataset.field2id_token[dataset.uid_field]
     return [internal_id for internal_id, token in enumerate(tokens) if token != '[PAD]' and token is not None]
 
-def get_ground_truth_items(test_data, user_field, item_field):
-    ground_truth_items = {}
-    for batch in test_data:
-        interaction = batch[0] if isinstance(batch, tuple) else batch
-        users = interaction[user_field]
-        items = interaction[item_field]
-        for user_id, item_id in zip(users.tolist(), items.tolist()):
-            if user_id not in ground_truth_items:
-                ground_truth_items[user_id] = item_id
+def get_ground_truth_items_from_testdata(config, test_data):
+    from collections import defaultdict
+    uid_field = config['USER_ID_FIELD']
+    iid_field = config['ITEM_ID_FIELD']
+    inter_feat = test_data.dataset.inter_feat
+    users = inter_feat[uid_field].cpu().numpy()
+    items = inter_feat[iid_field].cpu().numpy()
+    ground_truth_items = defaultdict(list)
+    for u, it in zip(users, items):
+        ground_truth_items[int(u)].append(int(it))
     return ground_truth_items
 
 def prepare_model():
@@ -63,10 +64,8 @@ def prepare_model():
     model.eval()
     dataset_name = getattr(cfg, 'dataset', 'unknown') if hasattr(cfg, 'dataset') else cfg['dataset'] if 'dataset' in cfg else 'unknown'
     model_name = getattr(cfg, 'model', 'unknown') if hasattr(cfg, 'model') else cfg['model'] if 'model' in cfg else 'unknown'
-    user_field = dataset.uid_field
-    item_field = dataset.iid_field
     user_internal_ids = get_user_internal_ids(dataset)
-    ground_truth_items = get_ground_truth_items(test_data, user_field, item_field)
+    ground_truth_items = get_ground_truth_items_from_testdata(cfg, test_data)
     print(f'Loaded {len(ground_truth_items)} ground truth items from test_data')
     return base_dir, model, device, user_internal_ids, ground_truth_items, dataset_name, model_name, test_data
 
@@ -84,9 +83,16 @@ def get_topk_results(model, device, user_internal_ids, ground_truth_items, test_
         for j, uid in enumerate(batch_user_ids):
             items = topk_idx[j].cpu().numpy()
             gt_item = ground_truth_items.get(uid, None)
+            # If gt_item is a list, join as string, else keep as is
+            if gt_item is None:
+                gt_item_str = ''
+            elif isinstance(gt_item, list):
+                gt_item_str = ','.join(map(str, gt_item))
+            else:
+                gt_item_str = str(gt_item)
             topk_results.append({
                 'user_id': uid,
-                'gt_item': int(gt_item) if gt_item is not None else '',
+                'gt_item': gt_item_str,
                 **{f'item_{ix+1}': int(item) for ix, item in enumerate(items)}
             })
     return topk_results

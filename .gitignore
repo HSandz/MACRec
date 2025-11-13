@@ -33,7 +33,8 @@ ckpts/
 config/api-config.json
 test*
 !macrec/*/test*
-
+train/recommendations/
+train/saved/
 wandb/
 trlx/
 
