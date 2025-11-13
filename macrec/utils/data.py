@@ -1,17 +1,16 @@
 # Description: Data utilities for macrec, including collator, json reader, json writer encoder, etc.
 
 import json
-import torch
 import numpy as np
 import pandas as pd
 import os
 from pathlib import Path
 
-def collator(data: list[dict[str, torch.Tensor]]) -> dict:
+def collator(data: list[dict[str, any]]) -> dict:
     """Collator for dataloader.
 
     Args:
-        `data` (`list[dict[str, torch.Tensor]]`): List of data.
+        `data` (`list[dict[str, any]]`): List of data.
 
     Returns:
         `dict`: Collated data.
