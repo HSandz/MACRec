@@ -38,6 +38,7 @@ class Reflector(Agent):
         keep_reflections = get_rm(agent_config, 'keep_reflections', True)
         reflection_strategy = get_rm(agent_config, 'reflection_strategy', ReflectionStrategy.REFLEXION.value)
         self.llm = self.get_LLM(config=agent_config)
+        self.json_mode = self.llm.json_mode
         if isinstance(self.llm, (GeminiLLM, OpenRouterLLM)):
             self.enc = None
         for strategy in ReflectionStrategy:
