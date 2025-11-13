@@ -35,12 +35,12 @@ class Reflector(Agent):
             assert config_path is not None, "Either config_path or config must be provided"
             agent_config = read_json(config_path)
         
-        keep_reflections = get_rm(agent_config, 'keep_reflections', True)
+        self.keep_reflections = get_rm(agent_config, 'keep_reflections', True)
         reflection_strategy = get_rm(agent_config, 'reflection_strategy', ReflectionStrategy.REFLEXION.value)
         self.llm = self.get_LLM(config=agent_config)
         self.json_mode = self.llm.json_mode
-        if isinstance(self.llm, (GeminiLLM, OpenRouterLLM)):
-            self.enc = None
+        # Initialize enc to None (will be set to tokenizer only if needed for non-Gemini/OpenRouter LLMs)
+        self.enc = None
         for strategy in ReflectionStrategy:
             if strategy.value == reflection_strategy:
                 self.reflection_strategy = strategy
