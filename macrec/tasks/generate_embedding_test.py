@@ -178,6 +178,8 @@ class GenerateEmbeddingTestTask(Task):
                           help='Model embeddings directory (e.g., models/SGCL/ml-100k)')
         parser.add_argument('--model_name', type=str, required=True,
                           help='Model name for output file (e.g., SGCL, LightGCN)')
+        parser.add_argument('--output_dir', type=str, default=None,
+                          help='Output directory for preprocessed test file (default: same as data_dir)')
         parser.add_argument('--n_candidates', type=int, default=20,
                           help='Number of candidate items including target (default: 20)')
         parser.add_argument('--test_file', type=str, default='test.csv',
@@ -196,7 +198,7 @@ class GenerateEmbeddingTestTask(Task):
         return parser
 
     def run(self, data_dir: str, model_dir: str, model_name: str, 
-            n_candidates: int = 20, test_file: str = 'test.csv', 
+            output_dir: str = None, n_candidates: int = 20, test_file: str = 'test.csv', 
             similarity_method: str = 'cosine', use_pkl: bool = False,
             pkl_file: str = 'retrieved.pkl', seed: int = 2024):
         """Generate embedding-based test file.
@@ -211,6 +213,7 @@ class GenerateEmbeddingTestTask(Task):
             data_dir: Path to dataset directory
             model_dir: Path to model embeddings directory
             model_name: Name of the model (used in output filename)
+            output_dir: Output directory for preprocessed file (default: same as data_dir)
             n_candidates: Number of candidates to select (including target)
             test_file: Name of input test file
             similarity_method: Similarity computation method ('cosine' or 'inner_product')
@@ -220,16 +223,20 @@ class GenerateEmbeddingTestTask(Task):
         """
         init_all_seeds(seed)
         
+        # Default output_dir to data_dir if not specified
+        if output_dir is None:
+            output_dir = data_dir
+        
         # If using pkl file, delegate to pkl handler
         if use_pkl:
-            return self._run_from_pkl(data_dir, model_dir, model_name, n_candidates, 
+            return self._run_from_pkl(data_dir, model_dir, model_name, output_dir, n_candidates, 
                                      test_file, pkl_file, seed)
         
         # Paths
         test_path = os.path.join(data_dir, test_file)
         user_emb_path = os.path.join(model_dir, 'user_embeddings.csv')
         item_emb_path = os.path.join(model_dir, 'item_embeddings.csv')
-        output_path = os.path.join(data_dir, f'test_{model_name}.csv')
+        output_path = os.path.join(output_dir, f'test_{model_name}.csv')
         
         # Validate inputs
         if not os.path.exists(test_path):
@@ -281,8 +288,8 @@ class GenerateEmbeddingTestTask(Task):
         
         # Process in chunks to manage memory
         chunk_size = 100
-        output_dir = os.path.dirname(output_path)
-        os.makedirs(output_dir, exist_ok=True)
+        output_dir_path = os.path.dirname(output_path)
+        os.makedirs(output_dir_path, exist_ok=True)
         
         logger.info(f"Computing item similarities and generating candidates (chunk size: {chunk_size})...")
         
@@ -399,7 +406,7 @@ class GenerateEmbeddingTestTask(Task):
         return top_k_idx[np.argsort(-scores_row[top_k_idx])]
 
     def _run_from_pkl(self, data_dir: str, model_dir: str, model_name: str,
-                      n_candidates: int, test_file: str, pkl_file: str, seed: int):
+                      output_dir: str, n_candidates: int, test_file: str, pkl_file: str, seed: int):
         """Generate test file from precomputed data in .pkl file.
 
         This matches pkl_to_csv.py behavior where candidates are taken directly from the model's
@@ -415,6 +422,7 @@ class GenerateEmbeddingTestTask(Task):
             data_dir: Path to dataset directory
             model_dir: Path to model directory containing .pkl file
             model_name: Name of the model (used in output filename)
+            output_dir: Output directory for preprocessed file
             n_candidates: Number of candidates to select (truncates test_topk if needed)
             test_file: Name of input test file
             pkl_file: Name of pkl file containing test_topk/test_probs and test_labels
@@ -425,7 +433,7 @@ class GenerateEmbeddingTestTask(Task):
         # Paths
         test_path = os.path.join(data_dir, test_file)
         pkl_path = os.path.join(model_dir, pkl_file)
-        output_path = os.path.join(data_dir, f'test_{model_name}.csv')
+        output_path = os.path.join(output_dir, f'test_{model_name}.csv')
         
         # Validate inputs
         if not os.path.exists(test_path):
