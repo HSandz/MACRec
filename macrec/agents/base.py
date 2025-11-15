@@ -5,7 +5,7 @@ from loguru import logger
 from typing import Any, Optional, TYPE_CHECKING
 from langchain.prompts import PromptTemplate
 
-from macrec.llms import BaseLLM, GeminiLLM, OpenRouterLLM, OllamaLLM
+from macrec.llms import BaseLLM, GeminiLLM, OpenRouterLLM, OpenAILLM, OllamaLLM
 from macrec.tools import TOOL_MAP, Tool
 from macrec.utils import run_once, format_history, read_prompts, duration_tracker
 
@@ -100,7 +100,6 @@ class Agent(ABC):
         
         # Common LLM attribute names to check (for performance)
         common_llm_attrs = ['llm', 'analyst', 'thought_llm', 'action_llm', 
-                           'searcher', 'interpreter', 
                            'planner', 'solver', 'reflector']
         
         # First check common attributes for performance
@@ -156,22 +155,37 @@ class Agent(ABC):
         
         # Make a copy to avoid modifying the original config
         config = config.copy()
-        model_type = config['model_type']
-        del config['model_type']
+        # Support both 'provider' (new) and 'model_type' (legacy) keys
+        provider = config.get('provider') or config.get('model_type')
+        if not provider:
+            raise ValueError("Agent config must have either 'provider' or 'model_type' key")
+        # Remove both keys to avoid confusion
+        if 'provider' in config:
+            del config['provider']
+        if 'model_type' in config:
+            del config['model_type']
+        
+        # Read 'model' key from config
+        if 'model' not in config:
+            raise ValueError("Agent config must have 'model' key")
         
         # Add agent context to the LLM configuration if not already set
         if 'agent_context' not in config:
             agent_name = self.__class__.__name__
             config['agent_context'] = agent_name
         
-        if model_type == 'gemini':
+        if provider == 'gemini':
             return GeminiLLM(**config)
-        elif model_type == 'openrouter':
+        elif provider == 'openrouter':
             return OpenRouterLLM(**config)
-        elif model_type == 'ollama':
+        elif provider == 'openai':
+            return OpenAILLM(**config)
+        elif provider == 'ollama':
             return OllamaLLM(**config)
         else:
-            raise ValueError(f"Unsupported model type: {model_type}. Supported types are 'gemini', 'openrouter', and 'ollama'.")
+            raise ValueError(
+                f"Unsupported provider: {provider}. Supported providers are 'gemini', 'openrouter', 'openai', and 'ollama'."
+            )
 
 class ToolAgent(Agent):
     """

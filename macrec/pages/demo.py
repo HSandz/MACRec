@@ -28,6 +28,19 @@ AVAILABLE_MODELS = [
     'qwen/qwen-2.5-72b-instruct'
 ]
 
+def _normalize_model_for_provider(model: str, provider: str) -> str:
+    """Strip provider prefixes when using direct APIs."""
+    cleaned = (model or '').strip()
+    if not cleaned:
+        return cleaned
+    if provider == 'openai' and '/' in cleaned:
+        prefix, suffix = cleaned.split('/', 1)
+        if prefix.lower() == 'openai':
+            return suffix
+    if provider == 'ollama' and cleaned.startswith('ollama/'):
+        return cleaned.split('/', 1)[1]
+    return cleaned
+
 def demo():
     init_api(read_json('config/api-config.json'))
     st.set_page_config(
@@ -39,30 +52,58 @@ def demo():
     st.sidebar.title('MACRec Demo')
     # Model selection
     st.sidebar.markdown("Model Configuration")
-    
-    use_custom = st.sidebar.checkbox('Use custom model name', help='Enable to type a custom model name instead of selecting from the list')
-    
-    if use_custom:
-        # Custom model input (full width when enabled)
-        custom_model = st.sidebar.text_input(
-            'Model name',
-            placeholder='e.g., openai/gpt-4o-mini, google/gemini-2.0-flash-001',
-            help='Enter any model name supported by OpenRouter or direct API providers'
-        )
-        model_override = custom_model if custom_model.strip() else 'google/gemini-2.0-flash-001'
-        logger.debug(f'Using custom model: {model_override}')
+
+    provider_choices = [
+        ('Use agent config', None),  # New option: no override
+        ('Hosted via OpenRouter', 'openrouter'),
+        ('Direct OpenAI', 'openai'),
+        ('Local Ollama', 'ollama'),
+    ]
+    provider_label = st.sidebar.selectbox(
+        'LLM provider',
+        options=[label for label, _ in provider_choices],
+        index=0,
+        help='Choose where the model is served from, or use agent config files'
+    )
+    provider = dict(provider_choices)[provider_label]
+
+    # Only show model selection if a provider is chosen
+    if provider is None:
+        st.sidebar.info('ℹ️ Using model configuration from agent config files')
+        model_override = None
+        model_display = 'Agent Config'
     else:
-        # Selectbox for predefined models (full width when enabled)
-        selected_model = st.sidebar.selectbox(
-            'Choose a model',
-            options=[''] + AVAILABLE_MODELS,
-            format_func=lambda x: 'Select a model...' if x == '' else x,
-            help='Select from available models'
-        )
-        model_override = selected_model if selected_model != '' else 'google/gemini-2.0-flash-001'
-        logger.debug(f'Using selected model: {model_override}')
-    
-    logger.debug(f'Final model_override: {model_override}')
+        default_models = {
+            'openrouter': 'google/gemini-2.0-flash-001',
+            'openai': 'gpt-4o-mini',
+            'ollama': 'llama3.2:1b',
+        }
+        fallback_model = default_models.get(provider, 'google/gemini-2.0-flash-001')
+
+        use_custom = st.sidebar.checkbox('Use custom model name', help='Enable to type a custom model name instead of selecting from the list')
+
+        if use_custom:
+            # Custom model input (full width when enabled)
+            custom_model = st.sidebar.text_input(
+                'Model name',
+                placeholder='e.g., openai/gpt-4o-mini, google/gemini-2.0-flash-001, llama3.2:1b',
+                help='Enter any model name supported by the selected provider'
+            )
+            model_display = custom_model.strip() or fallback_model
+            logger.debug(f'Using custom model: {model_display}')
+        else:
+            # Selectbox for predefined models (full width when enabled)
+            selected_model = st.sidebar.selectbox(
+                'Choose a model',
+                options=[''] + AVAILABLE_MODELS,
+                format_func=lambda x: 'Select a model...' if x == '' else x,
+                help='Select from available models'
+            )
+            model_display = selected_model if selected_model else fallback_model
+            logger.debug(f'Using selected model: {model_display}')
+
+        model_override = _normalize_model_for_provider(model_display, provider) or fallback_model
+        logger.debug(f'Final model_override: {model_override} ({provider})')
 
     
     st.sidebar.markdown("---")
@@ -80,14 +121,15 @@ def demo():
     # choose a task
     task = st.sidebar.radio('Choose a task', all_tasks, format_func=task2name)
     
-    # Show information about deprecated systems
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("**💡 Note:** The following systems have been deprecated:")
-    st.sidebar.markdown("- `react` → Use `collaboration` system")
-    st.sidebar.markdown("- `reflection` → Use `collaboration` with reflection")
-    st.sidebar.markdown("- `analyse` → Use `collaboration` with analysis")
     
     if task not in supported_tasks:
         st.error(f'The task {task2name(task)} is not supported by the system `{system_type.__name__}` with the config file `{config_file}`. Supported tasks: {", ".join([task2name(t) for t in supported_tasks])}')
         return
-    task_config(task=task, system_type=system_type, config_path=os.path.join(config_dir, config_file), model_override=model_override)
+    task_config(
+        task=task,
+        system_type=system_type,
+        config_path=os.path.join(config_dir, config_file),
+        model_override=model_override,
+        provider=provider,
+        display_model=model_display
+    )

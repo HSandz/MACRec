@@ -7,8 +7,8 @@ from abc import ABC, abstractmethod
 
 from macrec.agents.base import Agent
 from macrec.agents import (
-    Manager, Analyst, Interpreter, Reflector, 
-    Searcher, Planner, Solver
+    Manager, Analyst, Reflector, 
+    Planner, Solver
 )
 
 
@@ -28,9 +28,7 @@ class DefaultAgentFactory(AgentFactory):
         self._agent_registry: Dict[str, Type[Agent]] = {
             'Manager': Manager,
             'Analyst': Analyst,
-            'Interpreter': Interpreter,
             'Reflector': Reflector,
-            'Searcher': Searcher,
             'Planner': Planner,
             'Solver': Solver,
         }

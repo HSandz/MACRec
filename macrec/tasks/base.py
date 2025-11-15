@@ -36,7 +36,7 @@ class Task(ABC):
         Args:
             task: Task type (e.g., 'sr', 'rp', 'gen')
             dataset: Dataset name (e.g., 'ml-100k', 'Beauty')
-            system: System name (e.g., 'rewoo', 'collaboration')
+            system: System name (e.g., 'rewoo')
             num_samples: Number of samples in the task
         """
         # Create task-specific log file

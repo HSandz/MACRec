@@ -202,76 +202,6 @@ class SystemOrchestrator(ABC):
         return self.state.finished or self.state.is_max_steps_reached()
 
 
-class CollaborationOrchestrator(SystemOrchestrator):
-    """Orchestrator for collaboration-based systems."""
-    
-    def execute_workflow(self, **kwargs) -> Any:
-        """Execute collaboration workflow."""
-        self.state.reset()
-        
-        while not self.is_finished():
-            self.state.increment_step()
-            
-            try:
-                # Get manager action
-                manager = self.agent_coordinator.get_agent('Manager')
-                if not manager:
-                    raise ValueError("Manager agent not found")
-                
-                # Execute thinking step
-                thought_result = manager.forward(mode='thought', **kwargs)
-                
-                # Execute action step
-                action_result = manager.forward(mode='action', **kwargs)
-                
-                # Process action result and coordinate with other agents
-                if self._should_finish(action_result):
-                    self.state.finished = True
-                    self.state.result = action_result
-                    break
-                
-                # Execute action with appropriate agent
-                action_type, arguments = self._parse_action(action_result)
-                execution_result = self._execute_action(action_type, arguments, **kwargs)
-                
-                self.state.add_to_history(action_result, execution_result)
-                
-            except Exception as e:
-                logger.error(f"Error in collaboration workflow step {self.state.step_count}: {e}")
-                break
-        
-        return self.state.result
-    
-    def _should_finish(self, action_result: str) -> bool:
-        """Check if the action indicates completion."""
-        # Implementation would check for finish conditions
-        return "Finish" in action_result or "FINISH" in action_result
-    
-    def _parse_action(self, action_result: str) -> tuple:
-        """Parse action result to get action type and arguments."""
-        # Implementation would parse the action string
-        # This is a simplified version
-        if "Search" in action_result:
-            return ("search", action_result)
-        elif "Analyze" in action_result:
-            return ("analyze", action_result)
-        else:
-            return ("unknown", action_result)
-    
-    def _execute_action(self, action_type: str, arguments: str, **kwargs) -> Any:
-        """Execute the parsed action with appropriate agent."""
-        if action_type == "search":
-            searcher = self.agent_coordinator.get_agent('Searcher')
-            if searcher:
-                return self.agent_coordinator.execute_agent_action('Searcher', 'forward', **kwargs)
-        elif action_type == "analyze":
-            analyst = self.agent_coordinator.get_agent('Analyst')
-            if analyst:
-                return self.agent_coordinator.execute_agent_action('Analyst', 'forward', **kwargs)
-        
-        return None
-
-
 class ReWOOOrchestrator(SystemOrchestrator):
     """Orchestrator for ReWOO-style systems."""
     
@@ -314,7 +244,7 @@ class ReWOOOrchestrator(SystemOrchestrator):
         
         # Parse plan to identify required workers
         # This is a simplified implementation
-        workers = ['Analyst', 'Searcher']
+        workers = ['Analyst']
         
         for worker_name in workers:
             worker = self.agent_coordinator.get_agent(worker_name)

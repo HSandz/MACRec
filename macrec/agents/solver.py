@@ -160,9 +160,9 @@ DO NOT include any other item IDs in your ranking.
             ]
             
             # Convert to single prompt for compatibility with all LLM types
-            from macrec.llms import OllamaLLM, OpenRouterLLM
-            if isinstance(self.llm, (OllamaLLM, OpenRouterLLM)):
-                # For Ollama and OpenRouter, combine system and user messages into single prompt
+            from macrec.llms import OllamaLLM, OpenRouterLLM, GeminiLLM
+            if isinstance(self.llm, (OllamaLLM, OpenRouterLLM, GeminiLLM)):
+                # For Ollama, OpenRouter, and Gemini, combine system and user messages into single prompt
                 combined_prompt = f"System: {system_msg}\n\nUser: {user_msg}\n\nAssistant:"
                 solution = self.llm(combined_prompt)
             else:

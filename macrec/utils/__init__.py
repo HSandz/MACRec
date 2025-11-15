@@ -2,7 +2,7 @@
 from macrec.utils.check import EM, is_correct
 from macrec.utils.data import collator, read_json, append_his_info, NumpyEncoder
 from macrec.utils.decorator import run_once
-from macrec.utils.init import init_gemini_api, init_api, init_all_seeds
+from macrec.utils.init import init_gemini_api, init_openai_api, init_api, init_all_seeds
 from macrec.utils.parse import parse_action, parse_answer, init_answer
 from macrec.utils.prompts import read_prompts
 from macrec.utils.prompt_builder import PromptBuilder

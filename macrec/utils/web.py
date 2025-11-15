@@ -29,10 +29,6 @@ def get_color(agent_type: str) -> str:
         return 'rainbow'
     elif 'reflector' in agent_type.lower():
         return 'orange'
-    elif 'searcher' in agent_type.lower():
-        return 'blue'
-    elif 'interpreter' in agent_type.lower():
-        return 'green'
     elif 'analyst' in agent_type.lower():
         return 'red'
     else:

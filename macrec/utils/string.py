@@ -117,10 +117,6 @@ def get_avatar(agent_type: str) -> str:
         return '👩‍💼'
     elif 'reflector' in agent_type.lower():
         return '👩‍🔬'
-    elif 'searcher' in agent_type.lower():
-        return '🔍'
-    elif 'interpreter' in agent_type.lower():
-        return '👩‍🏫'
     elif 'analyst' in agent_type.lower():
         return '👩‍💻'
     else:

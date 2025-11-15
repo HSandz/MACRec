@@ -1,5 +1,5 @@
 {
-    "model_type": "opensource",
+    "provider": "opensource",
     "model_path": "lmsys/vicuna-7b-v1.5-16k",
     "do_sample": true,
     "temperature": 0.9,

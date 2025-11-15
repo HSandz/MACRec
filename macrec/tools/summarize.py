@@ -8,12 +8,13 @@ class TextSummarizer(Tool):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         # Initialize Gemini LLM for summarization
-        self.model_name: str = get_rm(self.config, 'model_name', 'gemini-2.0-flash-001')
+        model_value = get_rm(self.config, 'model', 'gemini-2.0-flash-001')
+        self.model: str = model_value
         self.temperature: float = get_rm(self.config, 'temperature', 0.1)
         self.max_tokens: int = get_rm(self.config, 'max_tokens', 150)
         
         self.llm = GeminiLLM(
-            model_name=self.model_name,
+            model=self.model,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
             json_mode=False

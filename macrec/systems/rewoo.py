@@ -11,7 +11,7 @@ from macrec.agents.base import Agent
 from macrec.utils import parse_answer, parse_action, format_chat_history, duration_tracker
 
 if TYPE_CHECKING:
-    from macrec.agents import Manager, Analyst, Interpreter, Reflector, Searcher, Planner, Solver
+    from macrec.agents import Manager, Analyst, Reflector, Planner, Solver
 
 
 class ReWOOSystem(System):
@@ -23,8 +23,7 @@ class ReWOOSystem(System):
     2. Working: Execute sub-tasks using existing agents
     3. Solving: Aggregate results to generate final recommendations
     
-    The system maintains backward compatibility with existing CollaborationSystem
-    while adding ReWOO capabilities for improved reasoning and performance.
+    The system implements ReWOO capabilities for improved reasoning and performance.
     """
     
     def __init__(self, task: str, config_path: str, leak: bool = False, web_demo: bool = False, dataset: Optional[str] = None, enable_reflection_rerun: bool = False, *args, **kwargs) -> None:
@@ -106,14 +105,6 @@ class ReWOOSystem(System):
         return self.agent_coordinator.get_agent('Analyst')
 
     @property
-    def searcher(self) -> Optional['Searcher']:
-        return self.agent_coordinator.get_agent('Searcher')
-
-    @property
-    def interpreter(self) -> Optional['Interpreter']:
-        return self.agent_coordinator.get_agent('Interpreter')
-
-    @property
     def reflector(self) -> Optional['Reflector']:
         return self.agent_coordinator.get_agent('Reflector')
     
@@ -193,9 +184,9 @@ class ReWOOSystem(System):
         self._execution_errors = []  # Clear error tracking
 
     def forward(self, user_input: Optional[str] = None, reset: bool = True) -> Any:
-        """Forward method implementing ReWOO workflow with exact same data integration as collaboration system."""
+        """Forward method implementing ReWOO workflow."""
         try:
-            # Use exact same data integration as collaboration system
+            # Prepare data integration
             if self.task == 'chat':
                 self.manager_kwargs['history'] = self.chat_history if hasattr(self, 'chat_history') else []
             else:
@@ -212,9 +203,8 @@ class ReWOOSystem(System):
             
             # Check if ReWOO agents are available
             if self.planner is None or self.solver is None:
-                # Fall back to collaboration mode if ReWOO agents not available
-                logger.info("ReWOO agents not available. Falling back to collaboration mode.")
-                return self._fallback_collaboration_mode()
+                logger.error("ReWOO agents (planner and solver) are required but not available.")
+                raise ValueError("ReWOO agents (planner and solver) are required but not available.")
             
             # Execute ReWOO workflow
             result = self._execute_rewoo_workflow()
@@ -378,8 +368,7 @@ class ReWOOSystem(System):
                 
         except Exception as e:
             logger.error(f"Error in ReWOO forward: {e}")
-            # Fall back to collaboration mode on error
-            return self._fallback_collaboration_mode()
+            raise
 
     def _execute_rewoo_workflow(self) -> str:
         """Execute the complete ReWOO workflow (planning -> working -> solving)."""
@@ -749,7 +738,7 @@ class ReWOOSystem(System):
         """Phase 3: Solving - Aggregate results to generate final answer."""
         logger.info("ReWOO Phase 3: Solving")
         
-        # Generate final solution - CRITICAL: Pass manager_kwargs like collaboration system
+        # Generate final solution - Pass manager_kwargs
         with duration_tracker.track_agent_call('solver'):
             solution = self.solver.invoke(self.current_plan, self.execution_results, self.task, **self.manager_kwargs)
         
@@ -945,8 +934,8 @@ class ReWOOSystem(System):
         return reranked_answer
 
     def _prepare_planning_query(self) -> str:
-        """Prepare the query for the planner based on task and context using exact same data as collaboration system."""
-        # Use the same input data as collaboration system
+        """Prepare the query for the planner based on task and context."""
+        # Use the input data
         base_query = getattr(self, 'input', 'No input provided')
         
         num_candidates = None
@@ -1126,7 +1115,7 @@ class ReWOOSystem(System):
         return task_desc
     
     def _execute_step(self, step: Dict[str, Any]) -> str:
-        """Execute a single plan step using the appropriate worker with real data exactly like collaboration system."""
+        """Execute a single plan step using the appropriate worker with real data."""
         worker_type = step['worker_type']
         task_desc = step['task_description']
         
@@ -1147,7 +1136,7 @@ class ReWOOSystem(System):
         if worker_type.lower() == 'retriever':
             worker = None
         else:
-            # Get worker agent and execute using the same patterns as collaboration system
+            # Get worker agent and execute
             worker = self._get_worker_agent(worker_type)
             if worker is None:
                 return f"Worker {worker_type} not available"
@@ -1280,20 +1269,10 @@ class ReWOOSystem(System):
                 else:
                     result = "Retriever tool not found in TOOL_MAP"
                     
-            elif worker_type.lower() == 'searcher':
-                logger.debug(f"Searcher args: {task_desc}, type: {type(task_desc)}")
-                # Only pass argument and json_mode like collaboration system does
-                with duration_tracker.track_agent_call('searcher'):
-                    result = worker.invoke(argument=task_desc, json_mode=json_mode)
-            elif worker_type.lower() == 'interpreter':
-                logger.debug(f"Interpreter args: {task_desc}, type: {type(task_desc)}")
-                # Only pass argument and json_mode like collaboration system does
-                with duration_tracker.track_agent_call('interpreter'):
-                    result = worker.invoke(argument=task_desc, json_mode=json_mode)
             else:
                 result = f"Unknown worker type: {worker_type}"
                 
-            # Track analyzed entities for compatibility (same as collaboration system)
+            # Track analyzed entities for compatibility
             self._track_analyzed_entities(worker_type, task_desc, result)
             
             return result
@@ -1362,15 +1341,13 @@ class ReWOOSystem(System):
     def _get_worker_agent(self, worker_type: str) -> Optional[Agent]:
         """Get the appropriate worker agent."""
         worker_map = {
-            'analyst': self.analyst,
-            'searcher': self.searcher,
-            'interpreter': self.interpreter
+            'analyst': self.analyst
         }
         return worker_map.get(worker_type.lower())
 
     def _parse_analyst_arguments_from_context(self, task_desc: str) -> List[Any]:
-        """Parse analyst arguments from task description using real context data like collaboration system."""
-        # Extract entity type and ID from the actual input context, same as collaboration system
+        """Parse analyst arguments from task description using real context data."""
+        # Extract entity type and ID from the actual input context
         import re
         
         # First try to extract from task description
@@ -1384,7 +1361,7 @@ class ReWOOSystem(System):
             # Convert to integer as expected by Analyst
             return ['item', int(item_match.group(1))]
         else:
-            # Fall back to extracting from the actual input data like collaboration system
+            # Fall back to extracting from the actual input data
             input_text = getattr(self, 'input', '')
             user_match = re.search(r'user[_\s:]*(\d+)', input_text, re.IGNORECASE)
             item_match = re.search(r'item[_\s:]*(\d+)', input_text, re.IGNORECASE)
@@ -1396,7 +1373,7 @@ class ReWOOSystem(System):
                 # Convert to integer as expected by Analyst
                 return ['item', int(item_match.group(1))]
             else:
-                # Use kwargs like collaboration system
+                # Use kwargs
                 if 'user_id' in self.kwargs:
                     return ['user', int(self.kwargs['user_id'])]
                 elif 'item_id' in self.kwargs:
@@ -1435,39 +1412,12 @@ class ReWOOSystem(System):
             elif item_match:
                 self.analyzed_items.add(item_match.group(1))
 
-    def _fallback_collaboration_mode(self) -> str:
-        """Fallback to collaboration system behavior using exact same execution pattern."""
-        try:
-            # If we have a manager, use collaboration system's step execution pattern
-            if self.manager is not None:
-                # Initialize scratchpad if needed (same as collaboration system)
-                if not hasattr(self, 'scratchpad'):
-                    self.scratchpad = ''
-                
-                # Use collaboration system's execution pattern
-                if not self.is_finished() and not self.is_halted():
-                    # Execute using collaboration system's think-act-execute pattern
-                    self.think()
-                    action_type, argument = self.act()
-                    self.execute(action_type, argument)
-                    self.step_n += 1
-                    
-                return "Collaboration mode step completed"
-            else:
-                # If no manager available, return error
-                return "No manager available for fallback"
-                
-        except Exception as e:
-            logger.error(f"Error in fallback collaboration mode: {e}")
-            return f"Fallback failed: {str(e)}"
-            
     def think(self):
-        """Think method using exact same logic as collaboration system."""
-        # Use the exact same implementation as collaboration system
+        """Think method for manager-based execution."""
         logger.debug(f'Step {self.step_n}:')
         logger.debug(f'Manager kwargs: {self.manager_kwargs}')
         
-        # Truncate scratchpad if it's getting too long (same as collaboration)
+        # Truncate scratchpad if it's getting too long
         max_scratchpad_length = 8000
         if len(self.scratchpad) > max_scratchpad_length:
             lines = self.scratchpad.split('\n')
@@ -1478,15 +1428,14 @@ class ReWOOSystem(System):
         self.scratchpad += f'\nThought {self.step_n}:'
         thought = self.manager(scratchpad=self.scratchpad, stage='thought', **self.manager_kwargs)
         
-        # Clean up thought (same as collaboration system)
+        # Clean up thought
         thought = thought.split('Action')[0].split('Observation')[0].split('Thought')[0].strip()
         
         self.scratchpad += ' ' + thought
         self.log(f'**Thought {self.step_n}**: {thought}', agent=self.manager)
 
     def act(self) -> tuple[str, Any]:
-        """Act method using exact same logic as collaboration system."""
-        # Use exact same logic as collaboration system
+        """Act method for manager-based execution."""
         if self.max_step == self.step_n:
             self.scratchpad += f'\nHint: {self.manager.hint}'
         
@@ -1494,7 +1443,7 @@ class ReWOOSystem(System):
         logger.debug(f'Action step - Manager kwargs: {self.manager_kwargs}')
         action = self.manager(scratchpad=self.scratchpad, stage='action', **self.manager_kwargs)
         
-        # Clean up action (same as collaboration system)
+        # Clean up action
         action_clean = action.strip()
         if '```' in action_clean:
             parts = action_clean.split('```')
@@ -1524,53 +1473,37 @@ class ReWOOSystem(System):
         return action_type, argument
 
     def execute(self, action_type: str, argument: Any):
-        """Execute method using exact same logic as collaboration system."""
-        # Import the collaboration system to use its execute method
-        from macrec.systems.collaboration import CollaborationSystem
-        
-        # Create a temporary instance to access the execute method
-        # This ensures we use the exact same execution logic
-        temp_collab = CollaborationSystem.__new__(CollaborationSystem)
-        temp_collab.agents = self.agents
-        temp_collab.manager_kwargs = self.manager_kwargs
-        temp_collab.task = self.task
-        temp_collab.kwargs = self.kwargs
-        temp_collab.scratchpad = self.scratchpad
-        temp_collab.step_n = self.step_n
-        temp_collab.analyzed_items = self.analyzed_items
-        temp_collab.analyzed_users = self.analyzed_users
-        temp_collab.log = self.log
-        temp_collab.finish = self.finish
-        
-        # Use collaboration system's execute method
-        temp_collab.execute(action_type, argument)
-        
-        # Copy back the updated state
-        self.scratchpad = temp_collab.scratchpad
-        self.analyzed_items = temp_collab.analyzed_items
-        self.analyzed_users = temp_collab.analyzed_users
-        if hasattr(temp_collab, 'manager_kwargs'):
-            self.manager_kwargs = temp_collab.manager_kwargs
+        """Execute method for manager-based execution."""
+        # Execute action using available agents
+        if action_type == 'Finish':
+            self.finish(argument)
+        elif action_type == 'Analyze':
+            if 'Analyst' in self.agents:
+                analyst = self.agents['Analyst']
+                if isinstance(argument, list) and len(argument) >= 2:
+                    entity_type, entity_id = argument[0], argument[1]
+                    result = analyst.invoke(entity_type, entity_id, **self.manager_kwargs)
+                    self.scratchpad += f'\nObservation {self.step_n}: {result}'
+                    self.log(f'**Observation {self.step_n}**: {result}', agent=analyst)
 
     def is_finished(self) -> bool:
-        """Check if the system is finished (same logic as collaboration system)."""
+        """Check if the system is finished."""
         return hasattr(self, 'finished') and self.finished
 
     def is_halted(self) -> bool:
-        """Check if the system is halted (same logic as collaboration system)."""
+        """Check if the system is halted."""
         return ((self.step_n > self.max_step) or 
                 (self.manager and self.manager.over_limit(scratchpad=getattr(self, 'scratchpad', ''), **self.manager_kwargs))) and not self.is_finished()
 
     def step(self):
-        """Execute one step of the ReWOO process or fallback to collaboration."""
+        """Execute one step of the ReWOO process."""
         try:
             # If in ReWOO mode and agents available, continue ReWOO workflow
             if self.planner and self.solver and self.phase in ['planning', 'working', 'solving']:
                 return self.forward(reset=False)
             else:
-                # Otherwise use collaboration system step pattern
-                return self._fallback_collaboration_mode()
+                logger.error("ReWOO agents (planner and solver) are required but not available.")
+                raise ValueError("ReWOO agents (planner and solver) are required but not available.")
         except Exception as e:
             logger.error(f"Error in ReWOO step: {e}")
-            # Fall back to collaboration mode on error
-            return self._fallback_collaboration_mode()
+            raise

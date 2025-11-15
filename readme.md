@@ -13,9 +13,9 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
 
 ## Key Features
 
-- 🤖 **Multi-Agent Collaboration**: Manager, Analyst, Searcher, Interpreter, and Reflector agents
+- 🤖 **Multi-Agent Collaboration**: Manager, Analyst, and Reflector agents
 - 🧠 **ReWOO Style**: Reasoning Without Observation - 3-phase workflow (Planning → Working → Solving)
-- ☁️ **Cloud LLM Support**: Access to 200+ models via OpenRouter (GPT, Claude, Gemini, Llama, etc.)
+- ☁️ **Cloud LLM Support**: Access to 200+ models via OpenRouter plus native OpenAI API integration
 - 🏠 **Local LLM Support**: Privacy-focused local inference via Ollama
 - 🔧 **Flexible Configuration**: Mix and match different models for different agents
 - 🎯 **Multiple Tasks**: Rating Prediction (RP), Sequential Recommendation (SR), Retrieve & Rank (RR), Generation (GEN)
@@ -29,28 +29,125 @@ https://github.com/wzf2000/MACRec/assets/27494406/0acb4718-5f07-41fd-a06b-d9fb36
 # Create conda environment
 conda create -n macrec python=3.10.18
 conda activate macrec
-
-# Install PyTorch
-pip install torch --extra-index-url https://download.pytorch.org/whl/cu118
-
 # Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Setup LLM Providers
+### 2. Setup API Providers
 
-#### Option A: Cloud Models (OpenRouter)
-1. Create account at [OpenRouter.ai](https://openrouter.ai)
-2. Get your API key
-3. Configure `config/api-config.json`:
+##### `config/api-config.json` 
+
 ```json
 {
-    "provider": "openrouter",
-    "api_key": "your-openrouter-api-key-here"
+    "default_provider": "openrouter",
+    "providers": {
+        "openrouter": {
+            "type": "openrouter",
+            "api_key": "sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "base_url": "https://openrouter.ai/api/v1/chat/completions"
+        },
+        "openai": {
+            "type": "openai",
+            "api_key": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "base_url": "https://api.openai.com/v1/chat/completions"
+        },
+        "gemini": {
+            "type": "gemini",
+            "api_key": "AIzaSyxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/models"
+        },
+        "ollama": {
+            "type": "ollama",
+            "base_url": "http://localhost:11434"
+        }
+    }
+}
+```
+---
+
+##### Default Provider
+
+```bash
+# Sử dụng provider mặc định (default_provider)
+python main.py --main Test \
+  --data_file data/ml-100k/test.csv \
+  --system rewoo \
+  --system_config config/systems/rewoo/basic.json \
+  --task sr \
+  --samples 100
+```
+
+##### Change Default Provider
+
+
+```json
+{
+    "default_provider": "openai",  // Thay đổi từ "openrouter" sang "openai"
+    "providers": {
+        ...
+    }
 }
 ```
 
-#### Option B: Local Models (Ollama)
+---
+
+##### Override Provider
+
+```bash
+# Sử dụng OpenRouter với model Gemini
+python main.py --main Test \
+  --data_file data/ml-100k/test.csv \
+  --system rewoo \
+  --system_config config/systems/rewoo/basic.json \
+  --task sr \
+  --samples 100 \
+  --provider openrouter \
+  --model google/gemini-2.0-flash-001
+
+# Sử dụng OpenAI với model GPT-4
+python main.py --main Test \
+  --data_file data/ml-100k/test.csv \
+  --system rewoo \
+  --system_config config/systems/rewoo/basic.json \
+  --task sr \
+  --samples 100 \
+  --provider openai \
+  --model gpt-4o-mini
+
+# Sử dụng Ollama với model local
+python main.py --main Test \
+  --data_file data/ml-100k/test.csv \
+  --system rewoo \
+  --system_config config/systems/rewoo/basic.json \
+  --task sr \
+  --samples 100 \
+  --provider ollama \
+  --model llama3.2:1b
+```
+
+##### Automatically Skip Providers Without API Key
+
+```json
+{
+    "providers": {
+        "openai": {
+            "api_key": ""
+        }
+    }
+}
+```
+
+
+##### Custom Base URL
+
+```json
+{
+    "openrouter": {
+        "base_url": "https://custom-proxy.example.com/api/v1/chat/completions"
+    }
+}
+```
+##### Local LLM Setup (Ollama)
 1. Install Ollama from [ollama.ai](https://ollama.ai)
 2. Pull models: `ollama pull llama3.2:1b`
 3. Start server: `ollama serve`
@@ -74,7 +171,7 @@ Create test files with candidates selected from model embeddings (hard negatives
 python main.py --main GenerateEmbeddingTest \
     --data_dir data/ml-100k \
     --model_dir models/{model_name}/ml-100k \
-    --model_name {model_name} \
+    --model {model_name} \
     --n_candidates 20
 ```
 
@@ -82,10 +179,13 @@ python main.py --main GenerateEmbeddingTest \
 
 ```bash
 # Test with cloud models (OpenRouter)
-python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 3 --openrouter google/gemini-2.0-flash-001
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 3 --provider openrouter --model google/gemini-2.0-flash-001
+
+# Test with direct OpenAI models
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 3 --provider openai --model gpt-4o-mini
 
 # Test with local models (Ollama)
-python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 3 --ollama llama3.2:1b
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 3 --provider ollama --model llama3.2:1b
 
 # Test ReWOO system (3-phase reasoning workflow)
 python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 3
@@ -100,16 +200,9 @@ MACRec features a modern, maintainable architecture built with clean software de
 - **🏭 Factory Pattern**: Centralized agent creation with dependency injection
 - **🔧 Component Architecture**: Modular orchestrators and coordinators for system workflow management
 - **⚙️ Configuration Interface**: Standardized configuration handling with validation
-- **🎯 System Orchestration**: Clean separation between collaboration and ReWOO workflows
+- **🎯 System Orchestration**: ReWOO workflow management
 
 ### Available Systems
-
-#### Collaboration System (`--system collaboration`)
-Traditional multi-agent system where agents collaborate dynamically:
-- **Manager**: Orchestrates the overall process (required)
-- **Worker Agents**: Collaborate on different aspects (analysis, retrieval, interpretation)
-- **Architecture**: Uses `AgentCoordinator` and `CollaborationOrchestrator` for workflow management
-- **Best For**: General recommendation tasks, complex agent interactions
 
 #### ReWOO System (`--system rewoo`)  
 Structured 3-phase reasoning system with optional Manager:
@@ -119,12 +212,6 @@ Structured 3-phase reasoning system with optional Manager:
 - **Architecture**: Uses `ReWOOOrchestrator` for phase-based workflow management
 - **Best For**: Complex reasoning tasks requiring systematic analysis
 
-### Deprecated Systems
-The following systems have been removed in favor of the improved architecture:
-- ~~`analyse`~~ → Use `collaboration` system with `analyse.json` config
-- ~~`react`~~ → Use `collaboration` system with single-agent configs  
-- ~~`reflection`~~ → Use `collaboration` system with reflection-enabled configs
-- ~~`chat`~~ → Use `collaboration` system for chat tasks
 
 ## Project Structure
 
@@ -132,10 +219,8 @@ The following systems have been removed in favor of the improved architecture:
     - `agents/`: All agent classes are defined here.
         - `analyst.py`: The *Analyst* agent class.
         - `base.py`: The base agent class and base tool agent class.
-        - `interpreter.py`: The *Task Interpreter* agent class.
         - `manager.py`: The *Manager* agent class.
         - `reflector.py`: The *Reflector* agent class.
-        - `searcher.py`: The *Searcher* agent class.
         - `planner.py`: The *Planner* agent for ReWOO-style task decomposition.
         - `solver.py`: The *Solver* agent for ReWOO-style result aggregation.
     - **`components.py`**: Core architectural components (orchestrators, coordinators, state management).
@@ -148,7 +233,6 @@ The following systems have been removed in favor of the improved architecture:
     - `rl/`: The datasets and reward function for the RLHF are defined here.
     - `systems/`: The multi-agent system classes are defined here.
         - `base.py`: The base system class with improved architecture.
-        - **`collaboration.py`**: The collaboration system class with factory pattern integration.
         - **`rewoo.py`**: The ReWOO system class with component-based architecture and 3-phase workflow.
     - `tasks/`: For external function calls (e.g. main.py). **Note needs to be distinguished from recommended tasks.**
         - `base.py`: The base task class.
@@ -163,7 +247,6 @@ The following systems have been removed in favor of the improved architecture:
     - `rl/`: The datasets and reward function for the RLHF are defined here.
     - `systems/`: The multi-agent system classes are defined here.
         - `base.py`: The base system class with improved architecture.
-        - **`collaboration.py`**: The collaboration system class with factory pattern integration.
         - **`rewoo.py`**: The ReWOO system class with component-based architecture and 3-phase workflow.
     - `tasks/`: For external function calls (e.g. main.py). **Note needs to be distinguished from recommended tasks.**
         - `base.py`: The base task class.
@@ -192,7 +275,7 @@ The following systems have been removed in favor of the improved architecture:
     - `prompts/`: All the prompts used in the experiments.
         - `agent_prompt/`: The prompts for each agent.
         - `data_prompt/`: The prompts used to prepare the input data for each task.
-        - `manager_prompt/`: The prompts for the *Manager* in the `CollaborationSystem` with different configurations.
+        - `manager_prompt/`: The prompts for the *Manager* with different configurations.
         - `old_system_prompt/`: ***(Deprecated)*** The prompts for other systems' agents.
         - `task_agent_prompt/`: ***(Deprecated)*** The task-specific prompts for agents in other systems.
     - `systems/`: The configuration for each system. Every system has a configuration folder.
@@ -206,41 +289,6 @@ The following systems have been removed in favor of the improved architecture:
 
 ## Usage
 
-### Command Line Interface
-
-The framework provides flexible CLI options for different LLM providers:
-
-#### Cloud Models (OpenRouter)
-```bash
-# Use specific OpenRouter model for all agents
-python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 3 --openrouter google/gemini-2.0-flash-001
-
-# Popular cloud models
---openrouter google/gemini-2.0-flash-001     # Gemini 2.0 Flash
---openrouter openai/gpt-4o                   # GPT-4o
---openrouter anthropic/claude-3-5-sonnet     # Claude 3.5
---openrouter meta-llama/llama-3.1-70b-instruct  # Llama 3.1 70B
-```
-
-#### Local Models (Ollama)
-```bash
-# Use specific Ollama model for all agents
-python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 3 --ollama llama3.2:1b
-
-# Popular local models
---ollama llama3.2:1b      # Llama 3.2 1B (fast, good for testing)
---ollama llama3.2:3b      # Llama 3.2 3B (balanced)
---ollama llama3.1:8b      # Llama 3.1 8B (high quality)
---ollama gemma2:2b        # Google Gemma 2B
---ollama qwen2.5:7b       # Qwen 2.5 7B
-```
-
-#### Mixed Provider Configuration
-Use individual agent configurations without CLI overrides:
-```bash
-# Uses individual agent configs (some agents with Ollama, others with OpenRouter)
-python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 3
-```
 
 ### Available Tasks
 
@@ -252,45 +300,45 @@ python main.py --main Test --data_file data/ml-100k/test.csv --system collaborat
 
 ### System Configurations
 
-#### Collaboration System
-| Configuration | Agents | Best For |
-|---------------|---------|----------|
-| `analyse.json` | Manager + Analyst | Quick testing, simple tasks |
-| `reflect_analyse_search.json` | Manager + Reflector + Analyst + Searcher | Complex reasoning tasks |
-
 #### ReWOO System (3-Phase Reasoning)
 | Configuration | Agents | Best For |
 |---------------|---------|----------|
 | `basic.json` | Planner + Analyst + Solver | Structured reasoning, limited agents |
 | `reflector.json` | Planner + Analyst + Reflector + Solver | Recommendations with validation |
-| `searcher.json` | Planner + Analyst + Searcher + Solver | Genre-aware recommendations |
 | `full.json` | Planner + All Workers + Solver | Complex multi-step reasoning |
 
 ### Example Workflows
 
 #### 1. Quick Testing (Small Sample)
 ```bash
-python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 3 --ollama llama3.2:1b
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 3 --provider ollama --model llama3.2:1b
 ```
 
 #### 2. Full Evaluation
 ```bash
-python main.py --main Evaluate --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/retrieve_analyse.json --task sr --openrouter google/gemini-2.0-flash-001
+python main.py --main Evaluate --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --provider openrouter --model google/gemini-2.0-flash-001
 ```
 
 #### 3. ReWOO System Testing
 ```bash
 # Basic ReWOO with limited agents
-python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 1 --openrouter google/gemini-2.0-flash-001
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 1 --provider openrouter --model google/gemini-2.0-flash-001
 
 # Full ReWOO with all workers (NOT tested)
-python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/full.json --task sr --samples 1 --openrouter google/gemini-2.0-flash-001
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/full.json --task sr --samples 1 --provider openrouter --model google/gemini-2.0-flash-001
 ```
 
-#### 4. Mixed Provider Setup
-Edit agent configs to use different providers, then run:
+#### 4. Using Default Model for Provider
+If you omit `--model`, the system will use the default model for the specified provider:
 ```bash
-python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 5
+# Uses default model for openrouter (google/gemini-2.0-flash-001)
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 5 --provider openrouter
+```
+
+#### 5. Using Agent Config Files (No Override)
+If you omit both `--provider` and `--model`, the system will use configurations from individual agent config files:
+```bash
+python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 5
 ```
 
 ## Dataset Support
@@ -345,13 +393,6 @@ All experiments automatically track:
 
 ### System Types
 
-#### Collaboration System (`--system collaboration`)
-Traditional multi-agent system where agents collaborate dynamically:
-- **Manager**: Orchestrates the overall process (required)
-- **Agents**: Work together on different aspects (analysis, retrieval, interpretation)
-- **Architecture**: Uses factory pattern for agent creation and component-based orchestration
-- **Best For**: General recommendation tasks, complex interactions
-
 #### ReWOO System (`--system rewoo`)  
 Structured 3-phase reasoning system:
 - **Phase 1**: Planner decomposes the task
@@ -365,8 +406,8 @@ Structured 3-phase reasoning system:
 Each agent can be configured individually in `config/agents/`:
 ```json
 {
-    "model_type": "ollama",
-    "model_name": "llama3.2:1b",
+    "provider": "ollama",
+    "model": "llama3.2:1b",
     "temperature": 0.7,
     "max_tokens": 1000
 }
@@ -374,15 +415,6 @@ Each agent can be configured individually in `config/agents/`:
 
 ### System Configuration
 Define which agents to use and system behavior:
-
-#### Collaboration System
-```json
-{
-    "agents": ["manager", "analyst"],
-    "max_iterations": 3,
-    "collaboration_strategy": "sequential"
-}
-```
 
 #### ReWOO System  
 ```json
@@ -424,7 +456,7 @@ Define which agents to use and system behavior:
 
 #### Common Issues
 1. **Ollama Connection Error**: Ensure Ollama server is running (`ollama serve`)
-2. **Model Not Found**: Pull the model first (`ollama pull model_name`)
+2. **Model Not Found**: Pull the model first (`ollama pull <model>`)
 3. **Out of Memory**: Try smaller models or reduce batch size
 4. **API Rate Limits**: Add delays or use different providers
 
@@ -450,10 +482,3 @@ If you find our work useful, please cite our paper:
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-**Need Help?** 
-- 📖 Check the `docs/` directory for detailed documentation
-- 🐛 Report issues on GitHub
-- 💬 Join our community discussions

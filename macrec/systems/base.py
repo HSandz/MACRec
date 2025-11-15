@@ -9,39 +9,16 @@ from macrec.agents import Agent
 from macrec.utils import is_correct, init_answer, read_json, read_prompts, get_avatar, get_color
 
 class System(ABC):
-    """
-    The base class of systems. We use the `forward` function to get the system output. Use `set_data` to set the input, context and ground truth answer. Use `is_finished` to check whether the system has finished. Use `is_correct` to check whether the system output is correct. Use `finish` to finish the system and set the system output.
-    """
+    """Base class for all systems."""
     @staticmethod
     @abstractmethod
     def supported_tasks() -> list[str]:
-        """Return a list of supported tasks.
-
-        Raises:
-            `NotImplementedError`: Should be implemented in subclasses.
-        Returns:
-            `list[str]`: A list of supported tasks.
-        """
+        """Return a list of supported tasks."""
         raise NotImplementedError("System.supported_tasks() not implemented")
 
     @property
     def task_type(self) -> str:
-        """Return the type of the task. Can be inherited by subclasses to support more task types.
-
-        Raises:
-            `NotImplementedError`: Not supported task type.
-        Returns:
-            `str`: The type of the task.
-        Example for subclass:
-        .. code-block:: python
-            class MySystem(System):
-                @property
-                def task_type(self) -> str:
-                    if self.task == 'my_task':
-                        return 'my task description'
-                    else:
-                        return super().task_type
-        """
+        """Return the type of the task."""
         if self.task == 'qa':
             return 'question answering'
         elif self.task == 'rp':
@@ -57,15 +34,7 @@ class System(ABC):
             return self.task
 
     def __init__(self, task: str, config_path: str, leak: bool = False, web_demo: bool = False, dataset: Optional[str] = None, *args, **kwargs) -> None:
-        """Initialize the system.
-
-        Args:
-            `task` (`str`): The task for the system to perform.
-            `config_path` (`str`): The path to the config file of the system.
-            `leak` (`bool`, optional): Whether to leak the ground truth answer to the system during inference. Defaults to `False`.
-            `web_demo` (`bool`, optional): Whether to run the system in web demo mode. Defaults to `False`.
-            `dataset` (`str`, optional): The dataset to run in the system. Defaults to `None`.
-        """
+        """Initialize the system."""
         self.task = task
         assert self.task in self.supported_tasks()
         self.config = read_json(config_path)
@@ -73,8 +42,9 @@ class System(ABC):
             assert isinstance(self.config['supported_tasks'], list) and self.task in self.config['supported_tasks'], f'Task {self.task} is not supported by the system.'
         
         # Handle model override
+        # No default provider - only override if explicitly provided
         self.model_override = kwargs.get('model_override', None)
-        self.provider_type = kwargs.get('provider_type', 'openrouter')  # Default to openrouter for backward compatibility
+        self.provider = kwargs.get('provider', None)
         
         self.agent_kwargs = {
             'system': self,
@@ -101,43 +71,101 @@ class System(ABC):
         self.reset(clear=True)
 
     def _apply_model_override(self, config: dict) -> dict:
-        """Apply model override to a configuration dict."""
-        if not self.model_override:
+        """Apply model override to a configuration dict.
+
+        Only overrides if both model_override and provider are explicitly provided.
+        Otherwise, uses the provider and model from the agent's config file.
+        Skips override for agents with provider type 'opensource'.
+        """
+        # Only override if BOTH model_override and provider are provided
+        if not self.model_override or not self.provider:
             return config
-            
+
+        # Skip override for opensource agents
+        original_provider = config.get('provider', config.get('model_type', '')).lower()  # Support both 'provider' and legacy 'model_type'
+        if original_provider == 'opensource':
+            logger.debug(f"Skipping model override for opensource agent (keeping original config)")
+            return config
+
         config = config.copy()
+
+        # Set provider type and model name (use 'provider' and 'model' keys)
+        config['provider'] = self.provider
+        # Remove legacy 'model_type' if present
+        if 'model_type' in config:
+            del config['model_type']
+        config['model'] = self.model_override
         
-        # Set provider type and model name
-        config['model_type'] = self.provider_type
-        config['model_name'] = self.model_override
-        
-        if self.provider_type == 'openrouter':
-            # Get OpenRouter API key from config
+        if self.provider == 'openrouter':
             try:
                 api_config = read_json('config/api-config.json')
-                if api_config.get('provider') == 'openrouter' and 'api_key' in api_config:
-                    config['api_key'] = api_config['api_key']
+                openrouter_key = None
+                if 'providers' in api_config and 'openrouter' in api_config['providers']:
+                    openrouter_key = api_config['providers']['openrouter'].get('api_key')
+                if not openrouter_key:
+                    provider = api_config.get('provider', '').lower()
+                    if provider == 'openrouter':
+                        openrouter_key = api_config.get('api_key')
+                    if not openrouter_key:
+                        openrouter_key = api_config.get('openrouter_api_key')
+                if openrouter_key:
+                    config['api_key'] = openrouter_key
                     logger.info(f"Using OpenRouter API for model: {self.model_override}")
                 else:
                     logger.warning("OpenRouter API key not found in config")
             except Exception as e:
-                logger.warning(f"Could not read API config for model override: {e}")
-        elif self.provider_type == 'ollama':
-            # For Ollama, no API key needed
+                logger.warning(f"Could not read API config for OpenRouter model override: {e}")
+        elif self.provider == 'openai':
+            try:
+                api_config = read_json('config/api-config.json')
+                openai_key = None
+                if 'providers' in api_config and 'openai' in api_config['providers']:
+                    openai_key = api_config['providers']['openai'].get('api_key')
+                if not openai_key:
+                    provider = api_config.get('provider', '').lower()
+                    if provider == 'openai':
+                        openai_key = api_config.get('api_key') or api_config.get('openai_api_key')
+                    if not openai_key:
+                        openai_key = api_config.get('openai_api_key')
+
+                if openai_key:
+                    config['api_key'] = openai_key
+                    logger.info(f"Using OpenAI API for model: {self.model_override}")
+                else:
+                    logger.warning(
+                        "OpenAI API key not found in config; relying on OPENAI_API_KEY environment variable."
+                    )
+            except Exception as e:
+                logger.warning(f"Could not read API config for OpenAI model override: {e}")
+        elif self.provider == 'ollama':
             logger.info(f"Using Ollama local model: {self.model_override}")
+        elif self.provider == 'gemini':
+            try:
+                api_config = read_json('config/api-config.json')
+                gemini_key = None
+                if 'providers' in api_config and 'gemini' in api_config['providers']:
+                    gemini_key = api_config['providers']['gemini'].get('api_key')
+                if not gemini_key:
+                    provider = api_config.get('provider', '').lower()
+                    if provider == 'gemini':
+                        gemini_key = api_config.get('api_key') or api_config.get('gemini_api_key')
+                    if not gemini_key:
+                        gemini_key = api_config.get('gemini_api_key')
+
+                if gemini_key:
+                    config['api_key'] = gemini_key
+                    logger.info(f"Using Gemini API for model: {self.model_override}")
+                else:
+                    logger.warning("Gemini API key not found in config")
+            except Exception as e:
+                logger.warning(f"Could not read API config for Gemini model override: {e}")
         else:
-            logger.warning(f"Unknown provider type: {self.provider_type}")
+            logger.warning(f"Unknown provider: {self.provider}")
         
         return config
 
     def log(self, message: str, agent: Optional[Agent] = None, logging: bool = True) -> None:
-        """Log the message.
-
-        Args:
-            `message` (`str`): The message to log.
-            `agent` (`Agent`, optional): The agent to log the message. Defaults to `None`.
-            `logging` (`bool`, optional): Whether to use the `logger` to log the message. Defaults to `True`.
-        """
+        """Log the message."""
         if logging:
             logger.debug(message)
         if self.web_demo:
@@ -155,11 +183,7 @@ class System(ABC):
 
     @abstractmethod
     def init(self, *args, **kwargs) -> None:
-        """Initialize the system.
-
-        Raises:
-            `NotImplementedError`: Should be implemented in subclasses.
-        """
+        """Initialize the system."""
         raise NotImplementedError("System.init() not implemented")
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
@@ -174,13 +198,7 @@ class System(ABC):
 
     @abstractmethod
     def forward(self, *args, **kwargs) -> Any:
-        """Forward pass of the system.
-
-        Raises:
-            `NotImplementedError`: Should be implemented in subclasses.
-        Returns:
-            `Any`: The system output.
-        """
+        """Forward pass of the system."""
         raise NotImplementedError("System.forward() not implemented")
 
     def is_finished(self) -> bool:

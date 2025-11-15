@@ -2,5 +2,5 @@
 from macrec.factories import DefaultAgentFactory, ConfigManager, ToolProvider
 from macrec.components import (
     SystemOrchestrator, AgentCoordinator, SystemState,
-    CollaborationOrchestrator, ReWOOOrchestrator
+    ReWOOOrchestrator
 )

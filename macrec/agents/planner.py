@@ -33,25 +33,17 @@ class Planner(Agent):
         if hasattr(self, 'system') and self.system:
             if hasattr(self.system, 'analyst') and self.system.analyst:
                 available_workers.append("Analyst")
-            if hasattr(self.system, 'searcher') and self.system.searcher:
-                available_workers.append("Searcher")
-            if hasattr(self.system, 'interpreter') and self.system.interpreter:
-                available_workers.append("Interpreter")
         
         # Retriever is always available as a tool
         available_workers.append("Retriever")
         
         # Default workers if system not available
         if not available_workers:
-            available_workers = ["Analyst", "Searcher", "Interpreter", "Retriever"]
+            available_workers = ["Analyst", "Retriever"]
         
         workers_desc = ""
         if "Analyst" in available_workers:
             workers_desc += "- Analyst: Analyzes user preferences, item features, or user-item interactions\n"
-        if "Searcher" in available_workers:
-            workers_desc += "- Searcher: Searches for relevant information in knowledge bases\n"
-        if "Interpreter" in available_workers:
-            workers_desc += "- Interpreter: Interprets natural language queries or requirements\n"
         if "Retriever" in available_workers:
             workers_desc += "- Retriever: Retrieves candidate items for a given user (MUST be called as 2nd step after user analysis)\n"
         
@@ -147,9 +139,9 @@ class Planner(Agent):
             ]
             
             # Convert to single prompt for compatibility with all LLM types
-            from macrec.llms import OllamaLLM, OpenRouterLLM
-            if isinstance(self.llm, (OllamaLLM, OpenRouterLLM)):
-                # For Ollama and OpenRouter, combine system and user messages into single prompt
+            from macrec.llms import OllamaLLM, OpenRouterLLM, GeminiLLM
+            if isinstance(self.llm, (OllamaLLM, OpenRouterLLM, GeminiLLM)):
+                # For Ollama, OpenRouter, and Gemini, combine system and user messages into single prompt
                 combined_prompt = f"System: {system_msg}\n\nUser: {user_msg}\n\nAssistant:"
                 plan = self.llm(combined_prompt)
             else:
@@ -258,12 +250,12 @@ class Planner(Agent):
                     step['worker_type'] = 'Analyst'
                 elif 'retrieve candidate' in task_desc or 'get candidate' in task_desc:
                     step['worker_type'] = 'Retriever'
-                elif 'retrieve' in task_desc or 'search' in task_desc or 'candidate' in task_desc:
-                    step['worker_type'] = 'Searcher'
+                elif 'retrieve' in task_desc or 'candidate' in task_desc:
+                    step['worker_type'] = 'Retriever'
                 elif 'rank' in task_desc or 'score' in task_desc or 'order' in task_desc:
-                    step['worker_type'] = 'Searcher'  
+                    step['worker_type'] = 'Analyst'  # Fallback to Analyst for ranking tasks  
                 elif 'interpret' in task_desc or 'generate' in task_desc or 'recommend' in task_desc:
-                    step['worker_type'] = 'Interpreter'
+                    step['worker_type'] = 'Analyst'  # Use Analyst as fallback
                 else:
                     step['worker_type'] = 'Analyst'  # Default fallback
         

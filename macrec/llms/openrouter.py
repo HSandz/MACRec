@@ -7,48 +7,55 @@ from typing import Any, Dict, Optional
 from macrec.llms.basellm import BaseLLM
 
 class OpenRouterLLM(BaseLLM):
-    def __init__(self, model_name: str = 'google/gemini-2.0-flash-001', api_key: str = '', json_mode: bool = False, agent_context: str = None, *args, **kwargs):
+    def __init__(self, model: str = 'google/gemini-2.0-flash-001', api_key: str = '', json_mode: bool = False, agent_context: str = None, *args, **kwargs):
+        logger.info(f"[API] Provider: openrouter | Model: {model}")
         """Initialize the OpenRouter LLM.
 
         Args:
-            `model_name` (`str`, optional): The name of the model on OpenRouter. Defaults to `mistralai/mistral-7b-instruct`.
+            `model` (`str`, optional): The name of the model on OpenRouter. Defaults to `mistralai/mistral-7b-instruct`.
             `api_key` (`str`): The API key for OpenRouter. If empty, will try to get from environment or config.
             `json_mode` (`bool`, optional): Whether to use JSON mode. Defaults to `False`.
             `agent_context` (`str`, optional): The context of the agent using this LLM (e.g., 'Manager', 'Analyst'). Defaults to None.
         """
-        # Call parent constructor to initialize token tracking attributes
+
         super().__init__()
-        
-        self.model_name = model_name
+
+        self.model = model
         self.json_mode = json_mode
         self.agent_context = agent_context or "Unknown"
         self.max_tokens: int = kwargs.get('max_tokens', 1024)
         self.temperature: float = kwargs.get('temperature', 0.7)
         self.top_p: float = kwargs.get('top_p', 0.95)
         
-        # Set up API key - try multiple sources
+
         if api_key:
             self.api_key = api_key
         else:
-            # Try to get from environment variables or config
             import os
             self.api_key = os.getenv('OPENROUTER_API_KEY', '')
             if not self.api_key:
                 try:
                     from macrec.utils import read_json
                     api_config = read_json('config/api-config.json')
-                    if api_config.get('provider') == 'openrouter':
-                        self.api_key = api_config.get('api_key', '')
-                    elif api_config.get('provider') == 'mixed':
-                        self.api_key = api_config.get('openrouter_api_key', '')
+                    
+                    # Try new multi-provider structure first
+                    if 'providers' in api_config and 'openrouter' in api_config['providers']:
+                        self.api_key = api_config['providers']['openrouter'].get('api_key', '')
+                    
+                    # Fallback to legacy structure
+                    if not self.api_key:
+                        if api_config.get('provider') == 'openrouter':
+                            self.api_key = api_config.get('api_key', '')
+                        if not self.api_key:
+                            self.api_key = api_config.get('openrouter_api_key', '')
                 except:
                     pass
         
         if not self.api_key:
             logger.warning("OpenRouter API key not found. Please set it in config/api-config.json or as OPENROUTER_API_KEY environment variable.")
+        else:
+            logger.info(f"OpenRouter API key loaded: {self.api_key[:6]}...{self.api_key[-4:]}")
         
-        # Set context length based on model
-        # Default context lengths for common models
         model_context_lengths = {
             'mistralai/mistral-7b-instruct': 32768,
             'meta-llama/llama-3.1-8b-instruct': 131072,
@@ -66,22 +73,31 @@ class OpenRouterLLM(BaseLLM):
             'microsoft/wizardlm-2-8x22b': 65536,
         }
         
-        self.max_context_length = model_context_lengths.get(model_name, 32768)  # Default fallback
+        self.max_context_length = model_context_lengths.get(model, 32768)  # Default fallback
         
-        # Set up headers for API requests
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
         
-        # Base URL for OpenRouter
-        self.base_url = "https://openrouter.ai/api/v1/chat/completions"
+        try:
+            from macrec.utils import read_json
+            api_config = read_json('config/api-config.json')
+            if 'providers' in api_config and 'openrouter' in api_config['providers']:
+                provider_cfg = api_config['providers']['openrouter']
+                if provider_cfg.get('base_url'):
+                    self.base_url = provider_cfg['base_url']
+                else:
+                    raise ValueError("Missing 'base_url' for OpenRouter provider in config/api-config.json!")
+            else:
+                raise ValueError("Missing OpenRouter provider config in config/api-config.json!")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load OpenRouter base_url from config: {e}")
         
-        # Override retry configuration if provided
         self.max_retries = kwargs.get('max_retries', 3)
         self.retry_delay_base = kwargs.get('retry_delay_base', 1)
         
-        logger.info(f"Initialized OpenRouter LLM with model: {model_name}, max_retries: {self.max_retries}")
+        logger.info(f"Initialized OpenRouter LLM with model: {model}, max_retries: {self.max_retries}")
 
     @property
     def tokens_limit(self) -> int:
@@ -107,6 +123,7 @@ class OpenRouterLLM(BaseLLM):
         Raises:
             requests.exceptions.RequestException: For any request errors
         """
+        logger.info(f"[API CALL] Provider: openrouter | Model: {self.model}")
         return requests.post(
             self.base_url,
             headers=self.headers,
@@ -125,31 +142,26 @@ class OpenRouterLLM(BaseLLM):
         """
         try:
             # Log the prompt being sent to the API
-            logger.info(f"LLM Prompt ({self.agent_context} → {self.model_name}):\n{prompt}")
+            logger.info(f"LLM Prompt ({self.agent_context} → {self.model}):\n{prompt}")
             
             # Log estimated token usage for the prompt
             estimated_prompt_tokens = self.estimate_tokens(prompt)
             logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_prompt_tokens} prompt tokens estimated")
-            
-            # Prepare the request payload
             messages = [{"role": "user", "content": prompt}]
             
             payload = {
-                "model": self.model_name,
+                "model": self.model,
                 "messages": messages,
                 "max_tokens": min(self.max_tokens, 4096),  # Cap at 4096 to prevent very long responses
                 "temperature": self.temperature,
                 "top_p": self.top_p,
             }
             
-            # Add JSON mode if enabled
             if self.json_mode:
                 payload["response_format"] = {"type": "json_object"}
                 # Add instruction to the prompt for JSON mode
                 messages[0]["content"] = f"{prompt}\n\nPlease respond with valid JSON only."
             
-            # Make the API request with automatic retry for transient errors
-            # Using base class retry mechanism that works for all LLM implementations
             response = self.execute_with_retry(
                 self._make_api_request,
                 payload=payload,
@@ -238,7 +250,7 @@ class OpenRouterLLM(BaseLLM):
                     )
                     
                     # Log the response from the API
-                    logger.info(f"LLM Response ({self.agent_context} → {self.model_name}):\n{content.strip()}")
+                    logger.info(f"LLM Response ({self.agent_context} → {self.model}):\n{content.strip()}")
                     
                     # Log actual token usage after API response
                     if input_tokens and output_tokens and total_tokens:

@@ -6,11 +6,12 @@ from typing import Any, Dict
 from macrec.llms.basellm import BaseLLM
 
 class OllamaLLM(BaseLLM):
-    def __init__(self, model_name: str = 'llama3.2:1b', base_url: str = 'http://localhost:11434', json_mode: bool = False, agent_context: str = None, *args, **kwargs):
+    def __init__(self, model: str = 'llama3.2:1b', base_url: str = 'http://localhost:11434', json_mode: bool = False, agent_context: str = None, *args, **kwargs):
+        logger.info(f"[API] Provider: ollama | Model: {model}")
         """Initialize the Ollama LLM.
 
         Args:
-            `model_name` (`str`, optional): The name of the model in Ollama. Defaults to `llama3.2`.
+            `model` (`str`, optional): The name of the model in Ollama. Defaults to `llama3.2`.
             `base_url` (`str`, optional): The base URL for the Ollama API. Defaults to `http://localhost:11434`.
             `json_mode` (`bool`, optional): Whether to use JSON mode. Defaults to `False`.
             `agent_context` (`str`, optional): The context of the agent using this LLM (e.g., 'Manager', 'Analyst'). Defaults to None.
@@ -18,7 +19,7 @@ class OllamaLLM(BaseLLM):
         # Call parent constructor to initialize token tracking attributes
         super().__init__()
         
-        self.model_name = model_name
+        self.model = model
         self.json_mode = json_mode
         self.agent_context = agent_context or "Unknown"
         self.max_tokens: int = kwargs.get('max_tokens', 1024)
@@ -27,18 +28,22 @@ class OllamaLLM(BaseLLM):
         self.top_k: int = kwargs.get('top_k', 40)
         self.timeout: int = kwargs.get('timeout', 300)  # 5 minutes for local models
         
-        # Set up Ollama configuration
-        # Try to get base_url from config file if not explicitly provided
-        if base_url == 'http://localhost:11434':  # default value
-            try:
-                from macrec.utils import read_json
-                api_config = read_json('config/api-config.json')
-                if api_config.get('ollama_base_url'):
-                    base_url = api_config.get('ollama_base_url')
-            except:
-                pass  # Use default if config not found
-        
-        self.base_url = base_url.rstrip('/')
+        # Set up Ollama configuration - BẮT BUỘC phải có base_url trong config
+        try:
+            from macrec.utils import read_json
+            api_config = read_json('config/api-config.json')
+            if 'providers' in api_config and 'ollama' in api_config['providers']:
+                provider_cfg = api_config['providers']['ollama']
+                if provider_cfg.get('base_url'):
+                    self.base_url = provider_cfg['base_url'].rstrip('/')
+                else:
+                    raise ValueError("Missing 'base_url' for Ollama provider in config/api-config.json!")
+            else:
+                raise ValueError("Missing Ollama provider config in config/api-config.json!")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load Ollama base_url from config: {e}")
+        self.generate_url = f"{self.base_url}/api/generate"
+        self.chat_url = f"{self.base_url}/api/chat"
         self.generate_url = f"{self.base_url}/api/generate"
         self.chat_url = f"{self.base_url}/api/chat"
         
@@ -80,14 +85,14 @@ class OllamaLLM(BaseLLM):
             'wizard-vicuna': 2048,
         }
         
-        self.max_context_length = model_context_lengths.get(model_name, 4096)  # Default fallback
+        self.max_context_length = model_context_lengths.get(model, 4096)  # Default fallback
         
         # Set up headers for API requests
         self.headers = {
             "Content-Type": "application/json"
         }
         
-        logger.info(f"Initialized Ollama LLM with model: {model_name} at {base_url}")
+        logger.info(f"Initialized Ollama LLM with model: {model} at {base_url}")
 
     @property
     def tokens_limit(self) -> int:
@@ -113,6 +118,7 @@ class OllamaLLM(BaseLLM):
         Raises:
             requests.exceptions.RequestException: For any request errors
         """
+        logger.info(f"[API CALL] Provider: ollama | Model: {self.model}")
         return requests.post(
             self.generate_url,
             headers=self.headers,
@@ -133,17 +139,17 @@ class OllamaLLM(BaseLLM):
             model_names = [model['name'] for model in models]
             
             # Check exact match or partial match for model name
-            if self.model_name in model_names:
+            if self.model in model_names:
                 return True
             
             # Check for partial matches (e.g., 'llama3.2' matches 'llama3.2:latest')
             for model_name in model_names:
-                if self.model_name in model_name or model_name.startswith(self.model_name):
-                    logger.info(f"Found model match: {model_name} for requested {self.model_name}")
+                if self.model in model_name or model_name.startswith(self.model):
+                    logger.info(f"Found model match: {model_name} for requested {self.model}")
                     return True
             
-            logger.warning(f"Model {self.model_name} not found in Ollama. Available models: {model_names}")
-            logger.info(f"You can pull the model by running: ollama pull {self.model_name}")
+            logger.warning(f"Model {self.model} not found in Ollama. Available models: {model_names}")
+            logger.info(f"You can pull the model by running: ollama pull {self.model}")
             return False
             
         except Exception as e:
@@ -162,12 +168,12 @@ class OllamaLLM(BaseLLM):
         try:
             # Check if Ollama server is available
             if not self._check_ollama_server():
-                error_msg = f"Ollama server not available or model {self.model_name} not found"
+                error_msg = f"Ollama server not available or model {self.model} not found"
                 logger.error(error_msg)
                 return f"Error: {error_msg}"
             
             # Log the prompt being sent to the API
-            logger.info(f"LLM Prompt ({self.agent_context} → {self.model_name}):\n{prompt}")
+            logger.info(f"LLM Prompt ({self.agent_context} → {self.model}):\n{prompt}")
             
             # Log estimated token usage for the prompt
             estimated_prompt_tokens = self.estimate_tokens(prompt)
@@ -175,7 +181,7 @@ class OllamaLLM(BaseLLM):
             
             # Prepare the request payload for Ollama generate API
             payload = {
-                "model": self.model_name,
+                "model": self.model,
                 "prompt": prompt,
                 "stream": False,
                 "options": {
@@ -241,7 +247,7 @@ class OllamaLLM(BaseLLM):
                             None  # Will use estimation
                         )
                         
-                        logger.info(f"LLM Response ({self.agent_context} → {self.model_name}):\n{content}")
+                        logger.info(f"LLM Response ({self.agent_context} → {self.model}):\n{content}")
                         return content
                     
                     return f"Error: INVALID_JSON - Failed to parse Ollama response"
@@ -269,7 +275,7 @@ class OllamaLLM(BaseLLM):
                     )
                     
                     # Log the response from the API
-                    logger.info(f"LLM Response ({self.agent_context} → {self.model_name}):\n{content}")
+                    logger.info(f"LLM Response ({self.agent_context} → {self.model}):\n{content}")
                     
                     # Log token usage after API response
                     if input_tokens and output_tokens:
@@ -329,13 +335,13 @@ class OllamaLLM(BaseLLM):
             logger.error(f"Error listing Ollama models: {e}")
             return []
 
-    def pull_model(self, model_name: str = None) -> bool:
+    def pull_model(self, model: str = None) -> bool:
         """Pull a model in Ollama."""
-        if model_name is None:
-            model_name = self.model_name
+        if model is None:
+            model = self.model
             
         try:
-            payload = {"name": model_name}
+            payload = {"name": model}
             response = requests.post(
                 f"{self.base_url}/api/pull",
                 headers=self.headers,
@@ -344,12 +350,12 @@ class OllamaLLM(BaseLLM):
             )
             
             if response.status_code == 200:
-                logger.info(f"Successfully pulled model {model_name}")
+                logger.info(f"Successfully pulled model {model}")
                 return True
             else:
-                logger.error(f"Failed to pull model {model_name}: {response.status_code}")
+                logger.error(f"Failed to pull model {model}: {response.status_code}")
                 return False
                 
         except Exception as e:
-            logger.error(f"Error pulling model {model_name}: {e}")
+            logger.error(f"Error pulling model {model}: {e}")
             return False

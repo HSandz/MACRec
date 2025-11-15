@@ -53,7 +53,7 @@ class TokenTracker:
         """
         # List of common agent property names to check
         agent_properties = [
-            'manager', 'analyst', 'reflector', 'searcher', 'interpreter', 
+            'manager', 'analyst', 'reflector', 
             'planner', 'solver'
         ]
         
@@ -67,7 +67,7 @@ class TokenTracker:
                         if hasattr(llm, 'reset_usage_stats'):
                             llm.reset_usage_stats()
         
-        # Handle systems with agents dict (e.g., collaboration system)
+        # Handle systems with agents dict
         if hasattr(system, 'agents') and isinstance(system.agents, dict):
             for agent_name, agent in system.agents.items():
                 if agent and hasattr(agent, 'get_llm_instances'):
@@ -145,7 +145,8 @@ class TokenTracker:
             task_data['total_output_tokens'] += delta_output
             task_data['total_tokens'] += delta_total
             task_data['total_api_calls'] += delta_calls
-            task_data['models_used'].add(stats['model_name'])
+            model_value = stats.get('model', 'unknown')
+            task_data['models_used'].add(model_value)
             
             # Update last known counts
             self.agent_last_counts[agent_key] = {
@@ -173,7 +174,7 @@ class TokenTracker:
         
         # List of common agent property names to check
         agent_properties = [
-            'manager', 'analyst', 'reflector', 'searcher', 'interpreter', 
+            'manager', 'analyst', 'reflector', 
             'planner', 'solver'
         ]
         
@@ -186,7 +187,7 @@ class TokenTracker:
                     for llm_name, llm in llm_instances.items():
                         self.collect_agent_stats(llm_name, llm)
         
-        # Handle systems with agents dict (e.g., collaboration system)
+        # Handle systems with agents dict
         if hasattr(system, 'agents') and isinstance(system.agents, dict):
             for agent_name, agent in system.agents.items():
                 if agent and hasattr(agent, 'get_llm_instances'):

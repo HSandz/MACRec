@@ -1,4 +1,0 @@
-{
-    "item_info": "data/Yelp2018/item.csv",
-    "description": "Retrieves candidate items for recommendation tasks from the data file"
-}

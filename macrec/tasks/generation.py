@@ -10,7 +10,7 @@ import datetime
 from macrec.tasks.base import Task
 from macrec.utils import init_api, read_json, token_tracker, duration_tracker
 from macrec.utils.prompt_builder import PromptBuilder
-from macrec.systems import CollaborationSystem, ReWOOSystem
+from macrec.systems import ReWOOSystem
 
 class GenerationTask(Task):
     @staticmethod
@@ -18,16 +18,16 @@ class GenerationTask(Task):
         parser.add_argument('--api_config', type=str, default='config/api-config.json', help='Api configuration file')
         parser.add_argument('--dataset', type=str, default='None', help='Dataset name')
         parser.add_argument('--data_file', type=str, required=True, help='Dataset file')
-        parser.add_argument('--system', type=str, default='react', choices=['react', 'reflection', 'analyse', 'collaboration', 'rewoo'], help='System name')
+        parser.add_argument('--system', type=str, default='rewoo', choices=['rewoo'], help='System name')
         parser.add_argument('--system_config', type=str, required=True, help='System configuration file')
-        parser.add_argument('--model', type=str, default='google/gemini-2.0-flash-001', help='Model name for all agents')
         parser.add_argument('--task', type=str, default='sr', choices=['rp', 'sr', 'gen'], help='Task name')
         parser.add_argument('--max_his', type=int, default=10, help='Max history length')
         
-        parser.add_argument('--openrouter', type=str, help='Use OpenRouter with specified model (e.g., --openrouter google/gemini-2.0-flash-001)')
-        parser.add_argument('--ollama', type=str, help='Use Ollama with specified model (e.g., --ollama llama3.2:1b)')
+        # Model configuration: use provider and model (model name)
+        parser.add_argument('--provider', type=str, choices=['openrouter', 'openai', 'ollama', 'gemini'], help='LLM provider type (e.g., openrouter, openai, ollama, gemini)')
+        parser.add_argument('--model', type=str, help='Model name/version to use (e.g., google/gemini-2.0-flash-001, gpt-4o-mini, llama3.2:1b). If not specified, uses default for the provider.')
         parser.add_argument('--disable-reflection-rerun', action='store_false', dest='enable_reflection_rerun', help='Disable automatic rerun when reflector returns correctness: false (only for ReWOO system)')
-        
+
         return parser
 
     def get_data(self, data_file: str, max_his: int) -> pd.DataFrame:
@@ -151,14 +151,10 @@ class GenerationTask(Task):
         return prompts
 
     def get_system(self, system: str, system_config: str):
-        if system == 'collaboration':
-            self.system = CollaborationSystem(config_path=system_config, **self.system_kwargs)
-        elif system == 'rewoo':
+        if system == 'rewoo':
             self.system = ReWOOSystem(config_path=system_config, **self.system_kwargs)
-        elif system in ['react', 'reflection', 'analyse']:
-            raise NotImplementedError(f"System '{system}' has been deprecated and removed. Please use 'collaboration' or 'rewoo' instead.")
         else:
-            raise NotImplementedError(f"Unknown system: {system}. Available systems: collaboration, rewoo")
+            raise NotImplementedError(f"Unknown system: {system}. Only 'rewoo' system is available.")
 
     @property
     @abstractmethod
@@ -299,7 +295,7 @@ class GenerationTask(Task):
                     logger.success(f"  Total tokens: {agent_stats.get('total_tokens', 0)}")
                     logger.success(f"  Input tokens: {agent_stats.get('total_input_tokens', 0)}")
                     logger.success(f"  Output tokens: {agent_stats.get('total_output_tokens', 0)}")
-                    logger.success(f"  Model: {agent_stats.get('model_name', 'unknown')}")
+                    logger.success(f"  Model: {agent_stats.get('model', 'unknown')}")
                 
                 # Execution duration info
                 if agent_name in agent_durations:
@@ -311,7 +307,7 @@ class GenerationTask(Task):
         self.after_generate()
 
 
-    def run(self, api_config: str, dataset: str, data_file: str, system: str, system_config: str, task: str, max_his: int, model: str = 'gemini', openrouter: str = None, ollama: str = None, enable_reflection_rerun: bool = True):
+    def run(self, api_config: str, dataset: str, data_file: str, system: str, system_config: str, task: str, max_his: int, provider: str = None, model: str = None, enable_reflection_rerun: bool = True):
         if dataset == 'None':
             dataset = os.path.basename(os.path.dirname(data_file))
         self.dataset = dataset
@@ -326,37 +322,33 @@ class GenerationTask(Task):
         
         # Initialize system_kwargs early (before get_data which may modify it)
         # Only apply model override if explicitly specified via CLI
-        if openrouter or ollama:
+        if provider:
             # Determine model provider and setup
-            provider_info = self._parse_provider_options(model, openrouter, ollama)
-            self.model_override = provider_info['model_name']
-            self.provider_type = provider_info['provider_type']
-            
+            provider_info = self._parse_provider_options(provider, model)
+            self.model_override = provider_info['model']
+            self.provider = provider_info['provider']
             self.system_kwargs = {
                 'task': self.task,
                 'leak': False,
                 'dataset': self.dataset,
                 'data_dir': data_dir,  # Add data_dir for cross-environment path construction
                 'model_override': self.model_override,
-                'provider_type': self.provider_type,
+                'provider': self.provider,
                 'enable_reflection_rerun': enable_reflection_rerun,
             }
-            
-            logger.info(f"🤖 Using {provider_info['provider_type']} with model: {provider_info['model_name']}")
+            logger.info(f"🤖 Using {provider_info['provider']} with model: {provider_info['model']} (will override all agents except opensource)")
         else:
-            # No CLI override - use individual agent configurations
+            # Không truyền provider: dùng config của từng agent
             self.model_override = None
-            self.provider_type = None
-            
+            self.provider = None
             self.system_kwargs = {
                 'task': self.task,
                 'leak': False,
                 'dataset': self.dataset,
-                'data_dir': data_dir,  # Add data_dir for cross-environment path construction
+                'data_dir': data_dir,
                 'enable_reflection_rerun': enable_reflection_rerun,
             }
-            
-            logger.info("🤖 Using individual agent configurations from config files")
+            logger.info(f"🤖 No provider/model specified - using individual agent configurations")
         
         # Load data (this may add n_candidate to system_kwargs for SR tasks)
         data_df = self.get_data(data_file, max_his)
@@ -369,27 +361,65 @@ class GenerationTask(Task):
         
         self.generate(data, steps=self.running_steps)
     
-    def _parse_provider_options(self, model: str, openrouter: str, ollama: str) -> dict:
-        """Parse provider-specific options and return provider info."""
-        # Count how many provider options are specified
-        provider_count = sum(1 for x in [openrouter, ollama] if x is not None)
+    def _parse_provider_options(self, provider: str, model: str = None) -> dict:
+        """Parse provider-specific options and return provider info.
         
-        if provider_count > 1:
-            raise ValueError("Cannot specify multiple providers. Use either --openrouter OR --ollama, not both.")
+        Args:
+            provider: Provider type (openrouter, openai, ollama, gemini)
+            model: Optional model name. If not provided, uses default for the provider.
         
-        if openrouter:
-            return {
-                'provider_type': 'openrouter',
-                'model_name': openrouter
+        Returns:
+            dict with 'provider' and 'model' keys
+        """
+        def _get_default(provider_name: str) -> str:
+            """Return default model for provider: from config, then fallback mapping."""
+            try:
+                from macrec.utils import read_json
+                api_config = read_json('config/api-config.json')
+                if 'providers' in api_config and provider_name in api_config['providers']:
+                    provider_cfg = api_config['providers'][provider_name]
+                    # check common keys for a default model name
+                    for k in ('model', 'default_model'):
+                        if provider_cfg.get(k):
+                            return provider_cfg.get(k)
+            except Exception:
+                pass
+            # fallback mapping
+            default_map = {
+                'openrouter': 'google/gemini-2.0-flash-001',
+                'openai': 'gpt-4o-mini',
+                'ollama': 'llama3.2:1b',
+                'gemini': 'google/gemini-2.0-flash-001'
             }
-        elif ollama:
+            return default_map.get(provider_name, 'google/gemini-2.0-flash-001')
+
+        if not provider:
+            # No provider specified - use agent config files
             return {
-                'provider_type': 'ollama', 
-                'model_name': ollama
+                'provider': None,
+                'model': None
             }
-        else:
-            # Use legacy --model parameter with OpenRouter as default
-            return {
-                'provider_type': 'openrouter',
-                'model_name': model
-            }
+        
+        # Use provided model or get default for the provider
+        chosen_model = model if model else _get_default(provider)
+        
+        # Normalize model name for specific providers
+        if provider == 'openai':
+            chosen_model = self._normalize_openai_model(chosen_model)
+        
+        return {
+            'provider': provider,
+            'model': chosen_model
+        }
+
+    @staticmethod
+    def _normalize_openai_model(model: str) -> str:
+        """Strip optional openai/ prefix for direct OpenAI API usage."""
+        if not model:
+            return 'gpt-4o-mini'
+        cleaned = model.strip()
+        if '/' in cleaned:
+            prefix, suffix = cleaned.split('/', 1)
+            if prefix.lower() == 'openai':
+                return suffix
+        return cleaned

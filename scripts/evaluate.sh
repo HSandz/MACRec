@@ -5,19 +5,11 @@
 ## Evaluate on Rating Prediction task using --task rp
 ## Evaluate with other datasets such as Amazon-Beauty by changing --data_file
 
-### config : collaboration = Manager + Analyst
-python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/analyse.json --task sr --samples 100 --openrouter google/gemini-2.0-flash-001
-### config : collaboration = Manager + Analyst + Reflector
-python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/reflect_analyse.json --task sr --samples 100
-### config : collaboration = Manager + Analyst + Reflector + Searcher
-python main.py --main Test --data_file data/ml-100k/test.csv --system collaboration --system_config config/systems/collaboration/reflect_analyse_search.json --task sr --samples 100
 ### config : rewoo = Planner + Analyst + Solver
 python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/basic.json --task sr --samples 100
 ### config : rewoo = Planner + Analyst + Solver + Reflector
 python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/reflector.json --task sr --samples 100
-### config : rewoo = Planner + Analyst + Solver  + Searcher
-python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/searcher.json --task sr --samples 100
-### config : rewoo = Planner + Analyst + Solver + Reflector + Searcher
+### config : rewoo = Planner + Analyst + Solver + Reflector
 python main.py --main Test --data_file data/ml-100k/test.csv --system rewoo --system_config config/systems/rewoo/full.json --task sr --samples 100
 
 ### Other params

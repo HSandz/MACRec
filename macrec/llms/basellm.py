@@ -6,7 +6,7 @@ import requests
 
 class BaseLLM(ABC):
     def __init__(self) -> None:
-        self.model_name: str
+        self.model: str
         self.max_tokens: int
         self.max_context_length: int
         self.json_mode: bool
@@ -72,7 +72,7 @@ class BaseLLM(ABC):
             'input_tokens': input_tokens,
             'output_tokens': output_tokens,
             'total_tokens': input_tokens + output_tokens,
-            'model': self.model_name,
+            'model': self.model,
             'prompt_length': len(prompt),
             'response_length': len(response),
             'estimated_input': estimated_input,
@@ -95,7 +95,7 @@ class BaseLLM(ABC):
             `Dict[str, Any]`: Usage statistics.
         """
         return {
-            'model_name': self.model_name,
+            'model': self.model,
             'total_input_tokens': self.total_input_tokens,
             'total_output_tokens': self.total_output_tokens,
             'total_tokens': self.total_input_tokens + self.total_output_tokens,
@@ -115,7 +115,7 @@ class BaseLLM(ABC):
         api_calls_with_estimates = self.api_calls - api_calls_with_actual
         
         return {
-            'model_name': self.model_name,
+            'model': self.model,
             'total_input_tokens': self.total_input_tokens,
             'total_output_tokens': self.total_output_tokens,
             'total_tokens': self.total_input_tokens + self.total_output_tokens,
@@ -222,6 +222,7 @@ class BaseLLM(ABC):
         if last_exception:
             raise last_exception
         
+        return None
         return None
     
     def _get_retriable_errors(self) -> tuple:

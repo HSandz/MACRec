@@ -1,6 +1,5 @@
 # Description: all tasks are defined here
 from macrec.tasks.preprocess import PreprocessTask
-from macrec.tasks.generate_embedding_test import GenerateEmbeddingTestTask
 from macrec.tasks.sample import SampleTask
 from macrec.tasks.calculate import CalculateTask
 

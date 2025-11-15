@@ -6,26 +6,26 @@ from typing import Any, Dict
 from macrec.llms.basellm import BaseLLM
 
 class GeminiLLM(BaseLLM):
-    def __init__(self, model_name: str = 'gemini-2.0-flash-001', json_mode: bool = False, agent_context: str = None, *args, **kwargs):
+    def __init__(self, model: str = 'gemini-2.0-flash-001', json_mode: bool = False, agent_context: str = None, *args, **kwargs):
         """Initialize the Gemini LLM.
 
         Args:
-            `model_name` (`str`, optional): The name of the Gemini model. Defaults to `gemini-2.0-flash-001`.
+            `model` (`str`, optional): The name of the Gemini model. Defaults to `gemini-2.0-flash-001`.
             `json_mode` (`bool`, optional): Whether to use JSON mode. Defaults to `False`.
             `agent_context` (`str`, optional): The context of the agent using this LLM (e.g., 'Manager', 'Analyst'). Defaults to None.
         """
         # Call parent constructor to initialize token tracking attributes
         super().__init__()
         
-        self.model_name = model_name
+        self.model = model
         self.json_mode = json_mode
         self.agent_context = agent_context or "Unknown"
         self.max_tokens: int = kwargs.get('max_tokens', 256)
         
         # Set context length based on model
-        if 'gemini-1.5-pro' in model_name:
+        if 'gemini-1.5-pro' in model:
             self.max_context_length = 2097152  # 2M tokens for Gemini 1.5 Pro
-        elif 'gemini-2.0-flash-001' in model_name:
+        elif 'gemini-2.0-flash-001' in model:
             self.max_context_length = 1048576  # 1M tokens for Gemini 1.5 Flash
         else:
             self.max_context_length = 32768  # Default fallback
@@ -42,11 +42,17 @@ class GeminiLLM(BaseLLM):
             generation_config["response_mime_type"] = "application/json"
             logger.info("Using JSON mode for Gemini API.")
         
-        # Initialize the model
-        self.model = genai.GenerativeModel(
-            model_name=model_name,
+        # Note: Gemini API key should be configured globally via init_api() 
+        # before creating any GeminiLLM instances. The init is handled in utils/init.py
+
+        # Initialize the Gemini API client (separate from self.model string)
+        # The API key is already configured globally by init_gemini_api()
+        self.client = genai.GenerativeModel(
+            model_name=model,
             generation_config=generation_config
         )
+        
+        logger.info(f"[API] Provider: gemini | Model: {model}")
 
     @property
     def tokens_limit(self) -> int:
@@ -67,7 +73,27 @@ class GeminiLLM(BaseLLM):
         Raises:
             Exception: For any API errors
         """
-        return self.model.generate_content(prompt_text)
+        logger.info(f"[API CALL] Provider: gemini | Model: {self.model}")
+        logger.debug(f"[API CALL] Prompt type: {type(prompt_text)}, length: {len(str(prompt_text)) if prompt_text else 0}")
+        
+        # Ensure prompt_text is a string
+        if not isinstance(prompt_text, str):
+            logger.error(f"[API CALL] ERROR: prompt_text is not a string! Type: {type(prompt_text)}, Value: {prompt_text}")
+            prompt_text = str(prompt_text)
+        
+        # Call generate_content with the prompt string
+        # Gemini SDK accepts string directly or list of Content objects
+        try:
+            # Simply pass the string - SDK will handle the conversion
+            response = self.client.generate_content(prompt_text)
+            return response
+        except Exception as e:
+            logger.error(f"[API CALL] Gemini API error details:")
+            logger.error(f"  - Error type: {type(e).__name__}")
+            logger.error(f"  - Error message: {str(e)}")
+            logger.error(f"  - Model: {self.model}")
+            logger.error(f"  - Prompt length: {len(prompt_text) if isinstance(prompt_text, str) else 'N/A'}")
+            raise
     
     def _get_retriable_errors(self) -> tuple:
         """Override to include Google API specific errors.
@@ -101,7 +127,7 @@ class GeminiLLM(BaseLLM):
         """
         try:
             # Log the prompt being sent to the API
-            logger.info(f"LLM Prompt ({self.agent_context} → {self.model_name}):\n{prompt}")
+            logger.info(f"LLM Prompt ({self.agent_context} → {self.model}):\n{prompt}")
             
             # Log estimated token usage for the prompt
             estimated_prompt_tokens = self.estimate_tokens(prompt)
@@ -122,8 +148,34 @@ class GeminiLLM(BaseLLM):
             )
             
             # Extract text from response
-            if response.text:
-                content = response.text.replace('\n', ' ').strip()
+            # Handle cases where response might be blocked or have no text
+            try:
+                if hasattr(response, 'text') and response.text:
+                    content = response.text.replace('\n', ' ').strip()
+                elif hasattr(response, 'parts') and response.parts:
+                    # Try to extract from parts
+                    content = ' '.join(part.text for part in response.parts if hasattr(part, 'text')).strip()
+                else:
+                    logger.warning(f"Gemini response has no valid text.")
+                    # Check for safety ratings or blocking
+                    if hasattr(response, 'prompt_feedback'):
+                        logger.warning(f"Prompt feedback: {response.prompt_feedback}")
+                    if hasattr(response, 'candidates') and response.candidates:
+                        finish_reasons = [c.finish_reason for c in response.candidates]
+                        logger.warning(f"Candidate finish reasons: {finish_reasons}")
+                        # Log human-readable finish reason
+                        reason_map = {1: "STOP", 2: "MAX_TOKENS", 3: "SAFETY", 4: "RECITATION", 5: "OTHER"}
+                        for i, reason in enumerate(finish_reasons):
+                            reason_name = reason_map.get(reason, f"UNKNOWN({reason})")
+                            logger.warning(f"Candidate {i}: finish_reason={reason_name}")
+                            if reason == 2:
+                                logger.error(f"⚠️ Response truncated due to MAX_TOKENS limit ({self.max_tokens}). Consider increasing max_tokens.")
+                    content = ""
+            except Exception as e:
+                logger.error(f"Error extracting text from Gemini response: {e}")
+                content = ""
+            
+            if content:
                 
                 # Track token usage (Gemini doesn't provide exact counts, so we estimate)
                 input_tokens = None
@@ -141,7 +193,7 @@ class GeminiLLM(BaseLLM):
                 )
                 
                 # Log the response from the API
-                logger.info(f"LLM Response ({self.agent_context} → {self.model_name}):\n{content}")
+                logger.info(f"LLM Response ({self.agent_context} → {self.model}):\n{content}")
                 
                 # Log token usage after API response
                 if input_tokens and output_tokens:

@@ -1,11 +1,11 @@
 {
     "manager_prompt": {
         "type": "template",
-        "content": "Solve a {task_type} task with interleaving Thought, Action, Observation steps. Thought can reason about the current situation. Actions:\n(1) Analyse[user/item, id] — ask Analyst to analyze user/item.\n(2) Search[requirements] — ask Searcher to web/search.\n(3) Interpret[content] — ask Task Interpreter to summarize into a concise task prompt.\n(4) Finish[response] — finish and return the response.\n\nYou can take at most {max_step} steps.\n{examples}\n{reflections}\n\nInput:\n{input}\n{task_prompt}\n{scratchpad}"
+        "content": "Solve a {task_type} task with interleaving Thought, Action, Observation steps. Thought can reason about the current situation. Actions:\n(1) Analyse[user/item, id] — ask Analyst to analyze user/item.\n(2) Search[requirements] — ask Searcher to web/search.\n(3) Finish[response] — finish and return the response.\n\nYou can take at most {max_step} steps.\n{examples}\n{reflections}\n\nInput:\n{input}\n{task_prompt}\n{scratchpad}"
     },
     "manager_prompt_json": {
         "type": "template",
-        "content": "Solve a {task_type} task with interleaving Thought, Action, Observation steps. Thought can reason about the current situation. Actions (JSON):\n(1) {{\"type\": \"Analyse\", \"content\": [\"user\"|\"item\", id]}}\n(2) {{\"type\": \"Search\", \"content\": requirements}}\n(3) {{\"type\": \"Interpret\", \"content\": content}}\n(4) {{\"type\": \"Finish\", \"content\": response}}\n\nYou can take at most {max_step} steps.\n{examples}\n{reflections}\n\nInput:\n{input}\n{task_prompt}\n{scratchpad}"
+        "content": "Solve a {task_type} task with interleaving Thought, Action, Observation steps. Thought can reason about the current situation. Actions (JSON):\n(1) {{\"type\": \"Analyse\", \"content\": [\"user\"|\"item\", id]}}\n(2) {{\"type\": \"Search\", \"content\": requirements}}\n(3) {{\"type\": \"Finish\", \"content\": response}}\n\nYou can take at most {max_step} steps.\n{examples}\n{reflections}\n\nInput:\n{input}\n{task_prompt}\n{scratchpad}"
     },
     "hint": {
         "type": "raw",
@@ -13,10 +13,10 @@
     },
     "valid_action_example": {
         "type": "raw",
-        "content": "Finish[{finish}]\nAnalyse[user, 524]\nAnalyse[item, 955]\nSearch[Movies similar to Schindler's list]\nInterpret[Why did user_123 give item_456 (with attributes, Title: Movies similar to Schindler's list) a rating of 4 (1 being lowest and 5 being highest)?]"
+        "content": "Finish[{finish}]\nAnalyse[user, 524]\nAnalyse[item, 955]\nSearch[Movies similar to Schindler's list]"
     },
     "valid_action_example_json": {
         "type": "raw",
-        "content": "{{\"type\": \"Finish\", \"content\": {finish}}}\n{{\"type\": \"Analyse\", \"content\": [\"user\", 524]}}\n{{\"type\": \"Analyse\", \"content\": [\"item\", 955]}}\n{{\"type\": \"Search\", \"content\": \"Movies similar to Schindler's list\"}}\n{{\"type\": \"Interpret\", \"content\": \"Why did user_123 give item_456 (with attributes, Title: Movies similar to Schindler's list) a rating of 4 (1 being lowest and 5 being highest)?\"}}"
+        "content": "{{\"type\": \"Finish\", \"content\": {finish}}}\n{{\"type\": \"Analyse\", \"content\": [\"user\", 524]}}\n{{\"type\": \"Analyse\", \"content\": [\"item\", 955]}}\n{{\"type\": \"Search\", \"content\": \"Movies similar to Schindler's list\"}}"
     }
 }

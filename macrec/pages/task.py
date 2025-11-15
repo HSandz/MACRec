@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 from loguru import logger
+from typing import Optional
 
 from macrec.systems import *
 from macrec.utils import task2name, read_json
@@ -67,122 +68,101 @@ def check_json(config_path: str) -> bool:
 def check_config(config_path: str) -> bool:
     return check_json(config_path)
 
-def get_system(system_type: type[System], config_path: str, task: str, dataset: str, model_override: str = 'google/gemini-2.0-flash-001') -> System:
-    logger.debug(f'get_system called with model_override: {model_override}')
+def get_system(system_type: type[System], config_path: str, task: str, dataset: str, model_override: str = None, provider: str = None) -> System:
+    logger.debug(f'get_system called with model_override: {model_override}, provider: {provider}')
     system_kwargs = {
-        'config_path': config_path, 
-        'task': task, 
-        'leak': False, 
-        'web_demo': True, 
+        'config_path': config_path,
+        'task': task,
+        'leak': False,
+        'web_demo': True,
         'dataset': dataset
     }
-    
-    # Always add model override
-    system_kwargs['model_override'] = model_override
-    logger.debug(f'Added model_override to system_kwargs: {model_override}')
-    
+
+    # Only add model override if both are provided
+    if model_override and provider:
+        system_kwargs['model_override'] = model_override
+        system_kwargs['provider'] = provider
+        logger.debug(f'Added model_override to system_kwargs: {model_override} ({provider})')
+    else:
+        logger.debug('No model override - using agent config files')
+
     logger.debug(f'Creating system with kwargs: {system_kwargs}')
     return system_type(**system_kwargs)
 
-def task_config(task: str, system_type: type[System], config_path: str, model_override: str = 'google/gemini-2.0-flash-001') -> None:
-    logger.debug(f'task_config called with model_override: {model_override}')
+def task_config(
+    task: str,
+    system_type: type[System],
+    config_path: str,
+    model_override: str = None,
+    provider: str = None,
+    display_model: Optional[str] = None
+) -> None:
+    logger.debug(f'task_config called with model_override: {model_override} ({provider})')
     st.markdown(f'## `{system_type.__name__}` for {task2name(task)}')
-    
-    # Determine provider based on model name
-    if model_override.startswith('google/'):
-        provider_display = "🟢 **Google API (Gemini)**"
-    elif model_override.startswith('openai/'):
-        provider_display = "🔵 **OpenAI API**"
-    elif model_override.startswith('anthropic/'):
-        provider_display = "🟠 **Anthropic API (Claude)**"
-    elif '/' in model_override:
-        provider_display = "🔴 **OpenRouter API**"
+
+    # Display model info
+    if model_override and provider:
+        model_label = display_model or model_override
+        provider_labels = {
+            'openrouter': '**OpenRouter API**',
+            'openai': '**OpenAI API**',
+            'ollama': '**Ollama (local)**',
+            'gemini': '**Gemini API**',
+        }
+        provider_display = provider_labels.get(provider, f'**{provider.upper()}**')
+        st.info(f"Using model: **{model_label}** via {provider_display}")
     else:
-        provider_display = "🔴 **OpenRouter API**"
-    
-    # Display model info with appropriate provider
-    st.info(f"Using model: **{model_override}** via {provider_display}")
-    logger.debug(f'Model set: {model_override}')
-    
-    checking = check_config(config_path)
-    if not checking:
-        st.error('This config file requires models that are not currently supported or accessible. Please try a different configuration.')
+        st.info("Using model configuration from agent config files")
+
+    if not check_config(config_path):
+        st.error('This config requires resources that are not currently available. Please choose a different configuration.')
         return
-    
-    # Dynamically get available datasets
+
     available_datasets = get_available_datasets()
     dataset = st.selectbox('Choose a dataset', available_datasets) if task != 'chat' else 'chat'
-    
-    # Add warning for deprecated system references
-    if any(deprecated in config_path for deprecated in ['react', 'reflection', 'analyse']):
-        st.warning(f"⚠️ **Warning**: You are using a configuration that may reference deprecated systems. Consider using equivalent `collaboration` system configurations for better performance.")
+
+
     renew = False
-    if 'system_type' not in st.session_state:
-        logger.debug(f'New system type: {system_type.__name__}')
-        st.session_state.system_type = system_type.__name__
+    if 'system_type' not in st.session_state or st.session_state.system_type != system_type.__name__:
         renew = True
-    elif st.session_state.system_type != system_type.__name__:
-        logger.debug(f'Change system type: {system_type.__name__}')
-        st.session_state.system_type = system_type.__name__
+    elif 'task' not in st.session_state or st.session_state.task != task:
         renew = True
-    elif 'task' not in st.session_state:
-        logger.debug(f'New task: {task}')
-        st.session_state.task = task
+    elif 'config_path' not in st.session_state or st.session_state.config_path != config_path:
         renew = True
-    elif st.session_state.task != task:
-        logger.debug(f'Change task: {task}')
-        st.session_state.task = task
+    elif 'dataset' not in st.session_state or st.session_state.dataset != dataset:
         renew = True
-    elif 'config_path' not in st.session_state:
-        logger.debug(f'New config path: {config_path}')
-        st.session_state.config_path = config_path
+    elif 'model_override' not in st.session_state or st.session_state.model_override != model_override:
         renew = True
-    elif st.session_state.config_path != config_path:
-        logger.debug(f'Change config path: {config_path}')
-        st.session_state.config_path = config_path
-        renew = True
-    elif 'dataset' not in st.session_state:
-        logger.debug(f'New dataset: {dataset}')
-        st.session_state.dataset = dataset
-        renew = True
-    elif st.session_state.dataset != dataset:
-        logger.debug(f'Change dataset: {dataset}')
-        st.session_state.dataset = dataset
-        renew = True
-    elif 'model_override' not in st.session_state:
-        logger.debug(f'New model override: {model_override}')
-        st.session_state.model_override = model_override
-        renew = True
-    elif st.session_state.model_override != model_override:
-        logger.debug(f'Change model override: {model_override}')
-        st.session_state.model_override = model_override
+    elif 'provider' not in st.session_state or st.session_state.provider != provider:
         renew = True
     elif 'system' not in st.session_state:
-        logger.debug('New system')
         renew = True
-    elif dataset != st.session_state.system.manager.dataset:
-        logger.debug(f'Change dataset: {dataset}')
-        st.session_state.dataset = dataset
+    elif dataset != getattr(st.session_state.system.manager, 'dataset', None):
         renew = True
+
     if renew:
-        system = get_system(system_type, config_path, task, dataset, model_override)
+        system = get_system(system_type, config_path, task, dataset, model_override, provider)
         st.session_state.system_type = system_type.__name__
         st.session_state.task = task
         st.session_state.config_path = config_path
         st.session_state.dataset = dataset
         st.session_state.model_override = model_override
+        st.session_state.provider = provider
         st.session_state.system = system
         st.session_state.chat_history = []
         if 'data_sample' in st.session_state:
             del st.session_state.data_sample
     else:
         system = st.session_state.system
+
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
     assert isinstance(st.session_state.chat_history, list)
+
     if task == 'chat':
         chat_page(system)
     elif task in ['rp', 'sr', 'gen']:
         gen_page(system, task, dataset)
     else:
         raise NotImplementedError
+

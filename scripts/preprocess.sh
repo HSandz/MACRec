@@ -9,9 +9,6 @@ python main.py --main Preprocess --data_dir data --dataset amazon --amazon_categ
 echo Preprocessing Yelp2020 dataset...
 python main.py --main Preprocess --data_dir data/Yelp2020 --dataset yelp2020 --n_neg_items 7
 
-# echo Preprocessing Yelp2018 dataset...
-# python main.py --main Preprocess --data_dir data/Yelp2018 --dataset yelp2018 --n_neg_items 7
-
 # echo Preprocessing Amazon Video Games dataset...
 # python main.py --main Preprocess --data_dir data --dataset amazon --amazon_category Video_Games --n_neg_items 7
 
