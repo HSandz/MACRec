@@ -20,15 +20,19 @@ def parse_candidates(df):
 def main():
     # Load data
     test_file = sys.argv[1] if len(sys.argv) > 1 else 'data/ml-100k/test_SGCL.csv'
-    df = pd.read_csv(test_file)
-    
+    try:
+        df = pd.read_csv(test_file)
+    except FileNotFoundError:
+        print(f"Error: File {test_file} not found.")
+        return
+
     # Basic info
     print_section(f"FILE: {test_file}")
     print(f"Total samples: {len(df)}")
     
     # Parse all candidates
     results = parse_candidates(df)
-    
+
     # Candidate counts
     cand_counts = [len(r['cands']) for r in results]
     print(f"\nCandidate count distribution:")
@@ -40,15 +44,51 @@ def main():
     print_section("GROUND TRUTH STATISTICS")
     print(f"GT in candidates: {gt_in_count}/{len(results)} ({gt_rate:.1f}%)")
     
-    # Position stats
-    positions = [r['pos'] for r in results if r['pos'] is not None]
-    if positions:
-        print_section("GT POSITION DISTRIBUTION")
-        print(f"Average: {sum(positions)/len(positions):.2f}")
-        print(f"Range: {min(positions)} - {max(positions)}")
-        print(f"\nTop 20 positions:")
-        for pos, count in Counter(positions).most_common(20):
-            print(f"  Position {pos}: {count} times")
+    chunk_size = 1000
+    best_split = None
+    max_gt_count = -1
+    
+    print_section("SPLIT ANALYSIS")
+    
+    # Process full 1000-sample chunks
+    num_full_chunks = len(results) // chunk_size
+    
+    for i in range(num_full_chunks):
+        start_idx = i * chunk_size
+        end_idx = (i + 1) * chunk_size
+            
+        chunk_results = results[start_idx:end_idx]
+        gt_in_count = sum(r['gt_in'] for r in chunk_results)
+        
+        split_name = f"{start_idx+1}-{end_idx}"
+        print(f"Split {split_name}: {gt_in_count} GT users")
+        
+        if gt_in_count > max_gt_count:
+            max_gt_count = gt_in_count
+            best_split = split_name
+    
+    # Handle leftover samples by creating a final chunk
+    leftover = len(results) % chunk_size
+    if leftover > 0:
+        # Create a chunk of size 'leftover' from the end
+        start_idx = len(results) - leftover
+        end_idx = len(results)
+        
+        chunk_results = results[start_idx:end_idx]
+        gt_in_count = sum(r['gt_in'] for r in chunk_results)
+        
+        split_name = f"{start_idx+1}-{end_idx}"
+        print(f"Split {split_name}: {gt_in_count} GT users (final {leftover} samples)")
+        
+        if gt_in_count > max_gt_count:
+            max_gt_count = gt_in_count
+            best_split = split_name
+
+    if best_split:
+        print_section("RESULT")
+        print(f"Split with most GT users: {best_split} ({max_gt_count} users)")
+    else:
+        print("\nNo valid splits found (all < 1000 samples).")
 
 if __name__ == "__main__":
     main()
