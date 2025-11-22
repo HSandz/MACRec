@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 import ast
+import random
 
 
 def load_all_csv(data_dir: Path) -> pd.DataFrame:
@@ -89,6 +90,9 @@ def convert_recommendations(rec_df: pd.DataFrame, user_history: Dict) -> pd.Data
     """
     print("Converting recommendations to complete format...")
     
+    # Set random seed for reproducibility
+    random.seed(2020)
+    
     rows = []
     
     for idx, row in rec_df.iterrows():
@@ -105,6 +109,9 @@ def convert_recommendations(rec_df: pd.DataFrame, user_history: Dict) -> pd.Data
                 candidates.append(item)
             except (ValueError, TypeError):
                 continue
+        
+        # Randomly shuffle candidate item list
+        random.shuffle(candidates)
         
         # Get user history from all_df
         if user_id in user_history:
