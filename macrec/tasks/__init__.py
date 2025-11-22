@@ -6,4 +6,3 @@ from macrec.tasks.calculate import CalculateTask
 from macrec.tasks.pure_generation import PureGenerationTask as GenerationTask, TestGenerationTask
 from macrec.tasks.evaluate import EvaluateTask
 from macrec.tasks.test import TestTask
-from macrec.tasks.generate_embedding_test import GenerateEmbeddingTestTask

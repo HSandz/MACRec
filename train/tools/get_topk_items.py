@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import os
 import torch
+import argparse
 from recbole.utils.case_study import full_sort_topk
 from recbole.quick_start import load_data_and_model
 
@@ -22,6 +23,25 @@ def get_latest_checkpoint(base_dir):
         return None
     files = sorted(files, reverse=True)
     return os.path.join(path, files[0])
+
+def get_checkpoint_path(base_dir, pth_file=None):
+    """
+    Get checkpoint path. If pth_file is specified, use it.
+    Otherwise, automatically select the latest checkpoint.
+    """
+    if pth_file:
+        # If absolute path is provided
+        if os.path.isabs(pth_file) and os.path.exists(pth_file):
+            return pth_file
+        # If relative path from saved directory
+        saved_path = os.path.join(base_dir, 'saved', pth_file)
+        if os.path.exists(saved_path):
+            return saved_path
+        # If file doesn't exist
+        print(f'Checkpoint file not found: {pth_file}')
+        return None
+    # Auto-select latest checkpoint
+    return get_latest_checkpoint(base_dir)
 
 def load_model(checkpoint):
     if not torch.cuda.is_available():
@@ -52,14 +72,14 @@ def get_ground_truth_items_from_testdata(config, test_data):
         ground_truth_items[int(u)].append(int(it))
     return ground_truth_items
 
-def prepare_model():
+def prepare_model(pth_file=None):
     patch_env()
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    checkpoint = get_latest_checkpoint(base_dir)
+    checkpoint = get_checkpoint_path(base_dir, pth_file)
     if checkpoint is None:
         print('No checkpoint found!')
         exit(1)
-    print(f'Selected latest checkpoint: {os.path.basename(checkpoint)}')
+    print(f'Using checkpoint: {os.path.basename(checkpoint)}')
     cfg, model, dataset, test_data = load_model(checkpoint)
     device = cfg['device']
     model.eval()
@@ -159,8 +179,17 @@ def calculate_metrics(topk_results, k_list=[1, 3, 5, 10, 20]):
 
 
 def main():
-    base_dir, model, device, user_internal_ids, ground_truth_items, dataset_name, model_name, test_data = prepare_model()
-    topk_results = get_topk_results(model, device, user_internal_ids, ground_truth_items, test_data, k=20, batch_size=64)
+    parser = argparse.ArgumentParser(description='Get top-k recommendations from trained model')
+    parser.add_argument('--pth_file', type=str, default=None,
+                        help='Path to checkpoint file (.pth). If not specified, automatically uses the latest checkpoint.')
+    parser.add_argument('--k', type=int, default=20,
+                        help='Number of top items to recommend (default: 20)')
+    parser.add_argument('--batch_size', type=int, default=64,
+                        help='Batch size for inference (default: 64)')
+    args = parser.parse_args()
+    
+    base_dir, model, device, user_internal_ids, ground_truth_items, dataset_name, model_name, test_data = prepare_model(args.pth_file)
+    topk_results = get_topk_results(model, device, user_internal_ids, ground_truth_items, test_data, k=args.k, batch_size=args.batch_size)
     write_csv(topk_results, base_dir, dataset_name, model_name)
     
     # Calculate metrics for the last 2000 users

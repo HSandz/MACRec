@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Convert recommendations CSV (with user_id, GT, candidate items) to complete CSV format.
 
@@ -113,8 +112,8 @@ def convert_recommendations(rec_df: pd.DataFrame, user_history: Dict) -> pd.Data
         else:
             history_items, history_ratings = [], []
         
-        # Default rating for GT item is 5.0
-        rating = 5.0
+        # Leave rating empty
+        rating = ''
         
         # Create row in test.csv format
         new_row = {
@@ -200,7 +199,7 @@ def main():
             print("Please provide dataset directory with -d/--dataset-dir", file=sys.stderr)
             sys.exit(1)
         
-        dataset_dir = args.rec_file.parent.parent.parent / "data" / dataset_name
+        dataset_dir = args.rec_file.parent.parent.parent.parent / "data" / dataset_name
     
     if not dataset_dir.exists():
         print(f"ERROR: Dataset directory not found: {dataset_dir}", file=sys.stderr)
