@@ -22,5 +22,4 @@ python train/tools/get_topk_items_from_pkl.py --pkl_file train\saved\lru\yelp202
 python train/run.py
 
 # Get topk items from recbole_model.pth
-python train/tools/get_topk_items.py --pth_file train\saved\recbole\ml-100k\mode.pth
-python train/tools/get_topk_items.py --pth_file train\saved\recbole\yelp2020\model.pth
+python train/tools/get_topk_items.py --pth_file {mode.pth}
