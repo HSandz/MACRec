@@ -14,27 +14,36 @@ class GeminiLLM(BaseLLM):
             `json_mode` (`bool`, optional): Whether to use JSON mode. Defaults to `False`.
             `agent_context` (`str`, optional): The context of the agent using this LLM (e.g., 'Manager', 'Analyst'). Defaults to None.
         """
+        logger.info(f"[API] Provider: gemini | Model: {model}")
+        
         # Call parent constructor to initialize token tracking attributes
         super().__init__()
         
         self.model = model
         self.json_mode = json_mode
         self.agent_context = agent_context or "Unknown"
-        self.max_tokens: int = kwargs.get('max_tokens', 256)
+        self.max_tokens: int = kwargs.get('max_tokens', 2048)  # Increased from 1024 for JSON responses (recommendations need more tokens)
+        self.temperature: float = kwargs.get('temperature', 0.7)  # Match OpenRouter default (was incorrectly 0)
+        self.top_p: float = kwargs.get('top_p', 0.95)
+        self.top_k: int = kwargs.get('top_k', 64)
         
         # Set context length based on model
         if 'gemini-1.5-pro' in model:
             self.max_context_length = 2097152  # 2M tokens for Gemini 1.5 Pro
         elif 'gemini-2.0-flash-001' in model:
+            self.max_context_length = 1048576  # 1M tokens for Gemini 2.0 Flash
+        elif 'gemini-2.0-flash-lite-001' in model:
+            self.max_context_length = 1048576  # 1M tokens for Gemini 2.0 Flash Lite
+        elif 'gemini-1.5-flash' in model:
             self.max_context_length = 1048576  # 1M tokens for Gemini 1.5 Flash
         else:
             self.max_context_length = 32768  # Default fallback
         
         # Configure generation parameters
         generation_config = {
-            "temperature": kwargs.get('temperature', 0),
-            "top_p": kwargs.get('top_p', 0.95),
-            "top_k": kwargs.get('top_k', 64),
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "top_k": self.top_k,
             "max_output_tokens": self.max_tokens,
         }
         
@@ -51,8 +60,6 @@ class GeminiLLM(BaseLLM):
             model_name=model,
             generation_config=generation_config
         )
-        
-        logger.info(f"[API] Provider: gemini | Model: {model}")
 
     @property
     def tokens_limit(self) -> int:
@@ -112,10 +119,32 @@ class GeminiLLM(BaseLLM):
                 google_exceptions.InternalServerError,
                 google_exceptions.TooManyRequests,
                 google_exceptions.DeadlineExceeded,
+                google_exceptions.ResourceExhausted,
             )
         except ImportError:
             # If google.api_core not available, just use base errors
             return base_errors
+    
+    def _should_retry_response(self, response: Any) -> bool:
+        """Check if a Gemini response indicates a retriable error.
+        
+        Args:
+            response: The Gemini response object
+            
+        Returns:
+            True if should retry, False otherwise
+        """
+        # Gemini responses don't have status codes, but may have finish_reason indicating retryable state
+        if hasattr(response, 'candidates') and response.candidates:
+            for candidate in response.candidates:
+                # finish_reason: 1=STOP, 2=MAX_TOKENS, 3=SAFETY, 4=RECITATION, 5=OTHER
+                finish_reason = getattr(candidate, 'finish_reason', None)
+                # MAX_TOKENS and SAFETY might be transient, but not retriable at this level
+                # Only system errors should trigger retries
+                if finish_reason == 5:  # OTHER - potentially transient
+                    return True
+        
+        return False
 
     def __call__(self, prompt: str, *args, **kwargs) -> str:
         """Forward pass of the Gemini LLM.
@@ -133,10 +162,13 @@ class GeminiLLM(BaseLLM):
             estimated_prompt_tokens = self.estimate_tokens(prompt)
             logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_prompt_tokens} prompt tokens estimated")
             
+            messages = [{"role": "user", "content": prompt}]
+            
             # Prepare prompt based on JSON mode
             if self.json_mode:
                 # For JSON mode, add instruction to the prompt
-                actual_prompt = f"{prompt}\n\nPlease respond with valid JSON only."
+                messages[0]["content"] = f"{prompt}\n\nPlease respond with valid JSON only."
+                actual_prompt = messages[0]["content"]
             else:
                 actual_prompt = prompt
             
@@ -149,47 +181,100 @@ class GeminiLLM(BaseLLM):
             
             # Extract text from response
             # Handle cases where response might be blocked or have no text
+            content = ""
+            finish_reason_num = None
+            
+            # Check finish reason first
+            if hasattr(response, 'candidates') and response.candidates:
+                for candidate in response.candidates:
+                    finish_reason_num = getattr(candidate, 'finish_reason', None)
+                    if finish_reason_num == 2:  # MAX_TOKENS
+                        logger.warning(f"Response truncated: finish_reason=2 (MAX_TOKENS). Current limit: {self.max_tokens} tokens.")
+            
+            # Try multiple extraction methods
             try:
+                # Method 1: Try the quick accessor (works when response has valid parts)
                 if hasattr(response, 'text') and response.text:
-                    content = response.text.replace('\n', ' ').strip()
-                elif hasattr(response, 'parts') and response.parts:
-                    # Try to extract from parts
-                    content = ' '.join(part.text for part in response.parts if hasattr(part, 'text')).strip()
-                else:
-                    logger.warning(f"Gemini response has no valid text.")
-                    # Check for safety ratings or blocking
-                    if hasattr(response, 'prompt_feedback'):
-                        logger.warning(f"Prompt feedback: {response.prompt_feedback}")
-                    if hasattr(response, 'candidates') and response.candidates:
-                        finish_reasons = [c.finish_reason for c in response.candidates]
-                        logger.warning(f"Candidate finish reasons: {finish_reasons}")
-                        # Log human-readable finish reason
-                        reason_map = {1: "STOP", 2: "MAX_TOKENS", 3: "SAFETY", 4: "RECITATION", 5: "OTHER"}
-                        for i, reason in enumerate(finish_reasons):
-                            reason_name = reason_map.get(reason, f"UNKNOWN({reason})")
-                            logger.warning(f"Candidate {i}: finish_reason={reason_name}")
-                            if reason == 2:
-                                logger.error(f"⚠️ Response truncated due to MAX_TOKENS limit ({self.max_tokens}). Consider increasing max_tokens.")
-                    content = ""
+                    try:
+                        content = response.text.strip()  # Only strip whitespace, preserve newlines
+                        logger.debug(f"Successfully extracted {len(content)} chars using response.text")
+                    except (ValueError, RuntimeError, AttributeError):
+                        # .text accessor failed - will try other methods below
+                        pass
+                
+                # Method 2: Extract from candidates/parts if quick accessor didn't work
+                if not content and hasattr(response, 'candidates') and response.candidates:
+                    for candidate in response.candidates:
+                        if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                            # Extract text from all parts in candidate
+                            parts_text = []
+                            for part in candidate.content.parts:
+                                if hasattr(part, 'text') and part.text:
+                                    parts_text.append(part.text)
+                            if parts_text:
+                                content = ' '.join(parts_text).strip()
+                                if content:
+                                    logger.debug(f"Extracted {len(content)} chars from candidate.content.parts")
+                                    break
+                
+                # Method 3: Try direct parts attribute
+                if not content and hasattr(response, 'parts') and response.parts:
+                    parts_text = []
+                    for part in response.parts:
+                        if hasattr(part, 'text') and part.text:
+                            parts_text.append(part.text)
+                    if parts_text:
+                        content = ' '.join(parts_text).strip()
+                        logger.debug(f"Extracted {len(content)} chars from response.parts")
+                
+                # Method 4: Try to extract from first candidate's text directly
+                if not content and hasattr(response, 'candidates') and response.candidates:
+                    try:
+                        for candidate in response.candidates:
+                            if hasattr(candidate, 'text'):
+                                candidate_text = candidate.text.strip()
+                                if candidate_text:
+                                    content = candidate_text
+                                    logger.debug(f"Extracted {len(content)} chars from candidate.text")
+                                    break
+                    except (ValueError, RuntimeError, AttributeError):
+                        pass
+            
             except Exception as e:
-                logger.error(f"Error extracting text from Gemini response: {e}")
-                content = ""
+                logger.debug(f"Error during text extraction methods: {type(e).__name__}: {str(e)[:100]}")
+            
+            # Log response status if no content extracted
+            if not content:
+                logger.warning(f"Could not extract text from Gemini response.")
+                if hasattr(response, 'prompt_feedback'):
+                    logger.warning(f"Prompt feedback: {response.prompt_feedback}")
+                if hasattr(response, 'candidates') and response.candidates:
+                    # Log finish reasons
+                    reason_map = {1: "STOP", 2: "MAX_TOKENS", 3: "SAFETY", 4: "RECITATION", 5: "OTHER"}
+                    for i, candidate in enumerate(response.candidates):
+                        reason = getattr(candidate, 'finish_reason', None)
+                        reason_name = reason_map.get(reason, f"UNKNOWN({reason})")
+                        logger.warning(f"Candidate {i}: finish_reason={reason_name}")
+                        if reason == 2:
+                            logger.error(f"⚠️ Response truncated due to MAX_TOKENS limit ({self.max_tokens}). Try increasing max_tokens or reducing prompt size.")
             
             if content:
                 
-                # Track token usage (Gemini doesn't provide exact counts, so we estimate)
+                # Track token usage (extract from response metadata if available)
                 input_tokens = None
                 output_tokens = None
+                
                 if hasattr(response, 'usage_metadata') and response.usage_metadata:
                     input_tokens = getattr(response.usage_metadata, 'prompt_token_count', None)
                     output_tokens = getattr(response.usage_metadata, 'candidates_token_count', None)
                 
                 # Track the usage
                 self.track_usage(
-                    actual_prompt, 
+                    prompt,  # Use original prompt for consistency
                     content, 
                     input_tokens, 
-                    output_tokens
+                    output_tokens,
+                    api_usage=({'prompt_tokens': input_tokens, 'completion_tokens': output_tokens} if input_tokens or output_tokens else {})
                 )
                 
                 # Log the response from the API
@@ -201,7 +286,7 @@ class GeminiLLM(BaseLLM):
                     logger.info(f"📊 Token Usage ({self.agent_context}): {input_tokens} prompt + {output_tokens} completion = {total_tokens} total tokens")
                 else:
                     # Fallback to estimation if no API usage info
-                    estimated_input = self.estimate_tokens(actual_prompt)
+                    estimated_input = self.estimate_tokens(prompt)
                     estimated_output = self.estimate_tokens(content)
                     estimated_total = estimated_input + estimated_output
                     logger.info(f"📊 Token Usage ({self.agent_context}): ~{estimated_input} prompt + ~{estimated_output} completion = ~{estimated_total} total tokens (estimated)")
