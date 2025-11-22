@@ -1,5 +1,6 @@
 from tqdm import tqdm
 import pandas as pd
+import numpy as np
 import os
 import torch
 from recbole.utils.case_study import full_sort_topk
@@ -106,10 +107,66 @@ def write_csv(topk_results, base_dir, dataset_name, model_name):
     print(f'File saved at: {file}')
     print(f'Total users: {len(topk_results)}')
 
+def calculate_metrics(topk_results, k_list=[1, 3, 5, 10, 20]):
+    metrics = {k: {'recall': [], 'ndcg': []} for k in k_list}
+    
+    for result in topk_results:
+        gt_item_str = result['gt_item']
+        if not gt_item_str:
+            continue
+            
+        gt_items = set(map(int, gt_item_str.split(',')))
+        
+        # Get recommended items (assuming keys are item_1, item_2, ...)
+        rec_items = []
+        for i in range(1, max(k_list) + 1):
+            key = f'item_{i}'
+            if key in result:
+                rec_items.append(result[key])
+            else:
+                break
+                
+        for k in k_list:
+            rec_k = rec_items[:k]
+            hits = 0
+            for item in rec_k:
+                if item in gt_items:
+                    hits += 1
+            
+            # Recall@K
+            recall = hits / len(gt_items) if len(gt_items) > 0 else 0
+            metrics[k]['recall'].append(recall)
+            
+            # NDCG@K
+            dcg = 0
+            idcg = 0
+            for i, item in enumerate(rec_k):
+                if item in gt_items:
+                    dcg += 1 / np.log2(i + 2)
+            
+            for i in range(min(len(gt_items), k)):
+                idcg += 1 / np.log2(i + 2)
+                
+            ndcg = dcg / idcg if idcg > 0 else 0
+            metrics[k]['ndcg'].append(ndcg)
+            
+    print("\nMetrics for the last 2000 users:")
+    for k in k_list:
+        avg_recall = np.mean(metrics[k]['recall'])
+        avg_ndcg = np.mean(metrics[k]['ndcg'])
+        print(f"Recall@{k}: {avg_recall:.4f}")
+        print(f"NDCG@{k}: {avg_ndcg:.4f}")
+
+
 def main():
     base_dir, model, device, user_internal_ids, ground_truth_items, dataset_name, model_name, test_data = prepare_model()
     topk_results = get_topk_results(model, device, user_internal_ids, ground_truth_items, test_data, k=20, batch_size=64)
     write_csv(topk_results, base_dir, dataset_name, model_name)
+    
+    # Calculate metrics for the last 2000 users
+    last_2000_results = topk_results[-2000:]
+    calculate_metrics(last_2000_results)
+
 
 if __name__ == '__main__':
     main()
